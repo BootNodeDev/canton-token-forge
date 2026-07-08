@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
-    "setup": "bash scripts/fetch-dep.sh && bash scripts/build-harness.sh",
+    "setup": "bash scripts/fetch-dep.sh",
     "postinstall": "npm run setup",
     "clean": "rm -rf daml/canton-token-forge/.daml daml/canton-token-forge-test/.daml",
     "build": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build && cd ../canton-token-forge-test && LANG=C.UTF-8 dpm build",
