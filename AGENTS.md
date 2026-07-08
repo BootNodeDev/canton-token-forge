@@ -122,4 +122,9 @@ package-id; and it filters **choices only** (no template-ignore flag).
   anywhere (names, comments, docs). Say "fake", "stub", or "placeholder" instead.
 - No em dashes anywhere (code, comments, docs, commits). Use hyphen, comma, or
   parentheses instead.
+- No plan/roadmap comments and no slop comments in code. Never reference plans,
+  tasks, or future work in a comment (no "added in Plan 03", "arrives later",
+  "for now"). A comment must explain why the code is the way it is; if it only
+  restates what the code plainly does or narrates scaffolding progress, delete
+  it.
 - Commits use no `Co-Authored-By` trailer.

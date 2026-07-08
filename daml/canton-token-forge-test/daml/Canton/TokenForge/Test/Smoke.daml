@@ -3,9 +3,8 @@ module Canton.TokenForge.Test.Smoke where
 import Daml.Script
 import Canton.TokenForge.Version (version)
 
--- Splice-amulet-free smoke test: proves the token interface deps are vendored and
--- our own production DAR (canton-token-forge) is data-depended from the test
--- package. Real interface-view assertions arrive in Plan 01+.
+-- Amulet-free smoke test: the token interface deps are vendored and our own
+-- production DAR (canton-token-forge) is data-depended from the test package.
 smoke : Script ()
 smoke = do
   assert (version == "0.0.1")
