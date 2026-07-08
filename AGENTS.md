@@ -113,8 +113,8 @@ package-id; and it filters **choices only** (no template-ignore flag).
 
 - Never edit or commit `deps/` (vendored + gitignored) or `.daml/`.
 - Keep test code out of the production `canton-token-forge` package.
-- The term for a fake/stub stand-in (four letters, m-o-c-k) is banned everywhere
-  (names, comments, docs). Use "fake", "stub", or "sandbox" instead.
+- Never use the informal four-letter word for a fake/stub stand-in object
+  anywhere (names, comments, docs). Say "fake", "stub", or "placeholder" instead.
 - No em dashes anywhere (code, comments, docs, commits). Use hyphen, comma, or
   parentheses instead.
 - Commits use no `Co-Authored-By` trailer.
