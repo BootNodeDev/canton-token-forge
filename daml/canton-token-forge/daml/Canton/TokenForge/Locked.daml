@@ -1,0 +1,45 @@
+module Canton.TokenForge.Locked where
+
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import Canton.TokenForge.Token (Token(..))
+import Canton.TokenForge.Types (mkInstrumentId)
+
+-- | A locked holding of a canton-token-forge instrument (the LockedAmulet
+-- analog). Signed by the instrument admin; the owner and lock holders are
+-- observers.
+template LockedToken
+  with
+    admin : Party
+    owner : Party
+    instrumentId : Text
+    amount : Decimal
+    holders : [Party]
+    expiresAt : Time
+    meta : Metadata
+  where
+    signatory admin
+    observer owner, holders
+    ensure amount > 0.0
+
+    interface instance HoldingV1.Holding for LockedToken where
+      view = HoldingV1.HoldingView with
+        owner
+        instrumentId = mkInstrumentId admin instrumentId
+        amount
+        lock = Some HoldingV1.Lock with
+          holders; expiresAt = Some expiresAt; expiresAfter = None; context = None
+        meta
+
+    -- Lock holders release the funds back to the owner.
+    choice LockedToken_Unlock : ContractId Token
+      controller holders
+      do create Token with admin; owner; instrumentId; amount; meta = emptyMetadata
+
+    -- After expiry the owner can reclaim the funds.
+    choice LockedToken_ExpireLock : ContractId Token
+      controller owner
+      do
+        now <- getTime
+        assertMsg "lock has not expired yet" (now >= expiresAt)
+        create Token with admin; owner; instrumentId; amount; meta = emptyMetadata

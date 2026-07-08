@@ -4,6 +4,7 @@ import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Token (Token(..))
 import Canton.TokenForge.Transfer (transferDirectImpl)
+import Canton.TokenForge.Locked (LockedToken(..))
 
 -- | Faucet policy for an instrument.
 data FaucetConfig = FaucetConfig
@@ -62,6 +63,22 @@ template InstrumentConfig
       do
         create Token with
           admin; owner = recipient; instrumentId; amount; meta = emptyMetadata
+
+    -- Owner-consented locking; admin authority flows from this admin-signed config.
+    nonconsuming choice InstrumentConfig_LockHolding : ContractId LockedToken
+      with
+        owner : Party
+        tokenCid : ContractId Token
+        holders : [Party]
+        expiresAt : Time
+      controller owner
+      do
+        token <- fetch tokenCid
+        assertMsg "token belongs to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
+        assertMsg "caller must own the token" (token.owner == owner)
+        archive tokenCid
+        create LockedToken with
+          admin; owner; instrumentId; amount = token.amount; holders; expiresAt; meta = emptyMetadata
 
     interface instance TransferFactory for InstrumentConfig where
       view = TransferFactoryView with admin; meta = emptyMetadata
