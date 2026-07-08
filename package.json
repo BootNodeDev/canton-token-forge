@@ -1,5 +1,5 @@
 {
-  "name": "splice-app",
+  "name": "canton-token-forge",
   "version": "0.0.1",
   "description": "A Daml project built on Splice Amulet / Canton Coin",
   "license": "MIT",
@@ -7,10 +7,10 @@
   "scripts": {
     "setup": "bash scripts/fetch-dep.sh && bash scripts/build-harness.sh",
     "postinstall": "npm run setup",
-    "clean": "rm -rf daml/splice-app/.daml daml/splice-app-test/.daml",
-    "build": "cd daml/splice-app && LANG=C.UTF-8 dpm build && cd ../splice-app-test && LANG=C.UTF-8 dpm build",
-    "build:splice-app": "cd daml/splice-app && LANG=C.UTF-8 dpm build",
-    "test": "npm run build:splice-app && cd daml/splice-app-test && LANG=C.UTF-8 dpm test",
-    "test:coverage": "npm run build:splice-app && cd daml/splice-app-test && LANG=C.UTF-8 dpm test --all --show-coverage --coverage-ignore-choice '^splice' --coverage-ignore-choice ':Archive$'"
+    "clean": "rm -rf daml/canton-token-forge/.daml daml/canton-token-forge-test/.daml",
+    "build": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build && cd ../canton-token-forge-test && LANG=C.UTF-8 dpm build",
+    "build:canton-token-forge": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build",
+    "test": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test",
+    "test:coverage": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test --all --show-coverage --coverage-ignore-choice '^splice' --coverage-ignore-choice ':Archive$'"
   }
 }

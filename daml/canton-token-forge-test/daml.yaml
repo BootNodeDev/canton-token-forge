@@ -1,5 +1,5 @@
 sdk-version: 3.4.11
-name: splice-app-test
+name: canton-token-forge-test
 source: daml
 version: 0.0.1
 dependencies:
@@ -8,8 +8,8 @@ dependencies:
   - daml-script
 data-dependencies:
   # our production contracts (same sdk 3.4.11 / LF 2.1 as the deps). Sibling
-  # package under daml/, so its DAR is at ../splice-app/.daml/dist/.
-  - ../splice-app/.daml/dist/splice-app-0.0.1.dar
+  # package under daml/, so its DAR is at ../canton-token-forge/.daml/dist/.
+  - ../canton-token-forge/.daml/dist/canton-token-forge-0.0.1.dar
   # amulet model + token-standard APIs (stable symlinks from fetch-dep.sh)
   - ../../deps/splice-daml/dars/splice-amulet.dar
   - ../../deps/splice-daml/dars/splice-api-token-holding-v1.dar
