@@ -7,7 +7,7 @@ import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
+import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..), InstrumentConfig_Preapprove(..), InstrumentConfig_LockHolding(..), preapprovalContextKey)
@@ -55,6 +55,45 @@ directTransferCompletes = do
   [changeCid] <- pure result.senderChangeCids
   Some cv <- queryInterfaceContractId alice changeCid
   cv.amount === 70.0
+
+-- A memo carried in transfer.meta reaches the receiver's delivered holding.
+directTransferPropagatesMeta : Script ()
+directTransferPropagatesMeta = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  aliceToken <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 2) 0 0 0
+  setTime now
+  let memo = Metadata with values = TextMap.fromList [("memo", "invoice-42")]
+      factoryCid = toInterfaceContractId @TransferFactory cfg
+      transfer = Transfer with
+        sender = alice; receiver = bob; amount = 30.0
+        instrumentId = mkInstrumentId admin "CC"
+        requestedAt = now; executeBefore = later
+        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding aliceToken]
+        meta = memo
+      ctx = ChoiceContext with
+        values = TextMap.fromList [(preapprovalContextKey, AV_ContractId (coerceContractId pre))]
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  Some preDisclosure <- queryDisclosure admin pre
+  result <- submit (actAs alice <> disclose cfgDisclosure <> disclose preDisclosure) $
+    exerciseCmd factoryCid TransferFactory_Transfer with
+      expectedAdmin = admin; transfer; extraArgs = ExtraArgs with context = ctx; meta = emptyMetadata
+
+  case result.output of
+    TransferInstructionResult_Completed receiverHoldingCids -> do
+      Some bv <- queryInterfaceContractId bob (head receiverHoldingCids)
+      bv.meta === memo
+    _ -> abort "expected completed transfer"
 
 -- expectedAdmin mismatch, non-positive amount, duplicate inputs, and a locked
 -- input are all rejected.

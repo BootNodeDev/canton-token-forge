@@ -1,8 +1,8 @@
 module Canton.TokenForge.Locked where
 
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
-import Canton.TokenForge.Token (Token(..))
+import Splice.Api.Token.MetadataV1 (Metadata)
+import Canton.TokenForge.Token (Token(..), mkToken)
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | A locked holding of a canton-token-forge instrument (the LockedAmulet
@@ -34,7 +34,7 @@ template LockedToken
     -- Lock holders release the funds back to the owner.
     choice LockedToken_Unlock : ContractId Token
       controller holders
-      do create Token with admin; owner; instrumentId; amount; meta = emptyMetadata
+      do create (mkToken admin owner instrumentId amount meta)
 
     -- After expiry the owner can reclaim the funds.
     choice LockedToken_ExpireLock : ContractId Token
@@ -42,4 +42,4 @@ template LockedToken
       do
         now <- getTime
         assertMsg "lock has not expired yet" (now >= expiresAt)
-        create Token with admin; owner; instrumentId; amount; meta = emptyMetadata
+        create (mkToken admin owner instrumentId amount meta)

@@ -5,7 +5,7 @@ import DA.TextMap qualified as TextMap
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata, ChoiceContext(..), AnyValue(..))
 import Splice.Api.Token.TransferInstructionV1
-import Canton.TokenForge.Token (Token(..))
+import Canton.TokenForge.Token (Token(..), mkToken)
 import Canton.TokenForge.Locked (LockedToken(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
 import Canton.TokenForge.Types (mkInstrumentId)
@@ -74,8 +74,7 @@ template InstrumentConfig
         amount : Decimal
       controller admin
       do
-        create Token with
-          admin; owner = recipient; instrumentId; amount; meta = emptyMetadata
+        create (mkToken admin recipient instrumentId amount emptyMetadata)
 
     -- Owner-consented locking; admin authority flows from this admin-signed config.
     nonconsuming choice InstrumentConfig_LockHolding : ContractId LockedToken
@@ -91,7 +90,7 @@ template InstrumentConfig
         assertMsg "caller must own the token" (token.owner == owner)
         archive tokenCid
         create LockedToken with
-          admin; owner; instrumentId; amount = token.amount; holders; expiresAt; meta = emptyMetadata
+          admin; owner; instrumentId; amount = token.amount; holders; expiresAt; meta = token.meta
 
     nonconsuming choice InstrumentConfig_Preapprove : ContractId TokenTransferPreapproval
       with
@@ -121,7 +120,11 @@ lookupPreapprovalCid ctx =
     _ -> None
 
 -- | Direct (1-step) is allowed for self-transfers, or when the context carries a
--- valid preapproval for this instrument's receiver.
+-- valid preapproval for this instrument's receiver. The preapproval cid is
+-- supplied by the app backend and must be disclosed to the sender: an absent cid
+-- takes the two-step offer path, but a present-but-stale or undisclosed cid makes
+-- the fetch abort the whole transfer, since a failed fetch cannot be recovered
+-- from inside a choice.
 isDirectTransfer : Party -> Text -> Transfer -> ChoiceContext -> Update Bool
 isDirectTransfer admin instrumentId transfer ctx
   | transfer.sender == transfer.receiver = pure True
@@ -164,26 +167,28 @@ transferImpl admin instrumentId arg = do
   senderChangeCids <-
     if total > transfer.amount
       then do
-        changeCid <- create Token with
-          admin; owner = transfer.sender; instrumentId; amount = total - transfer.amount; meta = emptyMetadata
+        changeCid <- create (mkToken admin transfer.sender instrumentId (total - transfer.amount) emptyMetadata)
         pure [toInterfaceContractId @HoldingV1.Holding changeCid]
       else pure []
 
   direct <- isDirectTransfer admin instrumentId transfer extraArgs.context
   if direct
     then do
-      receiverCid <- create Token with
-        admin; owner = transfer.receiver; instrumentId; amount = transfer.amount; meta = emptyMetadata
+      receiverCid <- create (mkToken admin transfer.receiver instrumentId transfer.amount transfer.meta)
       pure TransferInstructionResult with
         output = TransferInstructionResult_Completed with
           receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
         senderChangeCids
         meta = emptyMetadata
     else do
+      -- Escrow is sender-owned so reject/withdraw can return it. After expiry the
+      -- sender can also reclaim it directly via LockedToken_ExpireLock, which
+      -- leaves this instruction inert: the funds are safe (already returned) but
+      -- the pending offer is not cleared.
       locked <- create LockedToken with
         admin; owner = transfer.sender; instrumentId; amount = transfer.amount
-        holders = [admin]; expiresAt = transfer.executeBefore; meta = emptyMetadata
-      instr <- create TokenTransferInstruction with admin; transfer; lockedCid = locked; meta = emptyMetadata
+        holders = [admin]; expiresAt = transfer.executeBefore; meta = transfer.meta
+      instr <- create TokenTransferInstruction with admin; transfer; lockedCid = locked; meta = transfer.meta
       pure TransferInstructionResult with
         output = TransferInstructionResult_Pending with
           transferInstructionCid = toInterfaceContractId @TransferInstruction instr
