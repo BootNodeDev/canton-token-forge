@@ -3,13 +3,14 @@ module Canton.TokenForge.Test.TransferTest where
 import Daml.Script
 import DA.Assert ((===))
 import DA.List (head)
+import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceContext)
+import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..))
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..), InstrumentConfig_Preapprove(..), InstrumentConfig_LockHolding(..), preapprovalContextKey)
 
 directTransferCompletes : Script ()
 directTransferCompletes = do
@@ -23,30 +24,89 @@ directTransferCompletes = do
     admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
   aliceToken <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
 
+  -- bob opts in to direct transfers (enables 1-step completion)
+  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob
+
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 2) 0 0 0
-      factoryCid = toInterfaceContractId @TransferFactory cfg
+  setTime now
+  let factoryCid = toInterfaceContractId @TransferFactory cfg
       transfer = Transfer with
         sender = alice; receiver = bob; amount = 30.0
         instrumentId = mkInstrumentId admin "CC"
         requestedAt = now; executeBefore = later
         inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding aliceToken]
         meta = emptyMetadata
-  -- The sender is not a stakeholder of the factory (InstrumentConfig), so the
-  -- factory contract is made visible via explicit disclosure, exactly as a
-  -- wallet would after fetching the factory cid from the registry off-ledger.
+      -- the app backend hands the preapproval cid to the choice via the context
+      ctx = ChoiceContext with
+        values = TextMap.fromList [(preapprovalContextKey, AV_ContractId (coerceContractId pre))]
   Some cfgDisclosure <- queryDisclosure admin cfg
-  result <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd factoryCid TransferFactory_Transfer with
-    expectedAdmin = admin; transfer; extraArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  Some preDisclosure <- queryDisclosure admin pre
+  result <- submit (actAs alice <> disclose cfgDisclosure <> disclose preDisclosure) $
+    exerciseCmd factoryCid TransferFactory_Transfer with
+      expectedAdmin = admin; transfer; extraArgs = ExtraArgs with context = ctx; meta = emptyMetadata
 
-  -- 1-step: completes immediately with a receiver holding
   case result.output of
     TransferInstructionResult_Completed receiverHoldingCids -> do
       Some bv <- queryInterfaceContractId bob (head receiverHoldingCids)
       bv.owner === bob
       bv.amount === 30.0
     _ -> abort "expected completed transfer"
-  -- sender gets 70.0 change
   [changeCid] <- pure result.senderChangeCids
   Some cv <- queryInterfaceContractId alice changeCid
   cv.amount === 70.0
+
+-- expectedAdmin mismatch, non-positive amount, duplicate inputs, and a locked
+-- input are all rejected.
+transferRejectsBadInputs : Script ()
+transferRejectsBadInputs = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  aliceToken <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 2) 0 0 0
+  setTime now
+  let factoryCid = toInterfaceContractId @TransferFactory cfg
+      ctx = ChoiceContext with
+        values = TextMap.fromList [(preapprovalContextKey, AV_ContractId (coerceContractId pre))]
+      mkTransfer amt = Transfer with
+        sender = alice; receiver = bob; amount = amt
+        instrumentId = mkInstrumentId admin "CC"
+        requestedAt = now; executeBefore = later
+        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding aliceToken]
+        meta = emptyMetadata
+      xargs = ExtraArgs with context = ctx; meta = emptyMetadata
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  Some preDisclosure <- queryDisclosure admin pre
+  let disclosures = disclose cfgDisclosure <> disclose preDisclosure
+
+  -- wrong expectedAdmin
+  submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
+    expectedAdmin = bob; transfer = mkTransfer 30.0; extraArgs = xargs
+  -- non-positive amount
+  submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
+    expectedAdmin = admin; transfer = mkTransfer 0.0; extraArgs = xargs
+  -- duplicate input holding cids
+  let dupTransfer = (mkTransfer 30.0) with
+        inputHoldingCids =
+          [ toInterfaceContractId @HoldingV1.Holding aliceToken
+          , toInterfaceContractId @HoldingV1.Holding aliceToken
+          ]
+  submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
+    expectedAdmin = admin; transfer = dupTransfer; extraArgs = xargs
+  -- locked holding passed as an input
+  lockedTok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 10.0
+  locked <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+    owner = alice; tokenCid = lockedTok; holders = [admin]; expiresAt = later
+  let lockedTransfer = (mkTransfer 5.0) with
+        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding locked]
+  submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
+    expectedAdmin = admin; transfer = lockedTransfer; extraArgs = xargs

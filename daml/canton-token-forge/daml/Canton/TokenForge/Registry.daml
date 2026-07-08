@@ -1,10 +1,13 @@
 module Canton.TokenForge.Registry where
 
-import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import DA.List (unique)
+import DA.TextMap qualified as TextMap
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata, ChoiceContext(..), AnyValue(..))
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Token (Token(..))
-import Canton.TokenForge.Transfer (transferDirectImpl)
 import Canton.TokenForge.Locked (LockedToken(..))
+import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | Faucet policy for an instrument.
 data FaucetConfig = FaucetConfig
@@ -35,6 +38,15 @@ template TokenRegistry
         create InstrumentConfig with
           admin; operator; instrumentId; name; symbol; decimals; faucet
           meta = emptyMetadata
+
+-- | Receiver opt-in that enables direct (1-step) transfers to them.
+template TokenTransferPreapproval
+  with
+    admin : Party
+    instrumentId : Text
+    receiver : Party
+  where
+    signatory admin, receiver
 
 -- | Per-instrument rules/factory contract (the AmuletRules analog). Signed by
 -- the instrument admin; the operator is an observer. Implements the standard
@@ -80,11 +92,91 @@ template InstrumentConfig
         create LockedToken with
           admin; owner; instrumentId; amount = token.amount; holders; expiresAt; meta = emptyMetadata
 
+    nonconsuming choice InstrumentConfig_Preapprove : ContractId TokenTransferPreapproval
+      with
+        receiver : Party
+      controller admin, receiver
+      do create TokenTransferPreapproval with admin; instrumentId; receiver
+
     interface instance TransferFactory for InstrumentConfig where
       view = TransferFactoryView with admin; meta = emptyMetadata
 
-      transferFactory_transferImpl _self arg = transferDirectImpl admin instrumentId arg
+      transferFactory_transferImpl _self arg = transferImpl admin instrumentId arg
 
       transferFactory_publicFetchImpl _self arg = do
         assertMsg "expectedAdmin must match" (arg.expectedAdmin == admin)
         pure (view $ toInterface @TransferFactory this)
+
+-- | Well-known choice-context key under which the app backend supplies the
+-- receiver's TokenTransferPreapproval cid to enable a direct transfer.
+preapprovalContextKey : Text
+preapprovalContextKey = "canton-token-forge/transfer-preapproval"
+
+-- | Look up the optional preapproval cid the backend put in the choice context.
+lookupPreapprovalCid : ChoiceContext -> Optional (ContractId TokenTransferPreapproval)
+lookupPreapprovalCid ctx =
+  case TextMap.lookup preapprovalContextKey ctx.values of
+    Some (AV_ContractId acid) -> Some (coerceContractId acid)
+    _ -> None
+
+-- | Direct (1-step) is allowed for self-transfers, or when the context carries a
+-- valid preapproval for this instrument's receiver.
+isDirectTransfer : Party -> Text -> Transfer -> ChoiceContext -> Update Bool
+isDirectTransfer admin instrumentId transfer ctx
+  | transfer.sender == transfer.receiver = pure True
+  | otherwise = case lookupPreapprovalCid ctx of
+      None -> pure False
+      Some pcid -> do
+        pre <- fetch pcid
+        pure (pre.admin == admin && pre.instrumentId == instrumentId && pre.receiver == transfer.receiver)
+
+transferImpl
+  : Party    -- ^ admin (config signatory)
+  -> Text    -- ^ instrumentId
+  -> TransferFactory_Transfer
+  -> Update TransferInstructionResult
+transferImpl admin instrumentId arg = do
+  let TransferFactory_Transfer{expectedAdmin, transfer, extraArgs} = arg
+  assertMsg "expectedAdmin must match the instrument admin" (expectedAdmin == admin)
+  assertMsg "transfer instrument must match this config" (transfer.instrumentId == mkInstrumentId admin instrumentId)
+  assertMsg "amount must be positive" (transfer.amount > 0.0)
+  assertMsg "input holdings must not contain duplicates" (unique transfer.inputHoldingCids)
+  now <- getTime
+  assertMsg "transfer requestedAt must be in the past" (transfer.requestedAt <= now)
+  assertMsg "transfer has expired (executeBefore reached)" (now < transfer.executeBefore)
+
+  -- Consume the sender's input holdings. fetchFromInterface downcasts to Token,
+  -- returning None for a LockedToken or any non-Token holding, so a locked or
+  -- foreign input is rejected with a clear message.
+  amounts <- forA transfer.inputHoldingCids \hcid -> do
+    optToken <- fetchFromInterface @Token hcid
+    case optToken of
+      None -> abort "input holding is not a spendable Token (locked or foreign)"
+      Some (tcid, token) -> do
+        assertMsg "input holding must be owned by the sender" (token.owner == transfer.sender)
+        assertMsg "input holding must belong to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
+        archive tcid
+        pure token.amount
+  let total = sum amounts
+  assertMsg "insufficient input amount" (total >= transfer.amount)
+
+  senderChangeCids <-
+    if total > transfer.amount
+      then do
+        changeCid <- create Token with
+          admin; owner = transfer.sender; instrumentId; amount = total - transfer.amount; meta = emptyMetadata
+        pure [toInterfaceContractId @HoldingV1.Holding changeCid]
+      else pure []
+
+  direct <- isDirectTransfer admin instrumentId transfer extraArgs.context
+  if direct
+    then do
+      receiverCid <- create Token with
+        admin; owner = transfer.receiver; instrumentId; amount = transfer.amount; meta = emptyMetadata
+      pure TransferInstructionResult with
+        output = TransferInstructionResult_Completed with
+          receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
+        senderChangeCids
+        meta = emptyMetadata
+    else
+      abort "receiver is not preapproved for a direct transfer"
