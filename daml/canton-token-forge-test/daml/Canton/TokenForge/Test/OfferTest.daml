@@ -12,6 +12,10 @@ import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
 
+-- No app-backend context is needed for accept/reject/withdraw in these tests.
+noContextArgs : ExtraArgs
+noContextArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+
 -- Shared setup: mint 100 to alice, build a 40.0 transfer alice -> bob with no
 -- preapproval, and start the offer. Returns the pending instruction cid.
 startOffer : Party -> Party -> Party -> Party -> Script (ContractId TransferInstruction)
@@ -24,14 +28,13 @@ startOffer operator admin alice bob = do
       later = time (date 2026 Jan 2) 0 0 0
   setTime now
   let factoryCid = toInterfaceContractId @TransferFactory cfg
-      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
       transfer = Transfer with
         sender = alice; receiver = bob; amount = 40.0; instrumentId = mkInstrumentId admin "CC"
         requestedAt = now; executeBefore = later
         inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; meta = emptyMetadata
   Some cfgDisclosure <- queryDisclosure admin cfg
   res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd factoryCid TransferFactory_Transfer with
-    expectedAdmin = admin; transfer; extraArgs = xargs
+    expectedAdmin = admin; transfer; extraArgs = noContextArgs
   -- sender change (60.0) is created up front in both branches
   [changeCid] <- pure res.senderChangeCids
   Some cv <- queryInterfaceContractId alice changeCid
@@ -56,9 +59,8 @@ offerAcceptedCompletes = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer operator admin alice bob
-  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
   lockedDisclosure <- escrowDisclosure admin instrCid
-  acc <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Accept with extraArgs = xargs
+  acc <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
   case acc.output of
     TransferInstructionResult_Completed receiverHoldingCids -> do
       Some bv <- queryInterfaceContractId bob (head receiverHoldingCids)
@@ -73,9 +75,8 @@ offerRejectedRefunds = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer operator admin alice bob
-  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
   lockedDisclosure <- escrowDisclosure admin instrCid
-  rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = xargs
+  rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
   [refundCid] <- pure rej.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice
@@ -88,8 +89,7 @@ offerWithdrawnRefunds = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer operator admin alice bob
-  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
-  wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = xargs
+  wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
   [refundCid] <- pure wd.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice

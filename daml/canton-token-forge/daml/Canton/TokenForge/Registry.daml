@@ -167,6 +167,7 @@ transferImpl admin instrumentId arg = do
   senderChangeCids <-
     if total > transfer.amount
       then do
+        -- change is the sender's own leftover, not transferred value, so it carries no memo
         changeCid <- create (mkToken admin transfer.sender instrumentId (total - transfer.amount) emptyMetadata)
         pure [toInterfaceContractId @HoldingV1.Holding changeCid]
       else pure []
@@ -188,7 +189,7 @@ transferImpl admin instrumentId arg = do
       locked <- create LockedToken with
         admin; owner = transfer.sender; instrumentId; amount = transfer.amount
         holders = [admin]; expiresAt = transfer.executeBefore; meta = transfer.meta
-      instr <- create TokenTransferInstruction with admin; transfer; lockedCid = locked; meta = transfer.meta
+      instr <- create TokenTransferInstruction with admin; transfer; lockedCid = locked
       pure TransferInstructionResult with
         output = TransferInstructionResult_Pending with
           transferInstructionCid = toInterfaceContractId @TransferInstruction instr

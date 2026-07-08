@@ -1,7 +1,7 @@
 module Canton.TokenForge.Instruction where
 
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import Splice.Api.Token.MetadataV1 (emptyMetadata)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Token (mkToken)
 import Canton.TokenForge.Locked (LockedToken(..), LockedToken_Unlock(..))
@@ -22,7 +22,6 @@ template TokenTransferInstruction
     admin : Party
     transfer : Transfer
     lockedCid : ContractId LockedToken
-    meta : Metadata
   where
     signatory admin, transfer.sender
     observer transfer.receiver
@@ -32,14 +31,13 @@ template TokenTransferInstruction
         originalInstructionCid = None
         transfer
         status = TransferPendingReceiverAcceptance
-        meta
+        meta = transfer.meta
 
       transferInstruction_acceptImpl _self _arg = do
         now <- getTime
         assertMsg "transfer has expired (executeBefore reached)" (now < transfer.executeBefore)
-        locked <- fetch lockedCid
         archive lockedCid
-        receiverCid <- create (mkToken admin transfer.receiver locked.instrumentId transfer.amount transfer.meta)
+        receiverCid <- create (mkToken admin transfer.receiver transfer.instrumentId.id transfer.amount transfer.meta)
         pure TransferInstructionResult with
           output = TransferInstructionResult_Completed with
             receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
