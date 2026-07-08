@@ -65,5 +65,11 @@ link_stable splice-api-featured-app-v1               deps/splice-daml/splice-api
 link_stable splice-api-token-holding-v1              deps/token-standard/splice-api-token-holding-v1/daml.yaml
 link_stable splice-api-token-metadata-v1             deps/token-standard/splice-api-token-metadata-v1/daml.yaml
 link_stable splice-api-token-transfer-instruction-v1 deps/token-standard/splice-api-token-transfer-instruction-v1/daml.yaml
+link_stable splice-api-token-allocation-v1             deps/token-standard/splice-api-token-allocation-v1/daml.yaml
+link_stable splice-api-token-allocation-instruction-v1 deps/token-standard/splice-api-token-allocation-instruction-v1/daml.yaml
+link_stable splice-api-token-allocation-request-v1     deps/token-standard/splice-api-token-allocation-request-v1/daml.yaml
+# burn-mint SOURCE lives under deps/splice-daml (the token-standard/ copy is docs-only);
+# the compiled DAR is still in deps/splice-daml/dars/, so the symlink resolves.
+link_stable splice-api-token-burn-mint-v1              deps/splice-daml/splice-api-token-burn-mint-v1/daml.yaml
 
 echo "Done. Vendored deps + stable symlinks ready under deps/."
