@@ -1,7 +1,7 @@
 {
   "name": "canton-token-forge",
   "version": "0.0.1",
-  "description": "A Daml project built on Splice Amulet / Canton Coin",
+  "description": "A reusable, multi-instrument CIP-0056 (CN Token Standard) compliant token for demos and sandboxes",
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
