@@ -9,7 +9,7 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceContext)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (TokenRegistry(..), RegisterInstrument(..), Mint(..))
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..))
 
 directTransferCompletes : Script ()
 directTransferCompletes = do
@@ -19,9 +19,9 @@ directTransferCompletes = do
   bob <- allocateParty "bob"
 
   reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg RegisterInstrument with
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
     admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
-  aliceToken <- submit admin $ exerciseCmd cfg Mint with recipient = alice; amount = 100.0
+  aliceToken <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 2) 0 0 0

@@ -21,7 +21,7 @@ template TokenRegistry
     signatory operator
 
     -- Admin co-authorizes so the admin-signed InstrumentConfig can be created.
-    nonconsuming choice RegisterInstrument : ContractId InstrumentConfig
+    nonconsuming choice TokenRegistry_RegisterInstrument : ContractId InstrumentConfig
       with
         admin : Party
         instrumentId : Text
@@ -54,7 +54,7 @@ template InstrumentConfig
     ensure decimals >= 0 && decimals <= 18
 
     -- Free admin minting (no economics).
-    nonconsuming choice Mint : ContractId Token
+    nonconsuming choice InstrumentConfig_Mint : ContractId Token
       with
         recipient : Party
         amount : Decimal
