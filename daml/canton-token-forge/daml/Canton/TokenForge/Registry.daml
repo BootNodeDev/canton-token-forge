@@ -7,6 +7,7 @@ import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata, ChoiceContext(..), 
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Token (Token(..))
 import Canton.TokenForge.Locked (LockedToken(..))
+import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | Faucet policy for an instrument.
@@ -178,5 +179,13 @@ transferImpl admin instrumentId arg = do
           receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
         senderChangeCids
         meta = emptyMetadata
-    else
-      abort "receiver is not preapproved for a direct transfer"
+    else do
+      locked <- create LockedToken with
+        admin; owner = transfer.sender; instrumentId; amount = transfer.amount
+        holders = [admin]; expiresAt = transfer.executeBefore; meta = emptyMetadata
+      instr <- create TokenTransferInstruction with admin; transfer; lockedCid = locked; meta = emptyMetadata
+      pure TransferInstructionResult with
+        output = TransferInstructionResult_Pending with
+          transferInstructionCid = toInterfaceContractId @TransferInstruction instr
+        senderChangeCids
+        meta = emptyMetadata
