@@ -1,0 +1,62 @@
+module Canton.TokenForge.Registry where
+
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import Canton.TokenForge.Token (Token(..))
+
+-- | Faucet policy for an instrument (used by the Tap choice in Plan 03).
+data FaucetConfig = FaucetConfig
+  with
+    maxPerTap : Decimal
+  deriving (Eq, Show)
+
+-- | Operator-owned registry anchor. Serves as the getRegistryInfo identity and
+-- the creation entry point for instruments. Signed by the operator.
+template TokenRegistry
+  with
+    operator : Party
+    registryBaseUrl : Text
+  where
+    signatory operator
+
+    -- Admin co-authorizes so the admin-signed InstrumentConfig can be created.
+    nonconsuming choice RegisterInstrument : ContractId InstrumentConfig
+      with
+        admin : Party
+        instrumentId : Text
+        name : Text
+        symbol : Text
+        decimals : Int
+        faucet : Optional FaucetConfig
+      controller operator, admin
+      do
+        create InstrumentConfig with
+          admin; operator; instrumentId; name; symbol; decimals; faucet
+          meta = emptyMetadata
+
+-- | Per-instrument rules/factory contract (the AmuletRules analog). Signed by
+-- the instrument admin; the operator is an observer. Implements the standard
+-- factory interfaces (added in later tasks/plans).
+template InstrumentConfig
+  with
+    admin : Party
+    operator : Party
+    instrumentId : Text
+    name : Text
+    symbol : Text
+    decimals : Int
+    faucet : Optional FaucetConfig
+    meta : Metadata
+  where
+    signatory admin
+    observer operator
+    ensure decimals >= 0 && decimals <= 18
+
+    -- Free admin minting (no economics).
+    nonconsuming choice Mint : ContractId Token
+      with
+        recipient : Party
+        amount : Decimal
+      controller admin
+      do
+        create Token with
+          admin; owner = recipient; instrumentId; amount; meta = emptyMetadata
