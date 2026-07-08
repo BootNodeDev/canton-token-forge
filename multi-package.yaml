@@ -1,0 +1,13 @@
+# Multi-package workspace. daml/ is a CONTAINER of packages (mirroring the
+# upstream canton-network/splice daml/ layout), not a package itself. Each
+# subfolder is its own dpm package:
+#
+#   daml/splice-app/       production templates              (name: splice-app)
+#   daml/splice-app-test/  integration-test package          (name: splice-app-test)
+#
+# The test package data-depends on the compiled splice-app DAR. Build each
+# package in its own dpm invocation (see package.json) - never `dpm build --all`,
+# and never `dpm build` at this root (it is not a package).
+packages:
+  - ./daml/splice-app
+  - ./daml/splice-app-test

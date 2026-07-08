@@ -1,0 +1,7 @@
+# Controls the dlint linting tool. Examples of enabling/disabling a rule below.
+
+# Enabled by default. Uncomment to disable.
+#- ignore: {name: Use fewer imports}
+
+# Disabled by default. Uncomment to enable.
+#- suggest: {name: Use module export list}

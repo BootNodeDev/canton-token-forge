@@ -1,0 +1,21 @@
+# For config options see
+# https://docs.digitalasset.com/build/3.4/dpm/configuration.html#project-configuration
+# SDK pinned to 3.4.11 / LF target 2.1 to match the vendored Splice deps (built
+# with sdk 3.4.11 + --target=2.1). Matching SDK/LF lets splice-app-test
+# data-depend on this DAR directly instead of recompiling at a different target.
+sdk-version: 3.4.11
+name: splice-app
+source: daml
+version: 0.0.1
+dependencies:
+  - daml-prim
+  - daml-stdlib
+data-dependencies:
+  # Version-free stable symlinks created by scripts/fetch-dep.sh.
+  # Paths are relative to this package dir (daml/splice-app/); ../../ is repo root.
+  - ../../deps/splice-daml/dars/splice-amulet.dar
+  - ../../deps/splice-daml/dars/splice-api-token-holding-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-metadata-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-transfer-instruction-v1.dar
+build-options:
+  - --target=2.1

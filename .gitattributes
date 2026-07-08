@@ -1,0 +1,2 @@
+# Tell GitHub to highlight Daml files as Haskell. Not perfect, but better than none.
+*.daml linguist-language=Haskell

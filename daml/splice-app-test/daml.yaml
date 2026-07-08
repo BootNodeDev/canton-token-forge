@@ -1,0 +1,26 @@
+sdk-version: 3.4.11
+name: splice-app-test
+source: daml
+version: 0.0.1
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml-script
+data-dependencies:
+  # our production contracts (same sdk 3.4.11 / LF 2.1 as the deps). Sibling
+  # package under daml/, so its DAR is at ../splice-app/.daml/dist/.
+  - ../splice-app/.daml/dist/splice-app-0.0.1.dar
+  # amulet model + token-standard APIs (stable symlinks from fetch-dep.sh)
+  - ../../deps/splice-daml/dars/splice-amulet.dar
+  - ../../deps/splice-daml/dars/splice-api-token-holding-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-metadata-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-transfer-instruction-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-featured-app-v1.dar
+  # the upstream amulet test bootstrap (stable symlink from build-harness.sh)
+  - ../../deps/splice-daml/splice-amulet-test/.daml/dist/splice-amulet-test.dar
+build-options:
+  # LF 2.1 to match the deps + harness. The harness DAR embeds daml-script-3.4.11
+  # (an LF-2.1 build); --target=2.1 resolves that SAME daml-script so the Script
+  # type unifies with the harness helpers (default --target=2.2 would resolve a
+  # different daml-script and conflict).
+  - --target=2.1

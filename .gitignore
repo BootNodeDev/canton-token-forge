@@ -1,0 +1,11 @@
+.daml
+/log
+
+.tmp-splice
+# deps/ is entirely vendored (fetched) and generated (built) content, including
+# the build-time splice-daml/token-standard/daml symlink shims and the scratch
+# multi-package.yaml build-harness.sh creates; never committed.
+deps/
+
+node_modules
+docs/superpowers/
