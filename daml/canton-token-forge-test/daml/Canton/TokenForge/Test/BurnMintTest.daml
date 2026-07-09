@@ -1,0 +1,43 @@
+module Canton.TokenForge.Test.BurnMintTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
+import Splice.Api.Token.BurnMintV1
+import Canton.TokenForge.Types (mkInstrumentId)
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..))
+
+-- Burn alice's 100 and mint 60 to alice + 40 to bob: total supply held
+-- constant across the rebalance, split across the two named owners.
+burnMintRebalances : Script ()
+burnMintRebalances = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  res <- submit admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
+    expectedAdmin = admin
+    instrumentId = mkInstrumentId admin "CC"
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]
+    outputs =
+      [ BurnMintOutput with owner = alice; amount = 60.0; context = emptyChoiceContext
+      , BurnMintOutput with owner = bob; amount = 40.0; context = emptyChoiceContext ]
+    extraActors = []
+    extraArgs = xargs
+  length res.outputCids === 2
+  case res.outputCids of
+    [aliceCid, bobCid] -> do
+      Some av <- queryInterfaceContractId alice aliceCid
+      av.owner === alice
+      av.amount === 60.0
+      Some bv <- queryInterfaceContractId bob bobCid
+      bv.owner === bob
+      bv.amount === 40.0
+    _ -> abort "expected exactly two output holdings"
