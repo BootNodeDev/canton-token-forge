@@ -1,0 +1,24 @@
+module Canton.TokenForge.Test.Util where
+
+import Daml.Script
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_ProposeInstrument(..), InstrumentConfig, InstrumentConfigProposal_Accept(..), FaucetConfig)
+
+-- | Register an instrument through the propose (admin) + accept (operator)
+-- workflow, returning the created InstrumentConfig. Creates a fresh registry,
+-- discloses it to the admin so the admin can drive the propose choice, then has
+-- the operator accept. One call replaces the two-step submit across the suites.
+registerInstrument
+  : Party            -- ^ operator
+  -> Party           -- ^ admin
+  -> Text            -- ^ instrumentId
+  -> Text            -- ^ name
+  -> Text            -- ^ symbol
+  -> Int             -- ^ decimals
+  -> Optional FaucetConfig
+  -> Script (ContractId InstrumentConfig)
+registerInstrument operator admin instrumentId name symbol decimals faucet = do
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  Some regDisclosure <- queryDisclosure operator reg
+  prop <- submit (actAs admin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
+    admin; instrumentId; name; symbol; decimals; faucet
+  submit operator $ exerciseCmd prop InstrumentConfigProposal_Accept
