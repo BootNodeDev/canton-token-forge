@@ -6,7 +6,8 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
 import Splice.Api.Token.BurnMintV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_ProposeInstrument(..), InstrumentConfigProposal_Accept(..), InstrumentConfig_Mint(..))
+import Canton.TokenForge.Registry (InstrumentConfig_Mint(..))
+import Canton.TokenForge.Test.Util (createRegistry, registerInstrumentOn)
 
 -- Two instruments under different admins share one operator/registry. A
 -- holding minted under instrument A must not be spendable through instrument
@@ -23,12 +24,9 @@ multiInstrumentIsolationHolds = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  Some regDisclosure <- queryDisclosure operator reg
-  let registerUnder instrumentAdmin instrumentId = do
-        prop <- submit (actAs instrumentAdmin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
-          admin = instrumentAdmin; instrumentId; name = instrumentId; symbol = instrumentId; decimals = 10; faucet = None
-        submit operator $ exerciseCmd prop InstrumentConfigProposal_Accept
+  reg <- createRegistry operator
+  let registerUnder instrumentAdmin instrumentId =
+        registerInstrumentOn reg operator instrumentAdmin instrumentId instrumentId instrumentId 10 None
   cfgA <- registerUnder adminA "AA"
   cfgB <- registerUnder adminB "BB"
 

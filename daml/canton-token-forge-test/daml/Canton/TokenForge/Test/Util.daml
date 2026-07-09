@@ -3,9 +3,47 @@ module Canton.TokenForge.Test.Util where
 import Daml.Script
 import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_ProposeInstrument(..), InstrumentConfig, InstrumentConfigProposal, InstrumentConfigProposal_Accept(..), FaucetConfig)
 
--- | Propose an instrument through a fresh registry (disclosed to the admin so
--- the admin can drive the propose choice), returning the pending proposal
+-- | Create an operator-owned registry. Shared so tests that register several
+-- instruments under one operator reuse a single registry.
+createRegistry : Party -> Script (ContractId TokenRegistry)
+createRegistry operator = submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+
+-- | Propose an instrument through an existing registry (disclosed to the admin
+-- so the admin can drive the propose choice), returning the pending proposal
 -- without accepting it. Lets a test then exercise accept, reject, or withdraw.
+proposeInstrumentOn
+  : ContractId TokenRegistry
+  -> Party           -- ^ operator
+  -> Party           -- ^ admin
+  -> Text            -- ^ instrumentId
+  -> Text            -- ^ name
+  -> Text            -- ^ symbol
+  -> Int             -- ^ decimals
+  -> Optional FaucetConfig
+  -> Script (ContractId InstrumentConfigProposal)
+proposeInstrumentOn reg operator admin instrumentId name symbol decimals faucet = do
+  Some regDisclosure <- queryDisclosure operator reg
+  submit (actAs admin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
+    admin; instrumentId; name; symbol; decimals; faucet
+
+-- | Register an instrument through an existing registry: propose (admin) then
+-- accept (operator), returning the created InstrumentConfig.
+registerInstrumentOn
+  : ContractId TokenRegistry
+  -> Party           -- ^ operator
+  -> Party           -- ^ admin
+  -> Text            -- ^ instrumentId
+  -> Text            -- ^ name
+  -> Text            -- ^ symbol
+  -> Int             -- ^ decimals
+  -> Optional FaucetConfig
+  -> Script (ContractId InstrumentConfig)
+registerInstrumentOn reg operator admin instrumentId name symbol decimals faucet = do
+  prop <- proposeInstrumentOn reg operator admin instrumentId name symbol decimals faucet
+  submit operator $ exerciseCmd prop InstrumentConfigProposal_Accept
+
+-- | Propose an instrument through a fresh registry, returning the pending
+-- proposal. One-instrument convenience over 'proposeInstrumentOn'.
 proposeInstrument
   : Party            -- ^ operator
   -> Party           -- ^ admin
@@ -16,14 +54,12 @@ proposeInstrument
   -> Optional FaucetConfig
   -> Script (ContractId InstrumentConfigProposal)
 proposeInstrument operator admin instrumentId name symbol decimals faucet = do
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  Some regDisclosure <- queryDisclosure operator reg
-  submit (actAs admin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
-    admin; instrumentId; name; symbol; decimals; faucet
+  reg <- createRegistry operator
+  proposeInstrumentOn reg operator admin instrumentId name symbol decimals faucet
 
--- | Register an instrument end to end: propose (admin) then accept (operator),
--- returning the created InstrumentConfig. One call replaces the two-step submit
--- across the suites.
+-- | Register an instrument end to end through a fresh registry, returning the
+-- created InstrumentConfig. One call replaces the two-step submit across the
+-- suites.
 registerInstrument
   : Party            -- ^ operator
   -> Party           -- ^ admin
@@ -34,5 +70,5 @@ registerInstrument
   -> Optional FaucetConfig
   -> Script (ContractId InstrumentConfig)
 registerInstrument operator admin instrumentId name symbol decimals faucet = do
-  prop <- proposeInstrument operator admin instrumentId name symbol decimals faucet
-  submit operator $ exerciseCmd prop InstrumentConfigProposal_Accept
+  reg <- createRegistry operator
+  registerInstrumentOn reg operator admin instrumentId name symbol decimals faucet
