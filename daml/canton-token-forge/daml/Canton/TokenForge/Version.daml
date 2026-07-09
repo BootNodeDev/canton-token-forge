@@ -1,5 +1,5 @@
 module Canton.TokenForge.Version where
 
--- Package version marker. Real templates are added in Plan 01+.
+-- Package version marker.
 version : Text
 version = "0.0.1"

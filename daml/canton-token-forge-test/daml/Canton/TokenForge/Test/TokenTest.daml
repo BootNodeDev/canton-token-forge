@@ -1,0 +1,21 @@
+module Canton.TokenForge.Test.TokenTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (emptyMetadata)
+import Canton.TokenForge.Token (Token(..))
+
+holdingViewIsExposed : Script ()
+holdingViewIsExposed = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cid <- submit admin $ createCmd Token with
+    admin; owner = alice; instrumentId = "CC"; amount = 100.0; meta = emptyMetadata
+  -- read the Holding interface view
+  let hcid = toInterfaceContractId @HoldingV1.Holding cid
+  Some hv <- queryInterfaceContractId alice hcid
+  hv.owner === alice
+  hv.amount === 100.0
+  hv.instrumentId === HoldingV1.InstrumentId with admin; id = "CC"
+  hv.lock === None

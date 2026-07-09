@@ -1,0 +1,24 @@
+module Canton.TokenForge.Test.RegistryTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..))
+
+registerAndMint : Script ()
+registerAndMint = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://localhost:8080"
+  -- admin registers its instrument (admin authorizes; operator observes via the registry)
+  cfg <- submit (actAs [operator, admin] <> readAs ([] : [Party])) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+
+  tokenCid <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 42.0
+  let hcid = toInterfaceContractId @HoldingV1.Holding tokenCid
+  Some hv <- queryInterfaceContractId alice hcid
+  hv.owner === alice
+  hv.amount === 42.0
+  hv.instrumentId === HoldingV1.InstrumentId with admin; id = "CC"

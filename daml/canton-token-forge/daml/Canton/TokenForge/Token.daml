@@ -1,0 +1,27 @@
+module Canton.TokenForge.Token where
+
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata)
+import Canton.TokenForge.Types (mkInstrumentId)
+
+-- | An unlocked holding of a canton-token-forge instrument. Signed by the instrument
+-- admin (the DSO analog); the owner is an observer/stakeholder.
+template Token
+  with
+    admin : Party
+    owner : Party
+    instrumentId : Text
+    amount : Decimal
+    meta : Metadata
+  where
+    signatory admin
+    observer owner
+    ensure amount > 0.0
+
+    interface instance HoldingV1.Holding for Token where
+      view = HoldingV1.HoldingView with
+        owner
+        instrumentId = mkInstrumentId admin instrumentId
+        amount
+        lock = None
+        meta

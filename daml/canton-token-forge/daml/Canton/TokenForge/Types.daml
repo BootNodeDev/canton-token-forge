@@ -1,0 +1,7 @@
+module Canton.TokenForge.Types where
+
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+
+-- | Build the standard InstrumentId from an admin party and an id string.
+mkInstrumentId : Party -> Text -> HoldingV1.InstrumentId
+mkInstrumentId admin id = HoldingV1.InstrumentId with admin; id

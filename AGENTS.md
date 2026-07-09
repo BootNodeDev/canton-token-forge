@@ -113,8 +113,18 @@ package-id; and it filters **choices only** (no template-ignore flag).
 
 - Never edit or commit `deps/` (vendored + gitignored) or `.daml/`.
 - Keep test code out of the production `canton-token-forge` package.
+- Name every choice we define `TemplateName_ChoiceName` (e.g.
+  `TokenRegistry_RegisterInstrument`, `InstrumentConfig_Mint`), matching the CN
+  Token Standard's own choice-naming convention (`TransferFactory_Transfer`,
+  `AllocationFactory_Allocate`). Interface method implementations keep the names
+  the standard interface dictates.
 - Never use the informal four-letter word for a fake/stub stand-in object
   anywhere (names, comments, docs). Say "fake", "stub", or "placeholder" instead.
 - No em dashes anywhere (code, comments, docs, commits). Use hyphen, comma, or
   parentheses instead.
+- No plan/roadmap comments and no slop comments in code. Never reference plans,
+  tasks, or future work in a comment (no "added in Plan 03", "arrives later",
+  "for now"). A comment must explain why the code is the way it is; if it only
+  restates what the code plainly does or narrates scaffolding progress, delete
+  it.
 - Commits use no `Co-Authored-By` trailer.
