@@ -75,8 +75,8 @@ registerInstrument operator admin instrumentId name symbol decimals faucet = do
   registerInstrumentOn reg operator admin instrumentId name symbol decimals faucet
 
 -- | Mint `amount` of an instrument to `recipient`. The recipient co-authorizes
--- the mint because holdings are co-signed by their owner; admin visibility of
--- the config (as its signatory) carries the transaction.
+-- the mint because holdings are co-signed by their owner; admin authority
+-- (admin is the config's signatory) carries the rest.
 mintToken : ContractId InstrumentConfig -> Party -> Party -> Decimal -> Script (ContractId Token)
 mintToken cfg admin recipient amount =
   submit (actAs [admin, recipient]) $ exerciseCmd cfg InstrumentConfig_Mint with recipient; amount
