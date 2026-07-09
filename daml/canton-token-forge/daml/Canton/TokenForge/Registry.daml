@@ -18,29 +18,17 @@ data FaucetConfig = FaucetConfig
     maxPerTap : Decimal
   deriving (Eq, Show)
 
--- | Operator-owned registry anchor. Serves as the getRegistryInfo identity and
--- the creation entry point for instruments. Signed by the operator.
+-- | Operator-owned registry anchor. Serves as the getRegistryInfo identity
+-- (registryBaseUrl) for the metadata API and the creation entry point:
+-- instruments are proposed through TokenRegistry_ProposeInstrument (admin) and
+-- finalized by the operator accepting the resulting InstrumentConfigProposal.
+-- Signed by the operator.
 template TokenRegistry
   with
     operator : Party
     registryBaseUrl : Text
   where
     signatory operator
-
-    -- Admin co-authorizes so the admin-signed InstrumentConfig can be created.
-    nonconsuming choice TokenRegistry_RegisterInstrument : ContractId InstrumentConfig
-      with
-        admin : Party
-        instrumentId : Text
-        name : Text
-        symbol : Text
-        decimals : Int
-        faucet : Optional FaucetConfig
-      controller operator, admin
-      do
-        create InstrumentConfig with
-          admin; operator; instrumentId; name; symbol; decimals; faucet
-          meta = emptyMetadata
 
     -- Admin proposes an instrument through the registry. The operator identity
     -- is taken from the registry contract, not an argument, so every proposal is
