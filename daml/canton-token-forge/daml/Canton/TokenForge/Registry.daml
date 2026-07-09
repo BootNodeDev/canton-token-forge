@@ -100,6 +100,20 @@ template InstrumentConfig
       controller admin, receiver
       do create TokenTransferPreapproval with admin; instrumentId; receiver
 
+    -- Self-service faucet. Enabled only when `faucet` is set; capped per tap.
+    nonconsuming choice Tap : ContractId Token
+      with
+        user : Party
+        amount : Decimal
+      controller user
+      do
+        case faucet of
+          None -> abort "faucet is not enabled for this instrument"
+          Some fc -> do
+            assertMsg "tap amount must be positive" (amount > 0.0)
+            assertMsg "tap amount exceeds per-tap cap" (amount <= fc.maxPerTap)
+            create (mkToken admin user instrumentId amount emptyMetadata)
+
     interface instance TransferFactory for InstrumentConfig where
       view = TransferFactoryView with admin; meta = emptyMetadata
 
