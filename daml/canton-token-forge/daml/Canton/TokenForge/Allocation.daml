@@ -1,0 +1,97 @@
+module Canton.TokenForge.Allocation where
+
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.AllocationInstructionV1
+import Canton.TokenForge.Token (Token, mkToken)
+import Canton.TokenForge.Locked (LockedToken(..))
+import Canton.TokenForge.Types (mkInstrumentId)
+
+-- | An escrowed allocation for one transfer leg. Admin-signed; sender is a
+-- signatory; executor and receiver are observers.
+template TokenAllocation
+  with
+    admin : Party
+    allocation : AllocationSpecification
+    lockedCid : ContractId LockedToken
+    meta : Metadata
+  where
+    signatory admin, allocation.transferLeg.sender
+    observer allocation.settlement.executor, allocation.transferLeg.receiver
+
+    interface instance Allocation for TokenAllocation where
+      view = AllocationView with
+        allocation
+        holdingCids = [toInterfaceContractId lockedCid]
+        meta
+
+      allocation_executeTransferImpl _self _arg = do
+        archive lockedCid
+        let leg = allocation.transferLeg
+        receiverCid <- create (mkToken admin leg.receiver leg.instrumentId.id leg.amount leg.meta)
+        pure Allocation_ExecuteTransferResult with
+          senderHoldingCids = []
+          receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
+          meta = emptyMetadata
+
+      allocation_withdrawImpl _self _arg = do
+        backCid <- refundToSender admin allocation lockedCid
+        pure Allocation_WithdrawResult with senderHoldingCids = [backCid]; meta = emptyMetadata
+
+      allocation_cancelImpl _self _arg = do
+        backCid <- refundToSender admin allocation lockedCid
+        pure Allocation_CancelResult with senderHoldingCids = [backCid]; meta = emptyMetadata
+
+-- | Archive the escrow and return the funds to the sender untouched; no memo,
+-- since this returns the sender's own funds rather than delivering a transfer.
+refundToSender : Party -> AllocationSpecification -> ContractId LockedToken -> Update (ContractId HoldingV1.Holding)
+refundToSender admin allocation lockedCid = do
+  archive lockedCid
+  let leg = allocation.transferLeg
+  c <- create (mkToken admin leg.sender leg.instrumentId.id leg.amount emptyMetadata)
+  pure (toInterfaceContractId @HoldingV1.Holding c)
+
+-- | Escrow the sender's funds and create a completed allocation. No pending
+-- AllocationInstruction step: there are no economics/approvals to wait on.
+allocateImpl
+  : Party  -- admin
+  -> Text  -- instrumentId
+  -> AllocationFactory_Allocate
+  -> Update AllocationInstructionResult
+allocateImpl admin instrumentId arg = do
+  let AllocationFactory_Allocate{expectedAdmin, allocation, inputHoldingCids} = arg
+      leg = allocation.transferLeg
+  assertMsg "expectedAdmin must match" (expectedAdmin == admin)
+  assertMsg "leg instrument must match" (leg.instrumentId == mkInstrumentId admin instrumentId)
+
+  -- Consume the sender's input holdings. fetchFromInterface downcasts to
+  -- Token, returning None for a LockedToken or any non-Token holding, so a
+  -- locked or foreign input is rejected with a clear message.
+  amounts <- forA inputHoldingCids \hcid -> do
+    optToken <- fetchFromInterface @Token hcid
+    case optToken of
+      None -> abort "input holding is not a spendable Token (locked or foreign)"
+      Some (tcid, token) -> do
+        assertMsg "input holding must be owned by the sender" (token.owner == leg.sender)
+        assertMsg "input holding must belong to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
+        archive tcid
+        pure token.amount
+  let total = sum amounts
+  assertMsg "insufficient input amount" (total >= leg.amount)
+
+  senderChangeCids <-
+    if total > leg.amount
+      then do
+        changeCid <- create (mkToken admin leg.sender instrumentId (total - leg.amount) emptyMetadata)
+        pure [toInterfaceContractId @HoldingV1.Holding changeCid]
+      else pure []
+
+  locked <- create LockedToken with
+    admin; owner = leg.sender; instrumentId; amount = leg.amount
+    holders = [admin]; expiresAt = allocation.settlement.settleBefore; meta = emptyMetadata
+  allocCid <- create TokenAllocation with admin; allocation; lockedCid = locked; meta = emptyMetadata
+  pure AllocationInstructionResult with
+    output = AllocationInstructionResult_Completed with allocationCid = toInterfaceContractId @Allocation allocCid
+    senderChangeCids
+    meta = emptyMetadata
