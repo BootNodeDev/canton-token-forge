@@ -5,7 +5,7 @@ import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.AllocationInstructionV1
 import Canton.TokenForge.Token (mkToken, spendInputs)
-import Canton.TokenForge.Locked (LockedToken(..), unlockHolding)
+import Canton.TokenForge.Locked (LockedToken(..), abortEscrow)
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | An escrowed allocation for one transfer leg. Admin-signed; sender is a
@@ -39,17 +39,17 @@ template TokenAllocation
           receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
           meta = emptyMetadata
 
-      -- Mirrors Amulet's abortTwoStepTransfer: absent an early-release
-      -- authorization the sender can only reclaim once the settlement window has
+      -- Shared abort ladder: with the early-release signal the escrow returns
+      -- immediately, otherwise the settlement window (settleBefore) must have
       -- closed, so a unilateral withdraw cannot break an in-flight settlement.
-      allocation_withdrawImpl _self _arg = do
-        now <- getTime
-        assertMsg "allocation cannot be withdrawn before the settlement window closes (settleBefore)" (now >= allocation.settlement.settleBefore)
-        backCid <- unlockHolding lockedCid
+      allocation_withdrawImpl _self arg = do
+        backCid <- abortEscrow lockedCid allocation.settlement.settleBefore arg.extraArgs.context
         pure Allocation_WithdrawResult with senderHoldingCids = [backCid]; meta = emptyMetadata
 
-      allocation_cancelImpl _self _arg = do
-        backCid <- unlockHolding lockedCid
+      -- Joint cancel through the same abort ladder: the parties supply the
+      -- early-release signal to return the escrow before settleBefore.
+      allocation_cancelImpl _self arg = do
+        backCid <- abortEscrow lockedCid allocation.settlement.settleBefore arg.extraArgs.context
         pure Allocation_CancelResult with senderHoldingCids = [backCid]; meta = emptyMetadata
 
 -- | Escrow the sender's funds and create a completed allocation. No pending

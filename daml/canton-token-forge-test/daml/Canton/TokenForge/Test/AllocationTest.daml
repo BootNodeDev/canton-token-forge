@@ -4,12 +4,21 @@ import Daml.Script
 import DA.Assert ((===))
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
+import DA.TextMap qualified as TextMap
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceContext)
+import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..), emptyChoiceContext)
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.AllocationInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
+import Canton.TokenForge.Locked (expireLockContextKey)
 import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
+
+-- Executor, sender, and receiver jointly cancel; the early-release signal lets
+-- them return the escrow before the settlement window closes.
+signalArgs : ExtraArgs
+signalArgs = ExtraArgs with
+  context = ChoiceContext with values = TextMap.fromList [(expireLockContextKey, AV_Bool True)]
+  meta = emptyMetadata
 
 -- Shared setup: register CC, mint 100 to alice, and build an allocation spec
 -- for a 25.0 leg alice -> bob executed by venue.
@@ -235,3 +244,69 @@ allocationWithdrawBeforeSettleFails = do
     AllocationInstructionResult_Completed cid -> pure cid
     _ -> abort "expected completed allocation"
   submitMustFail alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = xargs
+
+-- With the joint parties' early-release signal, cancel returns the escrow to
+-- the sender before settleBefore.
+allocationCancelWithSignalReleasesEarly : Script ()
+allocationCancelWithSignalReleasesEarly = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 3) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = now
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+  allocCid <- case res.output of
+    AllocationInstructionResult_Completed cid -> pure cid
+    _ -> abort "expected completed allocation"
+  cancelRes <- submit (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = signalArgs
+  case cancelRes.senderHoldingCids of
+    [rcid] -> do
+      Some rv <- queryInterfaceContractId alice rcid
+      rv.owner === alice
+      rv.amount === 25.0
+    _ -> abort "expected one refunded holding"
+
+-- Without the signal, the joint parties cannot cancel before settleBefore, so a
+-- premature cancel cannot break an in-flight settlement.
+allocationCancelBeforeSettleWithoutSignalFails : Script ()
+allocationCancelBeforeSettleWithoutSignalFails = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 3) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = now
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+  allocCid <- case res.output of
+    AllocationInstructionResult_Completed cid -> pure cid
+    _ -> abort "expected completed allocation"
+  submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = xargs
