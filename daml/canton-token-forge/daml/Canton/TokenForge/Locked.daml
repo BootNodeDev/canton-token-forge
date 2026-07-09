@@ -6,8 +6,9 @@ import Canton.TokenForge.Token (Token(..), mkToken)
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | A locked holding of a canton-token-forge instrument (the LockedAmulet
--- analog). Signed by the instrument admin; the owner and lock holders are
--- observers.
+-- analog, signatory lock.holders, amulet). Co-signed by the admin, the owner,
+-- and the lock holders, so a holder is never bound into a lock it did not
+-- authorize.
 template LockedToken
   with
     admin : Party
@@ -18,8 +19,7 @@ template LockedToken
     expiresAt : Time
     meta : Metadata
   where
-    signatory admin
-    observer owner, holders
+    signatory admin, owner, holders
     ensure amount > 0.0
 
     interface instance HoldingV1.Holding for LockedToken where
@@ -31,9 +31,12 @@ template LockedToken
           holders; expiresAt = Some expiresAt; expiresAfter = None; context = None
         meta
 
-    -- Lock holders release the funds back to the owner.
+    -- Cooperative release (Amulet LockedAmulet_UnlockV2): owner and holders
+    -- jointly. In every escrow abort path the escrow's parent is signed by both
+    -- admin and sender, so owner and holder (admin) authority are already in
+    -- scope and this is satisfied for free.
     choice LockedToken_Unlock : ContractId Token
-      controller holders
+      controller owner :: holders
       do create (mkToken admin owner instrumentId amount meta)
 
     -- After expiry the owner can reclaim the funds.

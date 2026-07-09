@@ -90,7 +90,7 @@ burnMintRejectsLockedInput = do
   tok <- mintToken cfg admin alice 100.0
   let later = time (date 2026 Jan 2) 0 0 0
   Some cfgDisclosure <- queryDisclosure admin cfg
-  locked <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+  locked <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
     owner = alice; tokenCid = tok; holders = [admin]; expiresAt = later
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata

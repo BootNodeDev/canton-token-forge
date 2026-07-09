@@ -128,14 +128,15 @@ template InstrumentConfig
       do
         create (mkToken admin recipient instrumentId amount emptyMetadata)
 
-    -- Owner-consented locking; admin authority flows from this admin-signed config.
+    -- Owner-consented locking, co-authorized by the holders now that they sign
+    -- the lock. Admin authority flows from this admin-signed config.
     nonconsuming choice InstrumentConfig_LockHolding : ContractId LockedToken
       with
         owner : Party
         tokenCid : ContractId Token
         holders : [Party]
         expiresAt : Time
-      controller owner
+      controller owner :: holders
       do
         token <- fetch tokenCid
         assertMsg "token belongs to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
