@@ -4,15 +4,15 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Token (mkToken)
-import Canton.TokenForge.Locked (LockedToken(..), LockedToken_Unlock(..))
+import Canton.TokenForge.Locked (LockedToken(..), unlockHolding)
 
 -- | Unlocks the escrow back to the sender, used by both reject and withdraw.
 returnToSender : ContractId LockedToken -> Update TransferInstructionResult
 returnToSender lockedCid = do
-  backCid <- exercise lockedCid LockedToken_Unlock
+  backCid <- unlockHolding lockedCid
   pure TransferInstructionResult with
     output = TransferInstructionResult_Failed
-    senderChangeCids = [toInterfaceContractId @HoldingV1.Holding backCid]
+    senderChangeCids = [backCid]
     meta = emptyMetadata
 
 -- | The two-step transfer offer (the LockedAmulet-and-TransferInProgress

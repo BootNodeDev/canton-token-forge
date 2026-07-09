@@ -5,7 +5,7 @@ import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.AllocationInstructionV1
 import Canton.TokenForge.Token (mkToken, spendInputs)
-import Canton.TokenForge.Locked (LockedToken(..), LockedToken_Unlock(..))
+import Canton.TokenForge.Locked (LockedToken(..), unlockHolding)
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | An escrowed allocation for one transfer leg. Admin-signed; sender is a
@@ -45,19 +45,12 @@ template TokenAllocation
       allocation_withdrawImpl _self _arg = do
         now <- getTime
         assertMsg "allocation cannot be withdrawn before the settlement window closes (settleBefore)" (now >= allocation.settlement.settleBefore)
-        backCid <- refundToSender lockedCid
+        backCid <- unlockHolding lockedCid
         pure Allocation_WithdrawResult with senderHoldingCids = [backCid]; meta = emptyMetadata
 
       allocation_cancelImpl _self _arg = do
-        backCid <- refundToSender lockedCid
+        backCid <- unlockHolding lockedCid
         pure Allocation_CancelResult with senderHoldingCids = [backCid]; meta = emptyMetadata
-
--- | Release the escrow back to the sender via the lock's own unlock choice, so
--- allocation refunds stay in step with the transfer path's returnToSender.
-refundToSender : ContractId LockedToken -> Update (ContractId HoldingV1.Holding)
-refundToSender lockedCid = do
-  backCid <- exercise lockedCid LockedToken_Unlock
-  pure (toInterfaceContractId @HoldingV1.Holding backCid)
 
 -- | Escrow the sender's funds and create a completed allocation. No pending
 -- AllocationInstruction step: there are no economics/approvals to wait on.
