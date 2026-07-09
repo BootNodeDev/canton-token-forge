@@ -4,6 +4,7 @@ import Daml.Script
 import DA.Assert ((===))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_ProposeInstrument(..), InstrumentConfigProposal_Accept(..), InstrumentConfigProposal_Reject(..), InstrumentConfigProposal_Withdraw(..), InstrumentConfig_Mint(..))
+import Canton.TokenForge.Test.Util (proposeInstrument)
 
 -- Admin proposes through the registry, operator accepts, and the resulting
 -- InstrumentConfig mints.
@@ -13,10 +14,7 @@ proposeAcceptCreatesInstrument = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  Some regDisclosure <- queryDisclosure operator reg
-  prop <- submit (actAs admin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  prop <- proposeInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   cfg <- submit operator $ exerciseCmd prop InstrumentConfigProposal_Accept
 
   tokenCid <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 42.0
@@ -31,10 +29,7 @@ acceptRequiresOperator : Script ()
 acceptRequiresOperator = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  Some regDisclosure <- queryDisclosure operator reg
-  prop <- submit (actAs admin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  prop <- proposeInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   submitMustFail admin $ exerciseCmd prop InstrumentConfigProposal_Accept
 
 -- Proposing is admin-controlled: the operator alone cannot drive
@@ -52,10 +47,7 @@ rejectDiscardsProposal : Script ()
 rejectDiscardsProposal = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  Some regDisclosure <- queryDisclosure operator reg
-  prop <- submit (actAs admin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  prop <- proposeInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   submit operator $ exerciseCmd prop InstrumentConfigProposal_Reject
   None <- queryContractId admin prop
   pure ()
@@ -65,10 +57,7 @@ withdrawByAdmin : Script ()
 withdrawByAdmin = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  Some regDisclosure <- queryDisclosure operator reg
-  prop <- submit (actAs admin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  prop <- proposeInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   submit admin $ exerciseCmd prop InstrumentConfigProposal_Withdraw
   None <- queryContractId admin prop
   pure ()
