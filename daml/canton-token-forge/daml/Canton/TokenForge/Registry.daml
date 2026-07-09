@@ -90,14 +90,35 @@ template InstrumentConfigProposal
       controller admin
       do pure ()
 
--- | Receiver opt-in that enables direct (1-step) transfers to them.
+-- | Receiver opt-in that enables direct (1-step) transfers to them, with an
+-- Amulet-style validity window. Co-signed by admin and receiver, so exercising
+-- TokenTransferPreapproval_Send delegates the receiver's authority into the
+-- transfer and lets it mint the receiver's co-signed holding.
 template TokenTransferPreapproval
   with
     admin : Party
     instrumentId : Text
     receiver : Party
+    validFrom : Time
+    expiresAt : Time
   where
     signatory admin, receiver
+    ensure expiresAt > validFrom
+
+    -- Fund a direct transfer to the receiver. Exercised by transferImpl inside
+    -- the sender's TransferFactory_Transfer on the admin-signed config, so admin
+    -- authority is present to satisfy this controller; the receiver's authority
+    -- comes from this contract's signatories and authorizes the receiver holding.
+    nonconsuming choice TokenTransferPreapproval_Send : ContractId Token
+      with
+        amount : Decimal
+        meta : Metadata
+      controller admin
+      do
+        now <- getTime
+        assertMsg "preapproval is not yet valid" (now >= validFrom)
+        assertMsg "preapproval has expired" (now < expiresAt)
+        create (mkToken admin receiver instrumentId amount meta)
 
 -- | Per-instrument rules/factory contract (the AmuletRules analog). Signed by
 -- the instrument admin; the operator is an observer. Implements the standard
@@ -148,8 +169,10 @@ template InstrumentConfig
     nonconsuming choice InstrumentConfig_Preapprove : ContractId TokenTransferPreapproval
       with
         receiver : Party
+        validFrom : Time
+        expiresAt : Time
       controller admin, receiver
-      do create TokenTransferPreapproval with admin; instrumentId; receiver
+      do create TokenTransferPreapproval with admin; instrumentId; receiver; validFrom; expiresAt
 
     -- Self-service faucet. Enabled only when `faucet` is set; capped per tap.
     nonconsuming choice InstrumentConfig_Tap : ContractId Token
@@ -217,20 +240,29 @@ lookupPreapprovalCid ctx =
     Some (AV_ContractId acid) -> Some (coerceContractId acid)
     _ -> None
 
--- | Direct (1-step) is allowed for self-transfers, or when the context carries a
--- valid preapproval for this instrument's receiver. The preapproval cid is
--- supplied by the app backend and must be disclosed to the sender: an absent cid
--- takes the two-step offer path, but a present-but-stale or undisclosed cid makes
--- the fetch abort the whole transfer, since a failed fetch cannot be recovered
--- from inside a choice.
-isDirectTransfer : Party -> Text -> Transfer -> ChoiceContext -> Update Bool
-isDirectTransfer admin instrumentId transfer ctx
-  | transfer.sender == transfer.receiver = pure True
+-- | How a transfer can complete in one step. Self-transfers create the holding
+-- directly (the sender already controls the factory). A preapproved transfer
+-- exercises the receiver-signed preapproval so its authority mints the receiver
+-- holding. Anything else falls through to the two-step offer.
+data DirectPath
+  = SelfDirect
+  | PreapprovedDirect (ContractId TokenTransferPreapproval)
+
+-- | Resolve the one-step path, if any. The preapproval cid is supplied by the
+-- app backend and must be disclosed to the sender: an absent cid takes the
+-- two-step offer path, but a present-but-stale or undisclosed cid makes the
+-- fetch abort the whole transfer, since a failed fetch cannot be recovered from
+-- inside a choice.
+resolveDirect : Party -> Text -> Transfer -> ChoiceContext -> Update (Optional DirectPath)
+resolveDirect admin instrumentId transfer ctx
+  | transfer.sender == transfer.receiver = pure (Some SelfDirect)
   | otherwise = case lookupPreapprovalCid ctx of
-      None -> pure False
+      None -> pure None
       Some pcid -> do
         pre <- fetch pcid
-        pure (pre.admin == admin && pre.instrumentId == instrumentId && pre.receiver == transfer.receiver)
+        if pre.admin == admin && pre.instrumentId == instrumentId && pre.receiver == transfer.receiver
+          then pure (Some (PreapprovedDirect pcid))
+          else pure None
 
 transferImpl
   : Party    -- ^ admin (config signatory)
@@ -248,16 +280,19 @@ transferImpl admin instrumentId arg = do
 
   senderChangeCids <- spendInputs admin instrumentId transfer.sender transfer.inputHoldingCids transfer.amount
 
-  direct <- isDirectTransfer admin instrumentId transfer extraArgs.context
-  if direct
-    then do
-      receiverCid <- create (mkToken admin transfer.receiver instrumentId transfer.amount transfer.meta)
+  mDirect <- resolveDirect admin instrumentId transfer extraArgs.context
+  case mDirect of
+    Some path -> do
+      receiverCid <- case path of
+        SelfDirect -> create (mkToken admin transfer.receiver instrumentId transfer.amount transfer.meta)
+        PreapprovedDirect pcid -> exercise pcid TokenTransferPreapproval_Send with
+          amount = transfer.amount; meta = transfer.meta
       pure TransferInstructionResult with
         output = TransferInstructionResult_Completed with
           receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
         senderChangeCids
         meta = emptyMetadata
-    else do
+    None -> do
       -- Escrow is sender-owned so reject/withdraw can return it. After expiry the
       -- sender can also reclaim it directly via LockedToken_ExpireLock, which
       -- leaves this instruction inert: the funds are safe (already returned) but

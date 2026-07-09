@@ -1,15 +1,17 @@
 module Canton.TokenForge.Instruction where
 
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (emptyMetadata)
+import Splice.Api.Token.MetadataV1 (emptyMetadata, ChoiceContext)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Token (mkToken)
-import Canton.TokenForge.Locked (LockedToken(..), unlockHolding)
+import Canton.TokenForge.Locked (LockedToken(..), abortEscrow)
 
--- | Unlocks the escrow back to the sender, used by both reject and withdraw.
-returnToSender : ContractId LockedToken -> Update TransferInstructionResult
-returnToSender lockedCid = do
-  backCid <- unlockHolding lockedCid
+-- | Return the escrow to the sender via the shared abort model: the caller may
+-- pass the early-release signal in the context, otherwise the transfer deadline
+-- (executeBefore) must have passed. Used by both reject and withdraw.
+returnToSender : Time -> ChoiceContext -> ContractId LockedToken -> Update TransferInstructionResult
+returnToSender expiresAt ctx lockedCid = do
+  backCid <- abortEscrow lockedCid expiresAt ctx
   pure TransferInstructionResult with
     output = TransferInstructionResult_Failed
     senderChangeCids = [backCid]
@@ -44,6 +46,6 @@ template TokenTransferInstruction
           senderChangeCids = []
           meta = emptyMetadata
 
-      transferInstruction_rejectImpl _self _arg = returnToSender lockedCid
-      transferInstruction_withdrawImpl _self _arg = returnToSender lockedCid
+      transferInstruction_rejectImpl _self arg = returnToSender transfer.executeBefore arg.extraArgs.context lockedCid
+      transferInstruction_withdrawImpl _self arg = returnToSender transfer.executeBefore arg.extraArgs.context lockedCid
       transferInstruction_updateImpl _self _arg = abort "update not supported"

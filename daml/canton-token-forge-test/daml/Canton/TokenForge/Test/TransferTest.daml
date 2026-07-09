@@ -23,12 +23,13 @@ directTransferCompletes = do
   cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- mintToken cfg admin alice 100.0
 
-  -- bob opts in to direct transfers (enables 1-step completion)
-  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob
-
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 2) 0 0 0
   setTime now
+  -- bob opts in to direct transfers (enables 1-step completion)
+  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with
+    receiver = bob; validFrom = now; expiresAt = later
+
   let factoryCid = toInterfaceContractId @TransferFactory cfg
       transfer = Transfer with
         sender = alice; receiver = bob; amount = 30.0
@@ -65,11 +66,13 @@ directTransferPropagatesMeta = do
 
   cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- mintToken cfg admin alice 100.0
-  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob
 
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 2) 0 0 0
   setTime now
+  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with
+    receiver = bob; validFrom = now; expiresAt = later
+
   let memo = Metadata with values = TextMap.fromList [("memo", "invoice-42")]
       factoryCid = toInterfaceContractId @TransferFactory cfg
       transfer = Transfer with
@@ -103,11 +106,13 @@ transferRejectsBadInputs = do
 
   cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- mintToken cfg admin alice 100.0
-  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob
 
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 2) 0 0 0
   setTime now
+  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with
+    receiver = bob; validFrom = now; expiresAt = later
+
   let factoryCid = toInterfaceContractId @TransferFactory cfg
       ctx = ChoiceContext with
         values = TextMap.fromList [(preapprovalContextKey, AV_ContractId (coerceContractId pre))]
@@ -144,3 +149,36 @@ transferRejectsBadInputs = do
         inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding locked]
   submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
     expectedAdmin = admin; transfer = lockedTransfer; extraArgs = xargs
+
+-- A preapproval past its expiresAt cannot fund a direct transfer: the send
+-- choice enforces the deadline, so the transfer is rejected.
+directTransferRejectsExpiredPreapproval : Script ()
+directTransferRejectsExpiredPreapproval = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+
+  cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
+  aliceToken <- mintToken cfg admin alice 100.0
+
+  let start = time (date 2026 Jan 1) 0 0 0
+      preExpiry = time (date 2026 Jan 2) 0 0 0
+      afterExpiry = time (date 2026 Jan 3) 0 0 0
+  pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with
+    receiver = bob; validFrom = start; expiresAt = preExpiry
+  setTime afterExpiry
+  let factoryCid = toInterfaceContractId @TransferFactory cfg
+      transfer = Transfer with
+        sender = alice; receiver = bob; amount = 30.0
+        instrumentId = mkInstrumentId admin "CC"
+        requestedAt = start; executeBefore = time (date 2026 Jan 4) 0 0 0
+        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding aliceToken]
+        meta = emptyMetadata
+      ctx = ChoiceContext with
+        values = TextMap.fromList [(preapprovalContextKey, AV_ContractId (coerceContractId pre))]
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  Some preDisclosure <- queryDisclosure admin pre
+  submitMustFail (actAs alice <> disclose cfgDisclosure <> disclose preDisclosure) $
+    exerciseCmd factoryCid TransferFactory_Transfer with
+      expectedAdmin = admin; transfer; extraArgs = ExtraArgs with context = ctx; meta = emptyMetadata

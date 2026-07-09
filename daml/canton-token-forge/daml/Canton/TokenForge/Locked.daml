@@ -1,7 +1,8 @@
 module Canton.TokenForge.Locked where
 
+import DA.TextMap qualified as TextMap
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (Metadata)
+import Splice.Api.Token.MetadataV1 (Metadata, ChoiceContext(..), AnyValue(..))
 import Canton.TokenForge.Token (Token(..), mkToken)
 import Canton.TokenForge.Types (mkInstrumentId)
 
@@ -54,3 +55,32 @@ unlockHolding : ContractId LockedToken -> Update (ContractId HoldingV1.Holding)
 unlockHolding lockedCid = do
   tokenCid <- exercise lockedCid LockedToken_Unlock
   pure (toInterfaceContractId @HoldingV1.Holding tokenCid)
+
+-- | Well-known choice-context key under which the app backend supplies the
+-- Amulet-style early-release signal for an escrow (Amulet's expire-lock key).
+-- Present-and-true means the lock holders authorize releasing before expiry.
+expireLockContextKey : Text
+expireLockContextKey = "canton-token-forge/expire-lock"
+
+-- | Read the early-release signal from the choice context; absent or non-bool
+-- means no signal.
+lookupExpireLock : ChoiceContext -> Bool
+lookupExpireLock ctx =
+  case TextMap.lookup expireLockContextKey ctx.values of
+    Some (AV_Bool b) -> b
+    _ -> False
+
+-- | Release an escrowed LockedToken back to its owner (Amulet
+-- abortTwoStepTransfer). With the early-release signal the holders (admin,
+-- structurally present via the escrow's signatories) release it immediately;
+-- otherwise the settlement deadline must have passed. The trust model matches
+-- Amulet: whoever assembles the choice context supplies the signal, and the
+-- security rests on the admin/registry disclosing the right contracts.
+abortEscrow : ContractId LockedToken -> Time -> ChoiceContext -> Update (ContractId HoldingV1.Holding)
+abortEscrow lockedCid expiresAt ctx =
+  if lookupExpireLock ctx
+    then unlockHolding lockedCid
+    else do
+      now <- getTime
+      assertMsg "escrow cannot be released before expiry without the early-release signal" (now >= expiresAt)
+      unlockHolding lockedCid
