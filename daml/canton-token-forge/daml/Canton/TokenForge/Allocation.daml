@@ -4,9 +4,8 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.AllocationInstructionV1
-import DA.List (unique)
-import Canton.TokenForge.Token (Token, mkToken)
-import Canton.TokenForge.Locked (LockedToken(..))
+import Canton.TokenForge.Token (mkToken, spendInputs)
+import Canton.TokenForge.Locked (LockedToken(..), LockedToken_Unlock(..))
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | An escrowed allocation for one transfer leg. Admin-signed; sender is a
@@ -40,22 +39,25 @@ template TokenAllocation
           receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
           meta = emptyMetadata
 
+      -- Mirrors Amulet's abortTwoStepTransfer: absent an early-release
+      -- authorization the sender can only reclaim once the settlement window has
+      -- closed, so a unilateral withdraw cannot break an in-flight settlement.
       allocation_withdrawImpl _self _arg = do
-        backCid <- refundToSender admin allocation lockedCid
+        now <- getTime
+        assertMsg "allocation cannot be withdrawn before the settlement window closes (settleBefore)" (now >= allocation.settlement.settleBefore)
+        backCid <- refundToSender lockedCid
         pure Allocation_WithdrawResult with senderHoldingCids = [backCid]; meta = emptyMetadata
 
       allocation_cancelImpl _self _arg = do
-        backCid <- refundToSender admin allocation lockedCid
+        backCid <- refundToSender lockedCid
         pure Allocation_CancelResult with senderHoldingCids = [backCid]; meta = emptyMetadata
 
--- | Archive the escrow and return the funds to the sender untouched; no memo,
--- since this returns the sender's own funds rather than delivering a transfer.
-refundToSender : Party -> AllocationSpecification -> ContractId LockedToken -> Update (ContractId HoldingV1.Holding)
-refundToSender admin allocation lockedCid = do
-  archive lockedCid
-  let leg = allocation.transferLeg
-  c <- create (mkToken admin leg.sender leg.instrumentId.id leg.amount emptyMetadata)
-  pure (toInterfaceContractId @HoldingV1.Holding c)
+-- | Release the escrow back to the sender via the lock's own unlock choice, so
+-- allocation refunds stay in step with the transfer path's returnToSender.
+refundToSender : ContractId LockedToken -> Update (ContractId HoldingV1.Holding)
+refundToSender lockedCid = do
+  backCid <- exercise lockedCid LockedToken_Unlock
+  pure (toInterfaceContractId @HoldingV1.Holding backCid)
 
 -- | Escrow the sender's funds and create a completed allocation. No pending
 -- AllocationInstruction step: there are no economics/approvals to wait on.
@@ -70,32 +72,14 @@ allocateImpl admin instrumentId arg = do
   assertMsg "expectedAdmin must match" (expectedAdmin == admin)
   assertMsg "leg instrument must match" (leg.instrumentId == mkInstrumentId admin instrumentId)
   assertMsg "leg amount must be positive" (leg.amount > 0.0)
-  assertMsg "input holdings must not contain duplicates" (unique inputHoldingCids)
   now <- getTime
   assertMsg "allocation requestedAt must be in the past" (requestedAt <= now)
   assertMsg "allocation window has closed (allocateBefore reached)" (now < allocation.settlement.allocateBefore)
+  -- Mirrors Amulet's prepareTwoStepTransfer `requestedAt < transferBefore`:
+  -- reject an escrow whose settlement deadline is already unreachable.
+  assertMsg "requestedAt must be before settleBefore" (requestedAt < allocation.settlement.settleBefore)
 
-  -- Consume the sender's input holdings. fetchFromInterface downcasts to
-  -- Token, returning None for a LockedToken or any non-Token holding, so a
-  -- locked or foreign input is rejected with a clear message.
-  amounts <- forA inputHoldingCids \hcid -> do
-    optToken <- fetchFromInterface @Token hcid
-    case optToken of
-      None -> abort "input holding is not a spendable Token (locked or foreign)"
-      Some (tcid, token) -> do
-        assertMsg "input holding must be owned by the sender" (token.owner == leg.sender)
-        assertMsg "input holding must belong to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
-        archive tcid
-        pure token.amount
-  let total = sum amounts
-  assertMsg "insufficient input amount" (total >= leg.amount)
-
-  senderChangeCids <-
-    if total > leg.amount
-      then do
-        changeCid <- create (mkToken admin leg.sender instrumentId (total - leg.amount) emptyMetadata)
-        pure [toInterfaceContractId @HoldingV1.Holding changeCid]
-      else pure []
+  senderChangeCids <- spendInputs admin instrumentId leg.sender inputHoldingCids leg.amount
 
   locked <- create LockedToken with
     admin; owner = leg.sender; instrumentId; amount = leg.amount

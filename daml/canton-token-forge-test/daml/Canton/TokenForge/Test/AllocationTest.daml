@@ -55,8 +55,8 @@ allocateThenExecute = do
       bv.amount === 25.0
     _ -> abort "expected one receiver holding"
 
--- The sender can withdraw an unsettled allocation and get their escrowed
--- funds back before the executor settles.
+-- Once the settlement window has closed the sender can withdraw the unsettled
+-- allocation and get their escrowed funds back.
 allocationWithdrawRefunds : Script ()
 allocationWithdrawRefunds = do
   operator <- allocateParty "operator"
@@ -71,6 +71,7 @@ allocationWithdrawRefunds = do
 
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 3) 0 0 0
+      afterSettle = time (date 2026 Jan 4) 0 0 0
       xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
       leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
       settlement = SettlementInfo with
@@ -85,6 +86,7 @@ allocationWithdrawRefunds = do
   allocCid <- case res.output of
     AllocationInstructionResult_Completed cid -> pure cid
     _ -> abort "expected completed allocation"
+  setTime afterSettle
   wd <- submit alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = xargs
   case wd.senderHoldingCids of
     [rcid] -> do
@@ -186,3 +188,64 @@ allocationExecuteAfterSettleBeforeFails = do
     _ -> abort "expected completed allocation"
   setTime afterSettle
   submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_ExecuteTransfer with extraArgs = xargs
+
+-- An allocation whose settleBefore is not strictly after requestedAt is rejected
+-- up front: its escrow could never be settled, only reclaimed.
+allocationRejectsUnreachableSettleBefore : Script ()
+allocationRejectsUnreachableSettleBefore = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 3) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      -- allocateBefore is still in the future so only the settleBefore guard bites
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = later; settleBefore = now; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = now
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+
+-- The sender cannot withdraw the escrow while the settlement window is still
+-- open, so a unilateral withdraw cannot break an in-flight settlement.
+allocationWithdrawBeforeSettleFails : Script ()
+allocationWithdrawBeforeSettleFails = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 3) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = now
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+  allocCid <- case res.output of
+    AllocationInstructionResult_Completed cid -> pure cid
+    _ -> abort "expected completed allocation"
+  submitMustFail alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = xargs
