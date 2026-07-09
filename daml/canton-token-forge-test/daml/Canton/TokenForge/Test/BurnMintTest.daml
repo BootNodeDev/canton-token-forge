@@ -71,7 +71,7 @@ burnMintRejectsNonPositiveOutput = do
   tok <- mintToken cfg admin alice 100.0
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
-  submitMustFail admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
+  submitMustFail (actAs [admin, alice]) $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
     expectedAdmin = admin
     instrumentId = mkInstrumentId admin "CC"
     inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]
