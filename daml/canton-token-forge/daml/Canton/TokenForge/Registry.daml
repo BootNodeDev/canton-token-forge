@@ -138,8 +138,9 @@ template InstrumentConfig
       view = BurnMintFactoryView with admin; meta = emptyMetadata
 
       burnMintFactory_burnMintImpl _self arg = do
-        let BurnMintFactory_BurnMint{expectedAdmin, inputHoldingCids, outputs} = arg
+        let BurnMintFactory_BurnMint{expectedAdmin, instrumentId = argInstrumentId, inputHoldingCids, outputs} = arg
         assertMsg "expectedAdmin must match" (expectedAdmin == admin)
+        assertMsg "instrumentId must match this config" (argInstrumentId == mkInstrumentId admin instrumentId)
 
         -- Burn each input. fetchFromInterface downcasts to Token, returning
         -- None for a LockedToken or any non-Token holding, so a locked or

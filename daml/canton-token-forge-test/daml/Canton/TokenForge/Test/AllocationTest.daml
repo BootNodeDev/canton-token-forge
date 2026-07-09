@@ -33,6 +33,7 @@ allocateThenExecute = do
         executor = venue; settlementRef = Reference with id = "s1"; cid = None
         requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
       spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
   Some cfgDisclosure <- queryDisclosure admin cfg
   res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
     expectedAdmin = admin; allocation = spec; requestedAt = now
@@ -76,6 +77,7 @@ allocationWithdrawRefunds = do
         executor = venue; settlementRef = Reference with id = "s1"; cid = None
         requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
       spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
   Some cfgDisclosure <- queryDisclosure admin cfg
   res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
     expectedAdmin = admin; allocation = spec; requestedAt = now
@@ -90,3 +92,97 @@ allocationWithdrawRefunds = do
       rv.owner === alice
       rv.amount === 25.0
     _ -> abort "expected one refunded holding"
+
+-- A caller-supplied expectedAdmin that does not match the config's admin is
+-- rejected before any funds are touched.
+allocationRejectsExpectedAdminMismatch : Script ()
+allocationRejectsExpectedAdminMismatch = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 3) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = bob; allocation = spec; requestedAt = now
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+
+-- The same input holding cid listed twice must be rejected rather than
+-- silently double-spent.
+allocationRejectsDuplicateInputs : Script ()
+allocationRejectsDuplicateInputs = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 3) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = now
+    inputHoldingCids =
+      [ toInterfaceContractId @HoldingV1.Holding tok
+      , toInterfaceContractId @HoldingV1.Holding tok
+      ]
+    extraArgs = xargs
+
+-- Once settleBefore has passed the escrow is only sender-reclaimable; the
+-- executor can no longer settle the leg even with full authorization.
+allocationExecuteAfterSettleBeforeFails : Script ()
+allocationExecuteAfterSettleBeforeFails = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 3) 0 0 0
+      afterSettle = time (date 2026 Jan 4) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime now
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = now
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+  allocCid <- case res.output of
+    AllocationInstructionResult_Completed cid -> pure cid
+    _ -> abort "expected completed allocation"
+  setTime afterSettle
+  submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_ExecuteTransfer with extraArgs = xargs

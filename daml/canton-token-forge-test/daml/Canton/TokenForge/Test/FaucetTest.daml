@@ -35,3 +35,16 @@ faucetTapRejectsOverCap = do
 
   Some cfgDisclosure <- queryDisclosure admin cfg
   submitMustFail (actAs user <> disclose cfgDisclosure) $ exerciseCmd cfg Tap with user; amount = 50.0
+
+faucetTapRejectsWhenDisabled : Script ()
+faucetTapRejectsWhenDisabled = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  user <- allocateParty "user"
+
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  submitMustFail (actAs user <> disclose cfgDisclosure) $ exerciseCmd cfg Tap with user; amount = 5.0

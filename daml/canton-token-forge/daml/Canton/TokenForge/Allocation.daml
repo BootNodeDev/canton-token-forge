@@ -4,6 +4,7 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.AllocationInstructionV1
+import DA.List (unique)
 import Canton.TokenForge.Token (Token, mkToken)
 import Canton.TokenForge.Locked (LockedToken(..))
 import Canton.TokenForge.Types (mkInstrumentId)
@@ -27,6 +28,10 @@ template TokenAllocation
         meta
 
       allocation_executeTransferImpl _self _arg = do
+        -- mirrors transferInstruction_acceptImpl's executeBefore bound: past
+        -- settleBefore the escrow is only sender-reclaimable, not settleable
+        now <- getTime
+        assertMsg "allocation settlement window has closed (settleBefore reached)" (now < allocation.settlement.settleBefore)
         archive lockedCid
         let leg = allocation.transferLeg
         receiverCid <- create (mkToken admin leg.receiver leg.instrumentId.id leg.amount leg.meta)
@@ -60,10 +65,15 @@ allocateImpl
   -> AllocationFactory_Allocate
   -> Update AllocationInstructionResult
 allocateImpl admin instrumentId arg = do
-  let AllocationFactory_Allocate{expectedAdmin, allocation, inputHoldingCids} = arg
+  let AllocationFactory_Allocate{expectedAdmin, allocation, requestedAt, inputHoldingCids} = arg
       leg = allocation.transferLeg
   assertMsg "expectedAdmin must match" (expectedAdmin == admin)
   assertMsg "leg instrument must match" (leg.instrumentId == mkInstrumentId admin instrumentId)
+  assertMsg "leg amount must be positive" (leg.amount > 0.0)
+  assertMsg "input holdings must not contain duplicates" (unique inputHoldingCids)
+  now <- getTime
+  assertMsg "allocation requestedAt must be in the past" (requestedAt <= now)
+  assertMsg "allocation window has closed (allocateBefore reached)" (now < allocation.settlement.allocateBefore)
 
   -- Consume the sender's input holdings. fetchFromInterface downcasts to
   -- Token, returning None for a LockedToken or any non-Token holding, so a
