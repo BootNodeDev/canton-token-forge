@@ -1,0 +1,21 @@
+# SDK 3.4.11 / LF target 2.1 to match the vendored Splice interface DARs.
+sdk-version: 3.4.11
+name: canton-token-forge
+source: daml
+version: 0.0.1
+dependencies:
+  - daml-prim
+  - daml-stdlib
+data-dependencies:
+  # Version-free stable symlinks created by scripts/fetch-dep.sh.
+  # Paths relative to this package dir (daml/canton-token-forge/); ../../ is repo root.
+  # NO splice-amulet - this is a clean-room, standard-interfaces-only token.
+  - ../../deps/splice-daml/dars/splice-api-token-holding-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-metadata-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-transfer-instruction-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-allocation-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-allocation-instruction-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-allocation-request-v1.dar
+  - ../../deps/splice-daml/dars/splice-api-token-burn-mint-v1.dar
+build-options:
+  - --target=2.1
