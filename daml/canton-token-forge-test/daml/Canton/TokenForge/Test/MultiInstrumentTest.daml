@@ -6,7 +6,8 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
 import Splice.Api.Token.BurnMintV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..))
+import Canton.TokenForge.Registry (InstrumentConfig_Mint(..))
+import Canton.TokenForge.Test.Util (registerInstrument)
 
 -- Two instruments under different admins share one operator/registry. A
 -- holding minted under instrument A must not be spendable through instrument
@@ -23,11 +24,8 @@ multiInstrumentIsolationHolds = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfgA <- submit (actAs [operator, adminA]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin = adminA; instrumentId = "AA"; name = "AA"; symbol = "AA"; decimals = 10; faucet = None
-  cfgB <- submit (actAs [operator, adminB]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin = adminB; instrumentId = "BB"; name = "BB"; symbol = "BB"; decimals = 10; faucet = None
+  cfgA <- registerInstrument operator adminA "AA" "AA" "AA" 10 None
+  cfgB <- registerInstrument operator adminB "BB" "BB" "BB" 10 None
 
   tokA <- submit adminA $ exerciseCmd cfgA InstrumentConfig_Mint with recipient = alice; amount = 100.0
   tokB <- submit adminB $ exerciseCmd cfgB InstrumentConfig_Mint with recipient = bob; amount = 50.0

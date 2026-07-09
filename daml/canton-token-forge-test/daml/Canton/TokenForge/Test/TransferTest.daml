@@ -10,7 +10,8 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..), InstrumentConfig_Preapprove(..), InstrumentConfig_LockHolding(..), preapprovalContextKey)
+import Canton.TokenForge.Registry (InstrumentConfig_Mint(..), InstrumentConfig_Preapprove(..), InstrumentConfig_LockHolding(..), preapprovalContextKey)
+import Canton.TokenForge.Test.Util (registerInstrument)
 
 directTransferCompletes : Script ()
 directTransferCompletes = do
@@ -19,9 +20,7 @@ directTransferCompletes = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
 
   -- bob opts in to direct transfers (enables 1-step completion)
@@ -64,9 +63,7 @@ directTransferPropagatesMeta = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
   pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob
 
@@ -104,9 +101,7 @@ transferRejectsBadInputs = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
   pre <- submit (actAs [admin, bob]) $ exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob
 

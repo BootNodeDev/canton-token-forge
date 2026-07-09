@@ -3,7 +3,8 @@ module Canton.TokenForge.Test.FaucetTest where
 import Daml.Script
 import DA.Assert ((===))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), FaucetConfig(..), InstrumentConfig_Tap(..))
+import Canton.TokenForge.Registry (FaucetConfig(..), InstrumentConfig_Tap(..))
+import Canton.TokenForge.Test.Util (registerInstrument)
 
 faucetTapWorksWithinCap : Script ()
 faucetTapWorksWithinCap = do
@@ -11,10 +12,7 @@ faucetTapWorksWithinCap = do
   admin <- allocateParty "admin"
   user <- allocateParty "user"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10
-    faucet = Some FaucetConfig with maxPerTap = 100.0
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 (Some FaucetConfig with maxPerTap = 100.0)
 
   Some cfgDisclosure <- queryDisclosure admin cfg
   tok <- submit (actAs user <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_Tap with user; amount = 100.0
@@ -28,10 +26,7 @@ faucetTapRejectsOverCap = do
   admin <- allocateParty "admin"
   user <- allocateParty "user"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10
-    faucet = Some FaucetConfig with maxPerTap = 10.0
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 (Some FaucetConfig with maxPerTap = 10.0)
 
   Some cfgDisclosure <- queryDisclosure admin cfg
   submitMustFail (actAs user <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_Tap with user; amount = 50.0
@@ -42,9 +37,7 @@ faucetTapRejectsWhenDisabled = do
   admin <- allocateParty "admin"
   user <- allocateParty "user"
 
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
 
   Some cfgDisclosure <- queryDisclosure admin cfg
   submitMustFail (actAs user <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_Tap with user; amount = 5.0

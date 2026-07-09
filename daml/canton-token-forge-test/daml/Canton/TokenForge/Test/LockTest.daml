@@ -5,17 +5,16 @@ import DA.Assert ((===))
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..), InstrumentConfig_LockHolding(..))
+import Canton.TokenForge.Registry (InstrumentConfig_Mint(..), InstrumentConfig_LockHolding(..))
 import Canton.TokenForge.Locked (LockedToken_Unlock(..), LockedToken_ExpireLock(..))
+import Canton.TokenForge.Test.Util (registerInstrument)
 
 lockThenUnlock : Script ()
 lockThenUnlock = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
   tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 50.0
 
   let expiresAt = time (date 2026 Jan 2) 0 0 0
@@ -40,9 +39,7 @@ lockRejectsAndExpires = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
   tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 50.0
 
   let expiresAt = time (date 2026 Jan 2) 0 0 0
