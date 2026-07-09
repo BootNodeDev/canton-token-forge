@@ -6,7 +6,7 @@ import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata, ChoiceContext(..), 
 import Splice.Api.Token.TransferInstructionV1
 import Splice.Api.Token.AllocationInstructionV1
 import Splice.Api.Token.BurnMintV1
-import Canton.TokenForge.Token (Token(..), mkToken, consumeInputs, spendInputs)
+import Canton.TokenForge.Token (Token(..), mkToken, consumeInputs, spendInputs, holdingOwners)
 import Canton.TokenForge.Locked (LockedToken(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
 import Canton.TokenForge.Allocation (allocateImpl)
@@ -210,9 +210,17 @@ template InstrumentConfig
       view = BurnMintFactoryView with admin; meta = emptyMetadata
 
       burnMintFactory_burnMintImpl _self arg = do
-        let BurnMintFactory_BurnMint{expectedAdmin, instrumentId = argInstrumentId, inputHoldingCids, outputs} = arg
+        let BurnMintFactory_BurnMint{expectedAdmin, instrumentId = argInstrumentId, inputHoldingCids, outputs, extraActors} = arg
         assertMsg "expectedAdmin must match" (expectedAdmin == admin)
         assertMsg "instrumentId must match this config" (argInstrumentId == mkInstrumentId admin instrumentId)
+
+        -- Every input and output owner must consent, which they do by appearing
+        -- in extraActors (the choice is controller admin :: extraActors, so their
+        -- authority is in scope). Validated before archiving so the error is
+        -- clear rather than a raw missing-authorization failure at archive/create.
+        inputOwners <- holdingOwners admin instrumentId inputHoldingCids
+        let requiredActors = inputOwners <> map (.owner) outputs
+        assertMsg "every input and output owner must be present in extraActors" (all (`elem` extraActors) requiredActors)
 
         -- Burn every input. This is admin-authorized reissuance, so inputs are
         -- validated against the instrument but not against a single owner.

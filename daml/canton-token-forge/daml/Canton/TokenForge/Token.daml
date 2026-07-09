@@ -69,3 +69,17 @@ spendInputs admin instrumentId sender cids requiredAmount = do
       changeCid <- create (mkToken admin sender instrumentId (total - requiredAmount) emptyMetadata)
       pure [toInterfaceContractId @HoldingV1.Holding changeCid]
     else pure []
+
+-- | Fetch the owners of Token holdings WITHOUT archiving them, so a caller can
+-- validate authorization requirements (burn-mint's extraActors) and fail with a
+-- clear message before any archival side effect. A second fetch of the same
+-- input inside consumeInputs is harmless (fetch is idempotent pre-archive).
+holdingOwners : Party -> Text -> [ContractId HoldingV1.Holding] -> Update [Party]
+holdingOwners admin instrumentId cids =
+  forA cids \hcid -> do
+    optToken <- fetchFromInterface @Token hcid
+    case optToken of
+      None -> abort "input holding is not a spendable Token (locked or foreign)"
+      Some (_, token) -> do
+        assertMsg "input holding must belong to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
+        pure token.owner
