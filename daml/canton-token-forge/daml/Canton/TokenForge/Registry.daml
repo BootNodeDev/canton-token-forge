@@ -117,12 +117,14 @@ template InstrumentConfig
     observer operator
     ensure decimals >= 0 && decimals <= 18
 
-    -- Free admin minting (no economics).
+    -- Free minting (no economics), co-authorized by the recipient so a holding
+    -- is never created for a party that did not consent (Amulet AmuletRules_Mint,
+    -- controller dso, receiver). Self-mint (recipient == admin) is unaffected.
     nonconsuming choice InstrumentConfig_Mint : ContractId Token
       with
         recipient : Party
         amount : Decimal
-      controller admin
+      controller admin, recipient
       do
         create (mkToken admin recipient instrumentId amount emptyMetadata)
 

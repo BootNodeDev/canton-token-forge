@@ -5,8 +5,9 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Canton.TokenForge.Types (mkInstrumentId)
 
--- | An unlocked holding of a canton-token-forge instrument. Signed by the instrument
--- admin (the DSO analog); the owner is an observer/stakeholder.
+-- | An unlocked holding of a canton-token-forge instrument. Co-signed by the
+-- instrument admin (the DSO analog) and the owner, so the admin cannot mint,
+-- move, or reissue an owner's holding without that owner's authority.
 template Token
   with
     admin : Party
@@ -15,8 +16,7 @@ template Token
     amount : Decimal
     meta : Metadata
   where
-    signatory admin
-    observer owner
+    signatory admin, owner
     ensure amount > 0.0
 
     interface instance HoldingV1.Holding for Token where

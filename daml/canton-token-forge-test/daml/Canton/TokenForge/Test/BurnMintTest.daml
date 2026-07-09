@@ -8,8 +8,8 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
 import Splice.Api.Token.BurnMintV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (InstrumentConfig_Mint(..), InstrumentConfig_LockHolding(..))
-import Canton.TokenForge.Test.Util (registerInstrument)
+import Canton.TokenForge.Registry (InstrumentConfig_LockHolding(..))
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
 
 -- Burn alice's 100 and mint 60 to alice + 40 to bob: total supply held
 -- constant across the rebalance, split across the two named owners.
@@ -20,7 +20,7 @@ burnMintRebalances = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
-  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  tok <- mintToken cfg admin alice 100.0
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
   res <- submit admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
@@ -51,7 +51,7 @@ burnMintRejectsInstrumentIdMismatch = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
-  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  tok <- mintToken cfg admin alice 100.0
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
   submitMustFail admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
@@ -68,7 +68,7 @@ burnMintRejectsNonPositiveOutput = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
-  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  tok <- mintToken cfg admin alice 100.0
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
   submitMustFail admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
@@ -87,7 +87,7 @@ burnMintRejectsLockedInput = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
-  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  tok <- mintToken cfg admin alice 100.0
   let later = time (date 2026 Jan 2) 0 0 0
   Some cfgDisclosure <- queryDisclosure admin cfg
   locked <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with

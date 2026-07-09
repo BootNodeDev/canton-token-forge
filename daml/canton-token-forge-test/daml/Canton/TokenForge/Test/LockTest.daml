@@ -5,9 +5,9 @@ import DA.Assert ((===))
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Canton.TokenForge.Registry (InstrumentConfig_Mint(..), InstrumentConfig_LockHolding(..))
+import Canton.TokenForge.Registry (InstrumentConfig_LockHolding(..))
 import Canton.TokenForge.Locked (LockedToken_Unlock(..), LockedToken_ExpireLock(..))
-import Canton.TokenForge.Test.Util (registerInstrument)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
 
 lockThenUnlock : Script ()
 lockThenUnlock = do
@@ -15,7 +15,7 @@ lockThenUnlock = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
-  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 50.0
+  tok <- mintToken cfg admin alice 50.0
 
   let expiresAt = time (date 2026 Jan 2) 0 0 0
   -- The owner is not a stakeholder of the config, so it is disclosed explicitly.
@@ -40,7 +40,7 @@ lockRejectsAndExpires = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
-  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 50.0
+  tok <- mintToken cfg admin alice 50.0
 
   let expiresAt = time (date 2026 Jan 2) 0 0 0
   Some cfgDisclosure <- queryDisclosure admin cfg

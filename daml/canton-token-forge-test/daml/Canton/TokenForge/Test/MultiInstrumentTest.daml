@@ -6,8 +6,7 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
 import Splice.Api.Token.BurnMintV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (InstrumentConfig_Mint(..))
-import Canton.TokenForge.Test.Util (createRegistry, registerInstrumentOn)
+import Canton.TokenForge.Test.Util (createRegistry, registerInstrumentOn, mintToken)
 
 -- Two instruments under different admins share one operator/registry. A
 -- holding minted under instrument A must not be spendable through instrument
@@ -30,8 +29,8 @@ multiInstrumentIsolationHolds = do
   cfgA <- registerUnder adminA "AA"
   cfgB <- registerUnder adminB "BB"
 
-  tokA <- submit adminA $ exerciseCmd cfgA InstrumentConfig_Mint with recipient = alice; amount = 100.0
-  tokB <- submit adminB $ exerciseCmd cfgB InstrumentConfig_Mint with recipient = bob; amount = 50.0
+  tokA <- mintToken cfgA adminA alice 100.0
+  tokB <- mintToken cfgB adminB bob 50.0
 
   -- each holding's view carries the issuing instrument's own admin
   let tokAHcid = toInterfaceContractId @HoldingV1.Holding tokA
