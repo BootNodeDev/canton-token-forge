@@ -3,6 +3,7 @@ import type { ServerDeps } from "../server.js";
 import { SUPPORTED_APIS, toInstrument, resolveById, resolveOrRespond, instrumentIdentity } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
+import { activeConfigs } from "./lookup.js";
 
 // Collapse rows to one entry per (admin, instrumentId): LF 2.1 has no
 // contract keys, so nothing prevents duplicates, but the list endpoint
@@ -29,10 +30,7 @@ export function metadataRouter(deps: ServerDeps): Router {
   r.get(
     "/registry/metadata/v1/instruments",
     asyncHandler(async (_req, res) => {
-      const rows = await deps.ledger.activeContracts(
-        deps.config.instrumentConfigTemplateId,
-        deps.config.operatorParty,
-      );
+      const rows = await activeConfigs(deps.ledger, deps.config);
       const instruments = dedupeByAdminAndInstrumentId(rows).map((row) => toInstrument(row.payload));
       res.json({ instruments });
     }),
@@ -41,10 +39,7 @@ export function metadataRouter(deps: ServerDeps): Router {
   r.get(
     "/registry/metadata/v1/instruments/:instrumentId",
     asyncHandler(async (req, res) => {
-      const rows = await deps.ledger.activeContracts(
-        deps.config.instrumentConfigTemplateId,
-        deps.config.operatorParty,
-      );
+      const rows = await activeConfigs(deps.ledger, deps.config);
       const cfg = resolveOrRespond(res, resolveById(rows, req.params.instrumentId));
       if (!cfg) return;
       res.json(toInstrument(cfg.payload));

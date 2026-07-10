@@ -2,6 +2,17 @@ import type { Config } from "../config.js";
 import type { ContractEntry, LedgerClient } from "../ledger.js";
 import { toDisclosed, type DisclosedContract } from "../disclose.js";
 
+// The InstrumentConfig active set for the operator, which the routes then run
+// through resolveConfig/resolveById. Centralized so the "which template, which
+// party identifies the config set" choice has one home, alongside
+// findByContractId and escrowDisclosure below.
+export function activeConfigs(
+  ledger: LedgerClient,
+  config: Pick<Config, "instrumentConfigTemplateId" | "operatorParty">,
+): Promise<ContractEntry[]> {
+  return ledger.activeContracts(config.instrumentConfigTemplateId, config.operatorParty);
+}
+
 // Locate a single active contract by its id within a template's active set.
 // Several handlers resolve a path parameter (a proposal, an allocation, a
 // transfer instruction) this way before acting on it, so the query lives in

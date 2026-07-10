@@ -3,7 +3,7 @@ import type { ServerDeps } from "../server.js";
 import { toDisclosed, EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../disclose.js";
 import { resolveConfig, resolveOrRespond } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
-import { findByContractId, escrowDisclosure } from "./lookup.js";
+import { findByContractId, escrowDisclosure, activeConfigs } from "./lookup.js";
 
 export function allocationRouter(deps: ServerDeps): Router {
   const r = Router();
@@ -14,7 +14,7 @@ export function allocationRouter(deps: ServerDeps): Router {
       const instrumentId = req.body?.choiceArguments?.allocation?.instrumentId;
       if (!instrumentId) return res.status(400).json({ error: "missing allocation.instrumentId" });
 
-      const rows = await deps.ledger.activeContracts(deps.config.instrumentConfigTemplateId, deps.config.operatorParty);
+      const rows = await activeConfigs(deps.ledger, deps.config);
       const cfg = resolveOrRespond(res, resolveConfig(rows, instrumentId.admin, instrumentId.id));
       if (!cfg) return;
 

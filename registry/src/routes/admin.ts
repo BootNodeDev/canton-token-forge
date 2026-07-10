@@ -3,7 +3,7 @@ import type { ServerDeps } from "../server.js";
 import { toDisclosed } from "../disclose.js";
 import { matchesInstrument } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
-import { findByContractId } from "./lookup.js";
+import { findByContractId, activeConfigs } from "./lookup.js";
 
 // canton-token-forge admin endpoints that drive the Plan 04 propose-accept
 // instrument-registration workflow. These sit outside the four standard
@@ -60,7 +60,7 @@ export function adminRouter(deps: ServerDeps): Router {
       );
       if (!prop) return res.status(404).json({ error: "proposal not found" });
 
-      const cfgRows = await deps.ledger.activeContracts(deps.config.instrumentConfigTemplateId, deps.config.operatorParty);
+      const cfgRows = await activeConfigs(deps.ledger, deps.config);
       const dupIds = cfgRows
         .filter((r) => matchesInstrument(r.payload, { admin: prop.payload.admin, id: prop.payload.instrumentId }))
         .map((r) => r.contractId);

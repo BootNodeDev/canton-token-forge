@@ -2,16 +2,11 @@ import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed, PREAPPROVAL_CONTEXT_KEY, anyValueContractId } from "../disclose.js";
 import { resolveConfig, resolveOrRespond, matchesInstrument } from "../mapping.js";
-import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
-import { findByContractId, escrowDisclosure } from "./lookup.js";
+import { findByContractId, escrowDisclosure, activeConfigs } from "./lookup.js";
 
 export function transferRouter(deps: ServerDeps): Router {
   const r = Router();
-
-  async function configRows(): Promise<ContractEntry[]> {
-    return deps.ledger.activeContracts(deps.config.instrumentConfigTemplateId, deps.config.operatorParty);
-  }
 
   r.post(
     "/registry/transfer-instruction/v1/transfer-factory",
@@ -22,7 +17,7 @@ export function transferRouter(deps: ServerDeps): Router {
       const { sender, receiver } = transfer;
       if (!sender || !receiver) return res.status(400).json({ error: "missing transfer.sender or transfer.receiver" });
 
-      const cfg = resolveOrRespond(res, resolveConfig(await configRows(), instrumentId.admin, instrumentId.id));
+      const cfg = resolveOrRespond(res, resolveConfig(await activeConfigs(deps.ledger, deps.config), instrumentId.admin, instrumentId.id));
       if (!cfg) return;
 
       if (sender === receiver) {
@@ -86,7 +81,7 @@ export function transferRouter(deps: ServerDeps): Router {
         if (!instr) return res.status(404).json({ error: "transfer instruction not found" });
 
         const instrumentId = instr.payload.transfer.instrumentId;
-        const cfg = resolveOrRespond(res, resolveConfig(await configRows(), instrumentId.admin, instrumentId.id));
+        const cfg = resolveOrRespond(res, resolveConfig(await activeConfigs(deps.ledger, deps.config), instrumentId.admin, instrumentId.id));
         if (!cfg) return;
 
         const escrow = await escrowDisclosure(deps.ledger, deps.config, instr.payload.lockedCid);
