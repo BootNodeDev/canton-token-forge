@@ -77,10 +77,15 @@ export function transferRouter(deps: ServerDeps): Router {
         if (!instr) return res.status(404).json({ error: "transfer instruction not found" });
 
         const instrumentId = instr.payload.transfer.instrumentId;
-        const cfg = resolveOrRespond(res, resolveConfig(await activeConfigs(deps.ledger, deps.config), instrumentId.admin, instrumentId.id));
+        // The config query and the escrow disclosure are independent once the
+        // instruction is resolved, so run them concurrently.
+        const [cfgRows, escrow] = await Promise.all([
+          activeConfigs(deps.ledger, deps.config),
+          escrowDisclosure(deps.ledger, deps.config, instr.payload.lockedCid),
+        ]);
+        const cfg = resolveOrRespond(res, resolveConfig(cfgRows, instrumentId.admin, instrumentId.id));
         if (!cfg) return;
 
-        const escrow = await escrowDisclosure(deps.ledger, deps.config, instr.payload.lockedCid);
         const disclosedContracts = [toDisclosed(cfg), ...escrow];
         res.json({ choiceContextData: {}, disclosedContracts });
       }),
