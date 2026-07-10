@@ -37,6 +37,19 @@ export function toInstrument(payload: any): Instrument {
   };
 }
 
+// An on-ledger payload (InstrumentConfig, proposal, preapproval) identifies its
+// instrument by the Daml record fields (admin, instrumentId), while the
+// standard API carries the same identity as InstrumentId { admin, id }. These
+// two helpers are the single place that bridges the two field namings, so the
+// admin-and-id equality rule the whole service depends on is defined once.
+export function matchesInstrument(payload: any, id: { admin: string; id: string }): boolean {
+  return payload.admin === id.admin && payload.instrumentId === id.id;
+}
+
+export function instrumentIdentity(payload: any): string {
+  return `${payload.admin}::${payload.instrumentId}`;
+}
+
 export type ResolveResult =
   | { kind: "ok"; entry: ContractEntry }
   | { kind: "none" }
@@ -53,7 +66,7 @@ export function resolveUnique(matches: ContractEntry[]): ResolveResult {
 }
 
 export function resolveConfig(rows: ContractEntry[], admin: string, id: string): ResolveResult {
-  const matches = rows.filter((r) => r.payload.admin === admin && r.payload.instrumentId === id);
+  const matches = rows.filter((r) => matchesInstrument(r.payload, { admin, id }));
   return resolveUnique(matches);
 }
 

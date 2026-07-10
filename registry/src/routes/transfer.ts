@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed, PREAPPROVAL_CONTEXT_KEY, anyValueContractId } from "../disclose.js";
-import { resolveConfig, resolveOrRespond } from "../mapping.js";
+import { resolveConfig, resolveOrRespond, matchesInstrument } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
 import { findByContractId, escrowDisclosure } from "./lookup.js";
@@ -45,8 +45,7 @@ export function transferRouter(deps: ServerDeps): Router {
       );
       const pre = preapprovalRows.find(
         (p) =>
-          p.payload.admin === instrumentId.admin &&
-          p.payload.instrumentId === instrumentId.id &&
+          matchesInstrument(p.payload, instrumentId) &&
           p.payload.receiver === receiver &&
           Date.parse(p.payload.validFrom) <= now &&
           now < Date.parse(p.payload.expiresAt),

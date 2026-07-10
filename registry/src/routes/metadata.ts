@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
-import { SUPPORTED_APIS, toInstrument, resolveById, resolveOrRespond } from "../mapping.js";
+import { SUPPORTED_APIS, toInstrument, resolveById, resolveOrRespond, instrumentIdentity } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
 
@@ -10,7 +10,7 @@ import { asyncHandler } from "./async-handler.js";
 function dedupeByAdminAndInstrumentId(rows: ContractEntry[]): ContractEntry[] {
   const seen = new Map<string, ContractEntry>();
   for (const row of rows) {
-    const key = `${row.payload.admin}::${row.payload.instrumentId}`;
+    const key = instrumentIdentity(row.payload);
     if (!seen.has(key)) seen.set(key, row);
   }
   return [...seen.values()];
