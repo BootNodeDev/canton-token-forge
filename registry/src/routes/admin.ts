@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed } from "../disclose.js";
-import { resolveConfig } from "../mapping.js";
+import { matchesInstrument } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
 import { findByContractId } from "./lookup.js";
 
@@ -61,12 +61,11 @@ export function adminRouter(deps: ServerDeps): Router {
       if (!prop) return res.status(404).json({ error: "proposal not found" });
 
       const cfgRows = await deps.ledger.activeContracts(deps.config.instrumentConfigTemplateId, deps.config.operatorParty);
-      const dup = resolveConfig(cfgRows, prop.payload.admin, prop.payload.instrumentId);
-      if (dup.kind !== "none") {
-        return res.status(409).json({
-          error: "instrument id already registered",
-          contractIds: dup.kind === "ok" ? [dup.entry.contractId] : dup.contractIds,
-        });
+      const dupIds = cfgRows
+        .filter((r) => matchesInstrument(r.payload, { admin: prop.payload.admin, id: prop.payload.instrumentId }))
+        .map((r) => r.contractId);
+      if (dupIds.length > 0) {
+        return res.status(409).json({ error: "instrument id already registered", contractIds: dupIds });
       }
 
       await deps.ledger.submitAndWait([deps.config.operatorParty], [
