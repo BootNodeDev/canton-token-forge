@@ -20,7 +20,7 @@ export function adminRouter(deps: ServerDeps): Router {
     "/admin/instruments",
     asyncHandler(async (req, res) => {
       const { admin, instrumentId, name, symbol, decimals, faucet } = req.body ?? {};
-      if (!admin || !instrumentId || !name || !symbol || decimals === undefined) {
+      if (!admin || !instrumentId || !name || !symbol || typeof decimals !== "number") {
         return res.status(400).json({ error: "missing proposal fields" });
       }
 

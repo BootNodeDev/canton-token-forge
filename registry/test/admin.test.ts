@@ -144,6 +144,21 @@ describe("POST /admin/instruments", () => {
     expect(res.body.error).toBeTruthy();
   });
 
+  it("400s when decimals is null rather than forwarding a null Int to the ledger", async () => {
+    const { ledger, calls } = ledgerFrom({ [config.tokenRegistryTemplateId]: [registryEntry()] });
+    const app = createServer({ ledger, config });
+    const res = await request(app).post("/admin/instruments").send({
+      admin: "admin::1",
+      instrumentId: "CC",
+      name: "Canton Coin",
+      symbol: "CC",
+      decimals: null,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeTruthy();
+    expect(calls).toHaveLength(0);
+  });
+
   it("503s when no registry is active", async () => {
     const { ledger } = ledgerFrom({ [config.tokenRegistryTemplateId]: [] });
     const app = createServer({ ledger, config });
