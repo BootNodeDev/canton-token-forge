@@ -70,17 +70,29 @@ lookupExpireLock ctx =
     Some (AV_Bool b) -> b
     _ -> False
 
+-- | Reclaim an escrowed LockedToken back to its owner, but only once the
+-- settlement deadline has passed. The early-release signal is deliberately NOT
+-- honored here: it is a bare caller-supplied boolean with nothing on-ledger
+-- backing it (unlike a disclosed contract cid), so a choice controlled by a
+-- single party could otherwise forge it to bypass the deadline. Every
+-- single-party abort path (the allocation and transfer withdraws) reclaims
+-- through this; early, coordinated release is available only via the
+-- jointly-authorized cancel path (abortEscrow below).
+reclaimAtDeadline : ContractId LockedToken -> Time -> Update (ContractId HoldingV1.Holding)
+reclaimAtDeadline lockedCid expiresAt = do
+  now <- getTime
+  assertMsg "escrow cannot be reclaimed before the settlement deadline" (now >= expiresAt)
+  unlockHolding lockedCid
+
 -- | Release an escrowed LockedToken back to its owner (Amulet
--- abortTwoStepTransfer). With the early-release signal the holders (admin,
--- structurally present via the escrow's signatories) release it immediately;
--- otherwise the settlement deadline must have passed. The trust model matches
--- Amulet: whoever assembles the choice context supplies the signal, and the
--- security rests on the admin/registry disclosing the right contracts.
+-- abortTwoStepTransfer). With the early-release signal the escrow returns
+-- immediately; otherwise the settlement deadline must have passed. Use this
+-- ONLY on a jointly-authorized choice (the allocation cancel, controlled by
+-- executor, sender, and receiver together): there the co-signing controllers
+-- ARE the authorization for an early release, so the signal cannot be forged
+-- unilaterally. Never use it on a single-party choice - see reclaimAtDeadline.
 abortEscrow : ContractId LockedToken -> Time -> ChoiceContext -> Update (ContractId HoldingV1.Holding)
 abortEscrow lockedCid expiresAt ctx =
   if lookupExpireLock ctx
     then unlockHolding lockedCid
-    else do
-      now <- getTime
-      assertMsg "escrow cannot be released before expiry without the early-release signal" (now >= expiresAt)
-      unlockHolding lockedCid
+    else reclaimAtDeadline lockedCid expiresAt

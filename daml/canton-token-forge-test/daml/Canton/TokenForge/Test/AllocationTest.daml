@@ -216,7 +216,9 @@ allocationRejectsUnreachableSettleBefore = do
     inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
 
 -- The sender cannot withdraw the escrow while the settlement window is still
--- open, so a unilateral withdraw cannot break an in-flight settlement.
+-- open. The early-release signal is a bare caller-supplied boolean, so forging
+-- it must not bypass the deadline on this single-party path either - a
+-- unilateral withdraw cannot break an in-flight settlement.
 allocationWithdrawBeforeSettleFails : Script ()
 allocationWithdrawBeforeSettleFails = do
   operator <- allocateParty "operator"
@@ -244,6 +246,7 @@ allocationWithdrawBeforeSettleFails = do
     AllocationInstructionResult_Completed cid -> pure cid
     _ -> abort "expected completed allocation"
   submitMustFail alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = xargs
+  submitMustFail alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = signalArgs
 
 -- With the joint parties' early-release signal, cancel returns the escrow to
 -- the sender before settleBefore.

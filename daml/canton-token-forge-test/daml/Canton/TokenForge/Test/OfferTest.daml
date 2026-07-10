@@ -89,6 +89,8 @@ offerRejectedRefunds = do
   rv.owner === alice
   rv.amount === 40.0
 
+-- Once the deadline (executeBefore) has passed the sender can withdraw the
+-- unaccepted offer and reclaim the escrow.
 offerWithdrawnRefunds : Script ()
 offerWithdrawnRefunds = do
   operator <- allocateParty "operator"
@@ -96,19 +98,23 @@ offerWithdrawnRefunds = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer operator admin alice bob
-  wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = expireLockArgs
+  setTime (time (date 2026 Jan 3) 0 0 0)
+  wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
   [refundCid] <- pure wd.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice
   rv.amount === 40.0
 
--- Before the deadline and with no early-release signal, the sender cannot
--- withdraw the escrow, so a unilateral abort cannot pull funds mid-offer.
-offerWithdrawBeforeExpiryWithoutSignalFails : Script ()
-offerWithdrawBeforeExpiryWithoutSignalFails = do
+-- Before the deadline the sender cannot withdraw the escrow. The early-release
+-- signal is a bare caller-supplied boolean, so forging it must not bypass the
+-- deadline on this single-party path either - a unilateral abort cannot pull
+-- funds mid-offer.
+offerWithdrawBeforeExpiryFails : Script ()
+offerWithdrawBeforeExpiryFails = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer operator admin alice bob
   submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
+  submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = expireLockArgs
