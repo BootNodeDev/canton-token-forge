@@ -3,27 +3,18 @@ module Canton.TokenForge.Test.OfferTest where
 import Daml.Script
 import DA.Assert ((===))
 import DA.List (head)
-import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..), emptyChoiceContext)
+import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceContext)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
-import Canton.TokenForge.Locked (expireLockContextKey)
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs)
 
 -- No app-backend context is needed for accept/reject/withdraw in these tests.
 noContextArgs : ExtraArgs
 noContextArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
-
--- The admin/registry supplies the early-release signal so the escrow can be
--- returned before the transfer deadline (Amulet's expire-lock path).
-expireLockArgs : ExtraArgs
-expireLockArgs = ExtraArgs with
-  context = ChoiceContext with values = TextMap.fromList [(expireLockContextKey, AV_Bool True)]
-  meta = emptyMetadata
 
 -- Shared setup: mint 100 to alice, build a 40.0 transfer alice -> bob with no
 -- preapproval, and start the offer. Returns the pending instruction cid.
