@@ -1,9 +1,18 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { HttpLedgerClient } from "../src/ledger";
+
+function recordingFetch(response: any) {
+  const calls: [string, any][] = [];
+  const fakeFetch = (async (url: string, init: any) => {
+    calls.push([url, init]);
+    return response;
+  }) as any;
+  return { fakeFetch, calls };
+}
 
 describe("HttpLedgerClient.activeContracts", () => {
   it("maps JSON Ledger API entries to ContractEntry", async () => {
-    const fakeFetch = vi.fn(async () => ({
+    const { fakeFetch, calls } = recordingFetch({
       ok: true,
       json: async () => [
         {
@@ -20,7 +29,7 @@ describe("HttpLedgerClient.activeContracts", () => {
           },
         },
       ],
-    })) as any;
+    });
     const client = new HttpLedgerClient(
       { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" } as any,
       fakeFetch,
@@ -37,8 +46,8 @@ describe("HttpLedgerClient.activeContracts", () => {
       payload: { id: "CC" },
     });
 
-    expect(fakeFetch).toHaveBeenCalledTimes(1);
-    const [url, init] = fakeFetch.mock.calls[0];
+    expect(calls).toHaveLength(1);
+    const [url, init] = calls[0];
     expect(url).toBe("http://ledger/v2/state/active-contracts");
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string);
@@ -50,10 +59,10 @@ describe("HttpLedgerClient.activeContracts", () => {
 
 describe("HttpLedgerClient.submitAndWait", () => {
   it("submits create/exercise commands as actAs and returns the response", async () => {
-    const fakeFetch = vi.fn(async () => ({
+    const { fakeFetch, calls } = recordingFetch({
       ok: true,
       json: async () => ({ transactionId: "tx-1" }),
-    })) as any;
+    });
     const client = new HttpLedgerClient(
       { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" } as any,
       fakeFetch,
@@ -73,8 +82,8 @@ describe("HttpLedgerClient.submitAndWait", () => {
     ]);
 
     expect(result).toEqual({ transactionId: "tx-1" });
-    expect(fakeFetch).toHaveBeenCalledTimes(1);
-    const [url, init] = fakeFetch.mock.calls[0];
+    expect(calls).toHaveLength(1);
+    const [url, init] = calls[0];
     expect(url).toBe("http://ledger/v2/commands/submit-and-wait-for-transaction");
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string);
@@ -99,11 +108,11 @@ describe("HttpLedgerClient.submitAndWait", () => {
   });
 
   it("throws when the ledger responds with a non-ok status", async () => {
-    const fakeFetch = vi.fn(async () => ({
+    const { fakeFetch } = recordingFetch({
       ok: false,
       status: 400,
       json: async () => ({}),
-    })) as any;
+    });
     const client = new HttpLedgerClient(
       { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" } as any,
       fakeFetch,
