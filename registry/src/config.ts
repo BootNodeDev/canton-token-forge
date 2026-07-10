@@ -13,11 +13,21 @@ export interface Config {
   port: number;
 }
 
+const DEFAULT_PORT = 8080;
+
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const require_ = (k: string): string => {
     const v = env[k];
     if (!v) throw new Error(`missing required env var ${k}`);
     return v;
+  };
+  const parsePort = (raw: string | undefined): number => {
+    if (!raw) return DEFAULT_PORT;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 65535) {
+      throw new Error(`invalid PORT: ${raw}`);
+    }
+    return n;
   };
   return {
     ledgerApiUrl: require_("LEDGER_API_URL"),
@@ -31,6 +41,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     preapprovalTemplateId: require_("PREAPPROVAL_TEMPLATE_ID"),
     lockedTokenTemplateId: require_("LOCKED_TOKEN_TEMPLATE_ID"),
     allocationInterfaceId: require_("ALLOCATION_INTERFACE_ID"),
-    port: Number(env.PORT ?? "8080"),
+    port: parsePort(env.PORT),
   };
 }
