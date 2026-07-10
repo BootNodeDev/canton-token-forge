@@ -214,13 +214,15 @@ template InstrumentConfig
         assertMsg "expectedAdmin must match" (expectedAdmin == admin)
         assertMsg "instrumentId must match this config" (argInstrumentId == mkInstrumentId admin instrumentId)
 
-        -- Every input and output owner must consent, which they do by appearing
-        -- in extraActors (the choice is controller admin :: extraActors, so their
-        -- authority is in scope). Validated before archiving so the error is
-        -- clear rather than a raw missing-authorization failure at archive/create.
+        -- Every input and output owner must authorize the burn-mint. The choice
+        -- is controller admin :: extraActors, so an owner's authority is in scope
+        -- when the owner is the admin or appears in extraActors - the admin need
+        -- not redundantly list itself to reissue its own holdings. Validated
+        -- before archiving so the error is clear rather than a raw
+        -- missing-authorization failure at archive/create.
         inputOwners <- holdingOwners admin instrumentId inputHoldingCids
         let requiredActors = inputOwners <> map (.owner) outputs
-        assertMsg "every input and output owner must be present in extraActors" (all (`elem` extraActors) requiredActors)
+        assertMsg "every input and output owner must be the admin or appear in extraActors" (all (`elem` (admin :: extraActors)) requiredActors)
 
         -- Burn every input. This is admin-authorized reissuance, so inputs are
         -- validated against the instrument but not against a single owner.

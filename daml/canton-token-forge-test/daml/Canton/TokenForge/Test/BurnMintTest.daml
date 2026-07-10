@@ -102,6 +102,32 @@ burnMintRejectsLockedInput = do
     extraActors = []
     extraArgs = xargs
 
+-- When the admin reissues its own holdings, its authority is already present as
+-- the primary controller (admin :: extraActors), so it need not list itself in
+-- extraActors: an admin-owned input and output with extraActors = [], submitted
+-- by the admin alone, succeeds.
+burnMintAdminOwnedNeedsNoExtraActor : Script ()
+burnMintAdminOwnedNeedsNoExtraActor = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin admin 100.0
+
+  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  res <- submit admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
+    expectedAdmin = admin
+    instrumentId = mkInstrumentId admin "CC"
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]
+    outputs = [ BurnMintOutput with owner = admin; amount = 100.0; context = emptyChoiceContext ]
+    extraActors = []
+    extraArgs = xargs
+  case res.outputCids of
+    [adminCid] -> do
+      Some av <- queryInterfaceContractId admin adminCid
+      av.owner === admin
+      av.amount === 100.0
+    _ -> abort "expected exactly one output holding"
+
 -- Every input and output owner must be named in extraActors; omitting bob (an
 -- output owner) is rejected, so burn-mint cannot create a holding for a party
 -- that did not authorize the operation.
