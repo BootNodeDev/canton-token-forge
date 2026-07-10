@@ -261,4 +261,34 @@ describe("transfer-instruction choice-contexts", () => {
       .send({ meta: {} });
     expect(res.status).toBe(404);
   });
+
+  it("404s when no config matches the instruction's instrumentId", async () => {
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [],
+      [config.transferInstructionInterfaceId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+    });
+    const app = createServer({ ledger, config });
+    const res = await request(app)
+      .post("/registry/transfer-instruction/v1/instr1/choice-contexts/accept")
+      .send({ meta: {} });
+    expect(res.status).toBe(404);
+  });
+
+  it("409s instead of returning a context that omits the config when (admin, instrumentId) is not unique", async () => {
+    const dup = cfgEntry();
+    dup.contractId = "cfg2";
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry(), dup],
+      [config.transferInstructionInterfaceId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+    });
+    const app = createServer({ ledger, config });
+    const res = await request(app)
+      .post("/registry/transfer-instruction/v1/instr1/choice-contexts/accept")
+      .send({ meta: {} });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("instrument id not unique");
+    expect(res.body.contractIds.sort()).toEqual(["cfg1", "cfg2"]);
+  });
 });

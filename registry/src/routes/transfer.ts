@@ -90,7 +90,11 @@ export function transferRouter(deps: ServerDeps): Router {
 
         const instrumentId = instr.payload.transfer.instrumentId;
         const result = resolveConfig(await configRows(), instrumentId.admin, instrumentId.id);
-        const cfg = result.kind === "ok" ? result.entry : undefined;
+        if (result.kind === "none") return res.status(404).json({ error: "instrument not found" });
+        if (result.kind === "conflict") {
+          return res.status(409).json({ error: "instrument id not unique", contractIds: result.contractIds });
+        }
+        const cfg = result.entry;
 
         const lockedRows = await deps.ledger.activeContracts(
           deps.config.lockedTokenTemplateId,
