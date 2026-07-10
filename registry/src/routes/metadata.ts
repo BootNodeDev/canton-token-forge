@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
-import { SUPPORTED_APIS, toInstrument, resolveById, type ResolveResult } from "../mapping.js";
+import { SUPPORTED_APIS, toInstrument, resolveById } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
 
@@ -45,7 +45,7 @@ export function metadataRouter(deps: ServerDeps): Router {
         deps.config.instrumentConfigTemplateId,
         deps.config.operatorParty,
       );
-      const result: ResolveResult = resolveById(rows, req.params.instrumentId);
+      const result = resolveById(rows, req.params.instrumentId);
       if (result.kind === "none") {
         return res.status(404).json({ error: "instrument not found" });
       }
