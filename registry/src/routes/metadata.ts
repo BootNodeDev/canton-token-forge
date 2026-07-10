@@ -1,0 +1,53 @@
+import { Router } from "express";
+import type { ServerDeps } from "../server.js";
+import { SUPPORTED_APIS, toInstrument, resolveById, type ResolveResult } from "../mapping.js";
+import type { ContractEntry } from "../ledger.js";
+
+// Collapse rows to one entry per (admin, instrumentId): LF 2.1 has no
+// contract keys, so nothing prevents duplicates, but the list endpoint
+// should not surface them as visible duplicates the way get-by-id does.
+function dedupeByAdminAndInstrumentId(rows: ContractEntry[]): ContractEntry[] {
+  const seen = new Map<string, ContractEntry>();
+  for (const row of rows) {
+    const key = `${row.payload.admin}::${row.payload.instrumentId}`;
+    if (!seen.has(key)) seen.set(key, row);
+  }
+  return [...seen.values()];
+}
+
+export function metadataRouter(deps: ServerDeps): Router {
+  const r = Router();
+
+  r.get("/registry/metadata/v1/info", (_req, res) => {
+    res.json({
+      adminId: deps.config.operatorParty,
+      supportedApis: SUPPORTED_APIS,
+    });
+  });
+
+  r.get("/registry/metadata/v1/instruments", async (_req, res) => {
+    const rows = await deps.ledger.activeContracts(
+      deps.config.instrumentConfigTemplateId,
+      deps.config.operatorParty,
+    );
+    const instruments = dedupeByAdminAndInstrumentId(rows).map((row) => toInstrument(row.payload));
+    res.json({ instruments });
+  });
+
+  r.get("/registry/metadata/v1/instruments/:instrumentId", async (req, res) => {
+    const rows = await deps.ledger.activeContracts(
+      deps.config.instrumentConfigTemplateId,
+      deps.config.operatorParty,
+    );
+    const result: ResolveResult = resolveById(rows, req.params.instrumentId);
+    if (result.kind === "none") {
+      return res.status(404).json({ error: "instrument not found" });
+    }
+    if (result.kind === "conflict") {
+      return res.status(409).json({ error: "instrument id not unique", contractIds: result.contractIds });
+    }
+    res.json(toInstrument(result.entry.payload));
+  });
+
+  return r;
+}

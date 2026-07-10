@@ -3,6 +3,7 @@ export interface Config {
   ledgerApiToken: string;
   operatorParty: string;
   registryBaseUrl: string;
+  instrumentConfigTemplateId: string;
   port: number;
 }
 
@@ -17,6 +18,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     ledgerApiToken: require_("LEDGER_API_TOKEN"),
     operatorParty: require_("OPERATOR_PARTY"),
     registryBaseUrl: require_("REGISTRY_BASE_URL"),
+    instrumentConfigTemplateId: require_("INSTRUMENT_CONFIG_TEMPLATE_ID"),
     port: Number(env.PORT ?? "8080"),
   };
 }
