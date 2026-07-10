@@ -20,4 +20,14 @@ describe("async route errors", () => {
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: "ledger query failed: 503" });
   });
+
+  it("preserves the 4xx status express.json() puts on a malformed body instead of reporting 500", async () => {
+    const ledger = { activeContracts: async () => [] } as any;
+    const app = createServer({ ledger, config });
+    const res = await request(app)
+      .post("/admin/instruments")
+      .set("content-type", "application/json")
+      .send('{"admin":');
+    expect(res.status).toBe(400);
+  });
 });
