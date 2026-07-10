@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
 import type { DisclosedContract } from "./disclose.js";
 
@@ -102,7 +103,7 @@ export class HttpLedgerClient implements LedgerClient {
           isExerciseCommand(command) ? { ExerciseCommand: command } : { CreateCommand: command },
         ),
         actAs,
-        commandId: crypto.randomUUID(),
+        commandId: randomUUID(),
         disclosedContracts,
       }),
     });
