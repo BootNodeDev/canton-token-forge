@@ -4,6 +4,7 @@ import { toDisclosed, PREAPPROVAL_CONTEXT_KEY, anyValueContractId } from "../dis
 import { resolveConfig } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
+import { findByContractId } from "./lookup.js";
 
 export function transferRouter(deps: ServerDeps): Router {
   const r = Router();
@@ -81,11 +82,12 @@ export function transferRouter(deps: ServerDeps): Router {
     r.post(
       `/registry/transfer-instruction/v1/:transferInstructionId/choice-contexts/${choice}`,
       asyncHandler(async (req, res) => {
-        const instructionRows = await deps.ledger.activeContracts(
+        const instr = await findByContractId(
+          deps.ledger,
           deps.config.transferInstructionInterfaceId,
           deps.config.operatorParty,
+          req.params.transferInstructionId,
         );
-        const instr = instructionRows.find((row) => row.contractId === req.params.transferInstructionId);
         if (!instr) return res.status(404).json({ error: "transfer instruction not found" });
 
         const instrumentId = instr.payload.transfer.instrumentId;

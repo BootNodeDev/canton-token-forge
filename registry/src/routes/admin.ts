@@ -3,6 +3,7 @@ import type { ServerDeps } from "../server.js";
 import { toDisclosed } from "../disclose.js";
 import { resolveConfig } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
+import { findByContractId } from "./lookup.js";
 
 // canton-token-forge admin endpoints that drive the Plan 04 propose-accept
 // instrument-registration workflow. These sit outside the four standard
@@ -51,11 +52,12 @@ export function adminRouter(deps: ServerDeps): Router {
   r.post(
     "/admin/proposals/:proposalId/accept",
     asyncHandler(async (req, res) => {
-      const proposals = await deps.ledger.activeContracts(
+      const prop = await findByContractId(
+        deps.ledger,
         deps.config.instrumentConfigProposalTemplateId,
         deps.config.operatorParty,
+        req.params.proposalId,
       );
-      const prop = proposals.find((p) => p.contractId === req.params.proposalId);
       if (!prop) return res.status(404).json({ error: "proposal not found" });
 
       const cfgRows = await deps.ledger.activeContracts(deps.config.instrumentConfigTemplateId, deps.config.operatorParty);
@@ -83,11 +85,12 @@ export function adminRouter(deps: ServerDeps): Router {
   r.post(
     "/admin/proposals/:proposalId/reject",
     asyncHandler(async (req, res) => {
-      const proposals = await deps.ledger.activeContracts(
+      const prop = await findByContractId(
+        deps.ledger,
         deps.config.instrumentConfigProposalTemplateId,
         deps.config.operatorParty,
+        req.params.proposalId,
       );
-      const prop = proposals.find((p) => p.contractId === req.params.proposalId);
       if (!prop) return res.status(404).json({ error: "proposal not found" });
 
       await deps.ledger.submitAndWait([deps.config.operatorParty], [

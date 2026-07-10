@@ -4,6 +4,7 @@ import { toDisclosed, EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../disclose.
 import { resolveConfig } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
+import { findByContractId } from "./lookup.js";
 
 export function allocationRouter(deps: ServerDeps): Router {
   const r = Router();
@@ -38,11 +39,12 @@ export function allocationRouter(deps: ServerDeps): Router {
     r.post(
       `/registry/allocations/v1/:allocationId/choice-contexts/${choice}`,
       asyncHandler(async (req, res) => {
-        const allocationRows = await deps.ledger.activeContracts(
+        const alloc = await findByContractId(
+          deps.ledger,
           deps.config.allocationInterfaceId,
           deps.config.operatorParty,
+          req.params.allocationId,
         );
-        const alloc = allocationRows.find((row) => row.contractId === req.params.allocationId);
         if (!alloc) return res.status(404).json({ error: "allocation not found" });
 
         const lockedRows = await deps.ledger.activeContracts(
