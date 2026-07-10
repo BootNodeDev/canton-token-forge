@@ -28,7 +28,7 @@ function cfgEntry(overrides: any = {}) {
       name: "Canton Coin",
       symbol: "CC",
       decimals: 10,
-      faucet: false,
+      faucet: null,
       ...overrides,
     },
   };

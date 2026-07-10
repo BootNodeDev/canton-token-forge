@@ -37,7 +37,7 @@ function proposalEntry(overrides: any = {}) {
       name: "Canton Coin",
       symbol: "CC",
       decimals: 10,
-      faucet: false,
+      faucet: null,
       ...overrides,
     },
   };
@@ -56,7 +56,7 @@ function cfgEntry(overrides: any = {}) {
       name: "Canton Coin",
       symbol: "CC",
       decimals: 10,
-      faucet: false,
+      faucet: null,
       ...overrides,
     },
   };
@@ -84,7 +84,7 @@ describe("POST /admin/instruments", () => {
       name: "Canton Coin",
       symbol: "CC",
       decimals: 10,
-      faucet: false,
+      faucet: null,
     });
     expect(res.status).toBe(202);
     expect(res.body).toEqual({ status: "proposed" });
@@ -103,7 +103,7 @@ describe("POST /admin/instruments", () => {
           name: "Canton Coin",
           symbol: "CC",
           decimals: 10,
-          faucet: false,
+          faucet: null,
         },
       },
     ]);

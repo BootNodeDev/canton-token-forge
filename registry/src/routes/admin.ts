@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed } from "../disclose.js";
 import { resolveConfig } from "../mapping.js";
+import { asyncHandler } from "./async-handler.js";
 
 // canton-token-forge admin endpoints that drive the Plan 04 propose-accept
 // instrument-registration workflow. These sit outside the four standard
@@ -15,82 +16,91 @@ export function adminRouter(deps: ServerDeps): Router {
   // is read from the registry contract on-ledger, so it is not a request
   // field. actAs the admin, disclosing the operator-signed registry so the
   // admin (not a registry stakeholder) can exercise a choice on it.
-  r.post("/admin/instruments", async (req, res) => {
-    const { admin, instrumentId, name, symbol, decimals, faucet } = req.body ?? {};
-    if (!admin || !instrumentId || !name || !symbol || decimals === undefined) {
-      return res.status(400).json({ error: "missing proposal fields" });
-    }
+  r.post(
+    "/admin/instruments",
+    asyncHandler(async (req, res) => {
+      const { admin, instrumentId, name, symbol, decimals, faucet } = req.body ?? {};
+      if (!admin || !instrumentId || !name || !symbol || decimals === undefined) {
+        return res.status(400).json({ error: "missing proposal fields" });
+      }
 
-    const regs = await deps.ledger.activeContracts(deps.config.tokenRegistryTemplateId, deps.config.operatorParty);
-    const reg = regs[0];
-    if (!reg) return res.status(503).json({ error: "registry not initialized" });
+      const regs = await deps.ledger.activeContracts(deps.config.tokenRegistryTemplateId, deps.config.operatorParty);
+      const reg = regs[0];
+      if (!reg) return res.status(503).json({ error: "registry not initialized" });
 
-    await deps.ledger.submitAndWait(
-      [admin],
-      [
-        {
-          templateId: deps.config.tokenRegistryTemplateId,
-          contractId: reg.contractId,
-          choice: "TokenRegistry_ProposeInstrument",
-          choiceArgument: { admin, instrumentId, name, symbol, decimals, faucet: faucet ?? null },
-        },
-      ],
-      [toDisclosed(reg)],
-    );
-    return res.status(202).json({ status: "proposed" });
-  });
+      await deps.ledger.submitAndWait(
+        [admin],
+        [
+          {
+            templateId: deps.config.tokenRegistryTemplateId,
+            contractId: reg.contractId,
+            choice: "TokenRegistry_ProposeInstrument",
+            choiceArgument: { admin, instrumentId, name, symbol, decimals, faucet: faucet ?? null },
+          },
+        ],
+        [toDisclosed(reg)],
+      );
+      return res.status(202).json({ status: "proposed" });
+    }),
+  );
 
   // Operator accepts a pending proposal after the off-ledger (admin,
   // instrumentId) uniqueness check, the authoritative enforcement point
   // since LF 2.1 has no contract keys and the operator is a mandatory
   // participant in every InstrumentConfig creation.
-  r.post("/admin/proposals/:proposalId/accept", async (req, res) => {
-    const proposals = await deps.ledger.activeContracts(
-      deps.config.instrumentConfigProposalTemplateId,
-      deps.config.operatorParty,
-    );
-    const prop = proposals.find((p) => p.contractId === req.params.proposalId);
-    if (!prop) return res.status(404).json({ error: "proposal not found" });
+  r.post(
+    "/admin/proposals/:proposalId/accept",
+    asyncHandler(async (req, res) => {
+      const proposals = await deps.ledger.activeContracts(
+        deps.config.instrumentConfigProposalTemplateId,
+        deps.config.operatorParty,
+      );
+      const prop = proposals.find((p) => p.contractId === req.params.proposalId);
+      if (!prop) return res.status(404).json({ error: "proposal not found" });
 
-    const cfgRows = await deps.ledger.activeContracts(deps.config.instrumentConfigTemplateId, deps.config.operatorParty);
-    const dup = resolveConfig(cfgRows, prop.payload.admin, prop.payload.instrumentId);
-    if (dup.kind !== "none") {
-      return res.status(409).json({
-        error: "instrument id already registered",
-        contractIds: dup.kind === "ok" ? [dup.entry.contractId] : dup.contractIds,
-      });
-    }
+      const cfgRows = await deps.ledger.activeContracts(deps.config.instrumentConfigTemplateId, deps.config.operatorParty);
+      const dup = resolveConfig(cfgRows, prop.payload.admin, prop.payload.instrumentId);
+      if (dup.kind !== "none") {
+        return res.status(409).json({
+          error: "instrument id already registered",
+          contractIds: dup.kind === "ok" ? [dup.entry.contractId] : dup.contractIds,
+        });
+      }
 
-    await deps.ledger.submitAndWait([deps.config.operatorParty], [
-      {
-        templateId: deps.config.instrumentConfigProposalTemplateId,
-        contractId: prop.contractId,
-        choice: "InstrumentConfigProposal_Accept",
-        choiceArgument: {},
-      },
-    ]);
-    return res.status(200).json({ status: "accepted" });
-  });
+      await deps.ledger.submitAndWait([deps.config.operatorParty], [
+        {
+          templateId: deps.config.instrumentConfigProposalTemplateId,
+          contractId: prop.contractId,
+          choice: "InstrumentConfigProposal_Accept",
+          choiceArgument: {},
+        },
+      ]);
+      return res.status(200).json({ status: "accepted" });
+    }),
+  );
 
   // Operator rejects a pending proposal, for parity with accept.
-  r.post("/admin/proposals/:proposalId/reject", async (req, res) => {
-    const proposals = await deps.ledger.activeContracts(
-      deps.config.instrumentConfigProposalTemplateId,
-      deps.config.operatorParty,
-    );
-    const prop = proposals.find((p) => p.contractId === req.params.proposalId);
-    if (!prop) return res.status(404).json({ error: "proposal not found" });
+  r.post(
+    "/admin/proposals/:proposalId/reject",
+    asyncHandler(async (req, res) => {
+      const proposals = await deps.ledger.activeContracts(
+        deps.config.instrumentConfigProposalTemplateId,
+        deps.config.operatorParty,
+      );
+      const prop = proposals.find((p) => p.contractId === req.params.proposalId);
+      if (!prop) return res.status(404).json({ error: "proposal not found" });
 
-    await deps.ledger.submitAndWait([deps.config.operatorParty], [
-      {
-        templateId: deps.config.instrumentConfigProposalTemplateId,
-        contractId: prop.contractId,
-        choice: "InstrumentConfigProposal_Reject",
-        choiceArgument: {},
-      },
-    ]);
-    return res.status(200).json({ status: "rejected" });
-  });
+      await deps.ledger.submitAndWait([deps.config.operatorParty], [
+        {
+          templateId: deps.config.instrumentConfigProposalTemplateId,
+          contractId: prop.contractId,
+          choice: "InstrumentConfigProposal_Reject",
+          choiceArgument: {},
+        },
+      ]);
+      return res.status(200).json({ status: "rejected" });
+    }),
+  );
 
   return r;
 }

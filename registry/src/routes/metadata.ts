@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { SUPPORTED_APIS, toInstrument, resolveById, type ResolveResult } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
+import { asyncHandler } from "./async-handler.js";
 
 // Collapse rows to one entry per (admin, instrumentId): LF 2.1 has no
 // contract keys, so nothing prevents duplicates, but the list endpoint
@@ -25,29 +26,35 @@ export function metadataRouter(deps: ServerDeps): Router {
     });
   });
 
-  r.get("/registry/metadata/v1/instruments", async (_req, res) => {
-    const rows = await deps.ledger.activeContracts(
-      deps.config.instrumentConfigTemplateId,
-      deps.config.operatorParty,
-    );
-    const instruments = dedupeByAdminAndInstrumentId(rows).map((row) => toInstrument(row.payload));
-    res.json({ instruments });
-  });
+  r.get(
+    "/registry/metadata/v1/instruments",
+    asyncHandler(async (_req, res) => {
+      const rows = await deps.ledger.activeContracts(
+        deps.config.instrumentConfigTemplateId,
+        deps.config.operatorParty,
+      );
+      const instruments = dedupeByAdminAndInstrumentId(rows).map((row) => toInstrument(row.payload));
+      res.json({ instruments });
+    }),
+  );
 
-  r.get("/registry/metadata/v1/instruments/:instrumentId", async (req, res) => {
-    const rows = await deps.ledger.activeContracts(
-      deps.config.instrumentConfigTemplateId,
-      deps.config.operatorParty,
-    );
-    const result: ResolveResult = resolveById(rows, req.params.instrumentId);
-    if (result.kind === "none") {
-      return res.status(404).json({ error: "instrument not found" });
-    }
-    if (result.kind === "conflict") {
-      return res.status(409).json({ error: "instrument id not unique", contractIds: result.contractIds });
-    }
-    res.json(toInstrument(result.entry.payload));
-  });
+  r.get(
+    "/registry/metadata/v1/instruments/:instrumentId",
+    asyncHandler(async (req, res) => {
+      const rows = await deps.ledger.activeContracts(
+        deps.config.instrumentConfigTemplateId,
+        deps.config.operatorParty,
+      );
+      const result: ResolveResult = resolveById(rows, req.params.instrumentId);
+      if (result.kind === "none") {
+        return res.status(404).json({ error: "instrument not found" });
+      }
+      if (result.kind === "conflict") {
+        return res.status(409).json({ error: "instrument id not unique", contractIds: result.contractIds });
+      }
+      res.json(toInstrument(result.entry.payload));
+    }),
+  );
 
   return r;
 }
