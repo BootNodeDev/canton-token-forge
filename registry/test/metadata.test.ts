@@ -2,12 +2,7 @@ import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { createServer } from "../src/server";
 import { validateAgainst } from "./helpers/schema";
-
-const config = {
-  operatorParty: "op::1",
-  registryBaseUrl: "http://r",
-  instrumentConfigTemplateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-} as any;
+import { config } from "./helpers/fixtures";
 
 function ledgerWith(payloads: any[]) {
   return {

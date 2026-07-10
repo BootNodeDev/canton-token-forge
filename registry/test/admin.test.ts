@@ -1,14 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { createServer } from "../src/server";
-
-const config = {
-  operatorParty: "op::1",
-  registryBaseUrl: "http://r",
-  instrumentConfigTemplateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-  instrumentConfigProposalTemplateId: "pkg:Canton.TokenForge.Registry:InstrumentConfigProposal",
-  tokenRegistryTemplateId: "pkg:Canton.TokenForge.Registry:TokenRegistry",
-} as any;
+import { config, cfgEntry, recordingLedger } from "./helpers/fixtures";
 
 function registryEntry(overrides: any = {}) {
   return {
@@ -43,40 +36,9 @@ function proposalEntry(overrides: any = {}) {
   };
 }
 
-function cfgEntry(overrides: any = {}) {
-  return {
-    templateId: config.instrumentConfigTemplateId,
-    contractId: "cfg1",
-    createdEventBlob: "BLOB-CFG",
-    synchronizerId: "s",
-    payload: {
-      admin: "admin::1",
-      operator: "op::1",
-      instrumentId: "CC",
-      name: "Canton Coin",
-      symbol: "CC",
-      decimals: 10,
-      faucet: null,
-      ...overrides,
-    },
-  };
-}
-
-function ledgerFrom(byTemplate: Record<string, any[]>) {
-  const calls: { actAs: string[]; commands: any[]; disclosedContracts: any[] }[] = [];
-  const ledger = {
-    activeContracts: async (templateOrInterfaceId: string) => byTemplate[templateOrInterfaceId] ?? [],
-    submitAndWait: async (actAs: string[], commands: any[], disclosedContracts: any[] = []) => {
-      calls.push({ actAs, commands, disclosedContracts });
-      return { transactionId: "tx-1" };
-    },
-  } as any;
-  return { ledger, calls };
-}
-
 describe("POST /admin/instruments", () => {
   it("resolves the active registry and submits TokenRegistry_ProposeInstrument as the admin, disclosing the registry", async () => {
-    const { ledger, calls } = ledgerFrom({ [config.tokenRegistryTemplateId]: [registryEntry()] });
+    const { ledger, calls } = recordingLedger({ [config.tokenRegistryTemplateId]: [registryEntry()] });
     const app = createServer({ ledger, config });
     const res = await request(app).post("/admin/instruments").send({
       admin: "admin::1",
@@ -118,7 +80,7 @@ describe("POST /admin/instruments", () => {
   });
 
   it("defaults an absent faucet to null in the choice argument", async () => {
-    const { ledger, calls } = ledgerFrom({ [config.tokenRegistryTemplateId]: [registryEntry()] });
+    const { ledger, calls } = recordingLedger({ [config.tokenRegistryTemplateId]: [registryEntry()] });
     const app = createServer({ ledger, config });
     const res = await request(app).post("/admin/instruments").send({
       admin: "admin::1",
@@ -132,7 +94,7 @@ describe("POST /admin/instruments", () => {
   });
 
   it("400s when a required field is missing", async () => {
-    const { ledger } = ledgerFrom({ [config.tokenRegistryTemplateId]: [registryEntry()] });
+    const { ledger } = recordingLedger({ [config.tokenRegistryTemplateId]: [registryEntry()] });
     const app = createServer({ ledger, config });
     const res = await request(app).post("/admin/instruments").send({
       admin: "admin::1",
@@ -145,7 +107,7 @@ describe("POST /admin/instruments", () => {
   });
 
   it("400s when decimals is null rather than forwarding a null Int to the ledger", async () => {
-    const { ledger, calls } = ledgerFrom({ [config.tokenRegistryTemplateId]: [registryEntry()] });
+    const { ledger, calls } = recordingLedger({ [config.tokenRegistryTemplateId]: [registryEntry()] });
     const app = createServer({ ledger, config });
     const res = await request(app).post("/admin/instruments").send({
       admin: "admin::1",
@@ -160,7 +122,7 @@ describe("POST /admin/instruments", () => {
   });
 
   it("503s when no registry is active", async () => {
-    const { ledger } = ledgerFrom({ [config.tokenRegistryTemplateId]: [] });
+    const { ledger } = recordingLedger({ [config.tokenRegistryTemplateId]: [] });
     const app = createServer({ ledger, config });
     const res = await request(app).post("/admin/instruments").send({
       admin: "admin::1",
@@ -176,7 +138,7 @@ describe("POST /admin/instruments", () => {
 
 describe("POST /admin/proposals/:proposalId/accept", () => {
   it("409s when an active InstrumentConfig already shares (admin, instrumentId), and does not submit", async () => {
-    const { ledger, calls } = ledgerFrom({
+    const { ledger, calls } = recordingLedger({
       [config.instrumentConfigProposalTemplateId]: [proposalEntry()],
       [config.instrumentConfigTemplateId]: [cfgEntry()],
     });
@@ -191,7 +153,7 @@ describe("POST /admin/proposals/:proposalId/accept", () => {
   it("409s with all conflicting contractIds when the duplicate check itself is not unique", async () => {
     const dup = cfgEntry();
     dup.contractId = "cfg2";
-    const { ledger, calls } = ledgerFrom({
+    const { ledger, calls } = recordingLedger({
       [config.instrumentConfigProposalTemplateId]: [proposalEntry()],
       [config.instrumentConfigTemplateId]: [cfgEntry(), dup],
     });
@@ -203,7 +165,7 @@ describe("POST /admin/proposals/:proposalId/accept", () => {
   });
 
   it("submits InstrumentConfigProposal_Accept as the operator when there is no duplicate", async () => {
-    const { ledger, calls } = ledgerFrom({
+    const { ledger, calls } = recordingLedger({
       [config.instrumentConfigProposalTemplateId]: [proposalEntry()],
       [config.instrumentConfigTemplateId]: [],
     });
@@ -224,7 +186,7 @@ describe("POST /admin/proposals/:proposalId/accept", () => {
   });
 
   it("404s when the proposal is not found", async () => {
-    const { ledger } = ledgerFrom({ [config.instrumentConfigProposalTemplateId]: [] });
+    const { ledger } = recordingLedger({ [config.instrumentConfigProposalTemplateId]: [] });
     const app = createServer({ ledger, config });
     const res = await request(app).post("/admin/proposals/nope/accept").send({});
     expect(res.status).toBe(404);
@@ -233,7 +195,7 @@ describe("POST /admin/proposals/:proposalId/accept", () => {
 
 describe("POST /admin/proposals/:proposalId/reject", () => {
   it("submits InstrumentConfigProposal_Reject as the operator", async () => {
-    const { ledger, calls } = ledgerFrom({
+    const { ledger, calls } = recordingLedger({
       [config.instrumentConfigProposalTemplateId]: [proposalEntry()],
     });
     const app = createServer({ ledger, config });
@@ -253,7 +215,7 @@ describe("POST /admin/proposals/:proposalId/reject", () => {
   });
 
   it("404s when the proposal is not found", async () => {
-    const { ledger } = ledgerFrom({ [config.instrumentConfigProposalTemplateId]: [] });
+    const { ledger } = recordingLedger({ [config.instrumentConfigProposalTemplateId]: [] });
     const app = createServer({ ledger, config });
     const res = await request(app).post("/admin/proposals/nope/reject").send({});
     expect(res.status).toBe(404);

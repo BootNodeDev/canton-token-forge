@@ -3,36 +3,7 @@ import request from "supertest";
 import { createServer } from "../src/server";
 import { validateAgainst } from "./helpers/schema";
 import { PREAPPROVAL_CONTEXT_KEY } from "../src/disclose";
-
-const config = {
-  operatorParty: "op::1",
-  registryBaseUrl: "http://r",
-  instrumentConfigTemplateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-  transferInstructionInterfaceId: "pkg:Splice.Api.Token.TransferInstructionV1:TransferInstruction",
-  preapprovalTemplateId: "pkg:Canton.TokenForge.Registry:TokenTransferPreapproval",
-  lockedTokenTemplateId: "pkg:Canton.TokenForge.Registry:LockedToken",
-} as any;
-
-const instrumentId = { admin: "admin::1", id: "CC" };
-
-function cfgEntry(overrides: any = {}) {
-  return {
-    templateId: config.instrumentConfigTemplateId,
-    contractId: "cfg1",
-    createdEventBlob: "BLOB-CFG",
-    synchronizerId: "s",
-    payload: {
-      admin: instrumentId.admin,
-      operator: "op::1",
-      instrumentId: instrumentId.id,
-      name: "Canton Coin",
-      symbol: "CC",
-      decimals: 10,
-      faucet: null,
-      ...overrides,
-    },
-  };
-}
+import { config, instrumentId, cfgEntry, lockedTokenEntry, ledgerFrom } from "./helpers/fixtures";
 
 function preapprovalEntry(overrides: any = {}) {
   return {
@@ -70,25 +41,6 @@ function instructionEntry(overrides: any = {}) {
       ...overrides,
     },
   };
-}
-
-function lockedTokenEntry(overrides: any = {}) {
-  return {
-    templateId: config.lockedTokenTemplateId,
-    contractId: "locked1",
-    createdEventBlob: "BLOB-LOCK",
-    synchronizerId: "s",
-    payload: {
-      admin: instrumentId.admin,
-      ...overrides,
-    },
-  };
-}
-
-function ledgerFrom(byTemplate: Record<string, any[]>) {
-  return {
-    activeContracts: async (templateOrInterfaceId: string) => byTemplate[templateOrInterfaceId] ?? [],
-  } as any;
 }
 
 describe("transfer factory", () => {

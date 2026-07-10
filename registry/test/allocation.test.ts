@@ -3,35 +3,7 @@ import request from "supertest";
 import { createServer } from "../src/server";
 import { validateAgainst } from "./helpers/schema";
 import { EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../src/disclose";
-
-const config = {
-  operatorParty: "op::1",
-  registryBaseUrl: "http://r",
-  instrumentConfigTemplateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-  allocationInterfaceId: "pkg:Splice.Api.Token.AllocationV1:Allocation",
-  lockedTokenTemplateId: "pkg:Canton.TokenForge.Registry:LockedToken",
-} as any;
-
-const instrumentId = { admin: "admin::1", id: "CC" };
-
-function cfgEntry(overrides: any = {}) {
-  return {
-    templateId: config.instrumentConfigTemplateId,
-    contractId: "cfg1",
-    createdEventBlob: "BLOB-CFG",
-    synchronizerId: "s",
-    payload: {
-      admin: instrumentId.admin,
-      operator: "op::1",
-      instrumentId: instrumentId.id,
-      name: "Canton Coin",
-      symbol: "CC",
-      decimals: 10,
-      faucet: null,
-      ...overrides,
-    },
-  };
-}
+import { config, instrumentId, cfgEntry, lockedTokenEntry, ledgerFrom } from "./helpers/fixtures";
 
 function allocationEntry(overrides: any = {}) {
   return {
@@ -51,25 +23,6 @@ function allocationEntry(overrides: any = {}) {
       ...overrides,
     },
   };
-}
-
-function lockedTokenEntry(overrides: any = {}) {
-  return {
-    templateId: config.lockedTokenTemplateId,
-    contractId: "locked1",
-    createdEventBlob: "BLOB-LOCK",
-    synchronizerId: "s",
-    payload: {
-      admin: instrumentId.admin,
-      ...overrides,
-    },
-  };
-}
-
-function ledgerFrom(byTemplate: Record<string, any[]>) {
-  return {
-    activeContracts: async (templateOrInterfaceId: string) => byTemplate[templateOrInterfaceId] ?? [],
-  } as any;
 }
 
 describe("allocation factory", () => {
