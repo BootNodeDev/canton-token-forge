@@ -19,6 +19,7 @@ export function transferRouter(deps: ServerDeps): Router {
       const instrumentId = transfer?.instrumentId;
       if (!instrumentId) return res.status(400).json({ error: "missing transfer.instrumentId" });
       const { sender, receiver } = transfer;
+      if (!sender || !receiver) return res.status(400).json({ error: "missing transfer.sender or transfer.receiver" });
 
       const result = resolveConfig(await configRows(), instrumentId.admin, instrumentId.id);
       if (result.kind === "none") return res.status(404).json({ error: "instrument not found" });

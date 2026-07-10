@@ -169,6 +169,15 @@ describe("transfer factory", () => {
     expect(res.status).toBe(400);
   });
 
+  it("400s when the request omits both sender and receiver instead of treating it as a self-transfer", async () => {
+    const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [cfgEntry()] });
+    const app = createServer({ ledger, config });
+    const res = await request(app)
+      .post("/registry/transfer-instruction/v1/transfer-factory")
+      .send({ choiceArguments: { transfer: { instrumentId } } });
+    expect(res.status).toBe(400);
+  });
+
   it("404s when no config matches the instrumentId", async () => {
     const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [] });
     const app = createServer({ ledger, config });
