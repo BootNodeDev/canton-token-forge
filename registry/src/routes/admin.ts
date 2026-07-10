@@ -25,6 +25,10 @@ export function adminRouter(deps: ServerDeps): Router {
         return res.status(400).json({ error: "missing proposal fields" });
       }
 
+      // The operator creates exactly one TokenRegistry, so its active set is a
+      // singleton; take it directly rather than through resolveUnique. A second
+      // active registry would be an operator misconfiguration, not a routine
+      // duplicate to surface as a 409 the way instrument configs are.
       const regs = await deps.ledger.activeContracts(deps.config.tokenRegistryTemplateId, deps.config.operatorParty);
       const reg = regs[0];
       if (!reg) return res.status(503).json({ error: "registry not initialized" });
