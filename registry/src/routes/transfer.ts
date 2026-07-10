@@ -20,12 +20,12 @@ export function transferRouter(deps: ServerDeps): Router {
       const cfg = resolveOrRespond(res, resolveConfig(await activeConfigs(deps.ledger, deps.config), instrumentId.admin, instrumentId.id));
       if (!cfg) return;
 
+      // self and offer share the same empty context disclosing only the
+      // config; only a matched in-window preapproval upgrades to a direct one.
+      const baseContext = { choiceContextData: {}, disclosedContracts: [toDisclosed(cfg)] };
+
       if (sender === receiver) {
-        return res.json({
-          factoryId: cfg.contractId,
-          transferKind: "self",
-          choiceContext: { choiceContextData: {}, disclosedContracts: [toDisclosed(cfg)] },
-        });
+        return res.json({ factoryId: cfg.contractId, transferKind: "self", choiceContext: baseContext });
       }
 
       // Only a preapproval whose validity window covers now enables a direct
@@ -56,11 +56,7 @@ export function transferRouter(deps: ServerDeps): Router {
         });
       }
 
-      return res.json({
-        factoryId: cfg.contractId,
-        transferKind: "offer",
-        choiceContext: { choiceContextData: {}, disclosedContracts: [toDisclosed(cfg)] },
-      });
+      return res.json({ factoryId: cfg.contractId, transferKind: "offer", choiceContext: baseContext });
     }),
   );
 
