@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed, EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../disclose.js";
-import { resolveConfig } from "../mapping.js";
+import { resolveConfig, resolveOrRespond } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
 import { findByContractId, escrowDisclosure } from "./lookup.js";
 
@@ -15,12 +15,8 @@ export function allocationRouter(deps: ServerDeps): Router {
       if (!instrumentId) return res.status(400).json({ error: "missing allocation.instrumentId" });
 
       const rows = await deps.ledger.activeContracts(deps.config.instrumentConfigTemplateId, deps.config.operatorParty);
-      const result = resolveConfig(rows, instrumentId.admin, instrumentId.id);
-      if (result.kind === "none") return res.status(404).json({ error: "instrument not found" });
-      if (result.kind === "conflict") {
-        return res.status(409).json({ error: "instrument id not unique", contractIds: result.contractIds });
-      }
-      const cfg = result.entry;
+      const cfg = resolveOrRespond(res, resolveConfig(rows, instrumentId.admin, instrumentId.id));
+      if (!cfg) return;
 
       res.json({
         factoryId: cfg.contractId,

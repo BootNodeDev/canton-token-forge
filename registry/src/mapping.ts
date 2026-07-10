@@ -1,3 +1,4 @@
+import type { Response } from "express";
 import type { ContractEntry } from "./ledger.js";
 
 // Map from token standard API name to the minor version of the API
@@ -62,4 +63,21 @@ export function resolveConfig(rows: ContractEntry[], admin: string, id: string):
 export function resolveById(rows: ContractEntry[], id: string): ResolveResult {
   const matches = rows.filter((r) => r.payload.instrumentId === id);
   return resolveUnique(matches);
+}
+
+// Translate a ResolveResult into the shared HTTP error responses (404 for a
+// missing instrument, 409 with the conflicting ids for a non-unique
+// (admin, instrumentId)) and return the resolved entry, or undefined when a
+// response was already sent. Every config-resolving route funnels through
+// this so the status codes and error strings live in one place.
+export function resolveOrRespond(res: Response, result: ResolveResult): ContractEntry | undefined {
+  if (result.kind === "none") {
+    res.status(404).json({ error: "instrument not found" });
+    return undefined;
+  }
+  if (result.kind === "conflict") {
+    res.status(409).json({ error: "instrument id not unique", contractIds: result.contractIds });
+    return undefined;
+  }
+  return result.entry;
 }

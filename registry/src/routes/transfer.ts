@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed, PREAPPROVAL_CONTEXT_KEY, anyValueContractId } from "../disclose.js";
-import { resolveConfig } from "../mapping.js";
+import { resolveConfig, resolveOrRespond } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
 import { findByContractId, escrowDisclosure } from "./lookup.js";
@@ -22,12 +22,8 @@ export function transferRouter(deps: ServerDeps): Router {
       const { sender, receiver } = transfer;
       if (!sender || !receiver) return res.status(400).json({ error: "missing transfer.sender or transfer.receiver" });
 
-      const result = resolveConfig(await configRows(), instrumentId.admin, instrumentId.id);
-      if (result.kind === "none") return res.status(404).json({ error: "instrument not found" });
-      if (result.kind === "conflict") {
-        return res.status(409).json({ error: "instrument id not unique", contractIds: result.contractIds });
-      }
-      const cfg = result.entry;
+      const cfg = resolveOrRespond(res, resolveConfig(await configRows(), instrumentId.admin, instrumentId.id));
+      if (!cfg) return;
 
       if (sender === receiver) {
         return res.json({
@@ -91,12 +87,8 @@ export function transferRouter(deps: ServerDeps): Router {
         if (!instr) return res.status(404).json({ error: "transfer instruction not found" });
 
         const instrumentId = instr.payload.transfer.instrumentId;
-        const result = resolveConfig(await configRows(), instrumentId.admin, instrumentId.id);
-        if (result.kind === "none") return res.status(404).json({ error: "instrument not found" });
-        if (result.kind === "conflict") {
-          return res.status(409).json({ error: "instrument id not unique", contractIds: result.contractIds });
-        }
-        const cfg = result.entry;
+        const cfg = resolveOrRespond(res, resolveConfig(await configRows(), instrumentId.admin, instrumentId.id));
+        if (!cfg) return;
 
         const escrow = await escrowDisclosure(deps.ledger, deps.config, instr.payload.lockedCid);
         const disclosedContracts = [toDisclosed(cfg), ...escrow];
