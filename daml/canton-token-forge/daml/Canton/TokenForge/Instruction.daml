@@ -4,7 +4,7 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Token (mkToken)
-import Canton.TokenForge.Locked (LockedToken(..), abortEscrow, reclaimAtDeadline)
+import Canton.TokenForge.Locked (LockedToken(..), reclaimAtDeadline, unlockHolding)
 
 -- | Wrap an escrow holding returned to the sender as a failed (refunded)
 -- transfer result. Shared by the reject and withdraw paths.
@@ -43,10 +43,12 @@ template TokenTransferInstruction
           senderChangeCids = []
           meta = emptyMetadata
 
-      -- Reject is the receiver declining delivery; it returns the escrow to the
-      -- sender through the shared abort model (deadline or early-release signal).
-      transferInstruction_rejectImpl _self arg = do
-        backCid <- abortEscrow lockedCid transfer.executeBefore arg.extraArgs.context
+      -- Reject is the receiver declining delivery, which always returns the
+      -- escrow to the sender immediately, independent of the deadline or the
+      -- early-release signal: a receiver refusing funds has no reason to wait,
+      -- and the refund can only ever go back to the sender.
+      transferInstruction_rejectImpl _self _arg = do
+        backCid <- unlockHolding lockedCid
         pure (failedRefund backCid)
 
       -- Withdraw is the sender rescinding alone, so it is strictly deadline-gated

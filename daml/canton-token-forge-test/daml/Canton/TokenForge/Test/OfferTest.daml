@@ -75,6 +75,8 @@ offerAcceptedCompletes = do
       bv.amount === 40.0
     _ -> abort "expected completed after accept"
 
+-- The receiver can reject a pending offer immediately, before the deadline and
+-- with no early-release signal; the escrow returns to the sender.
 offerRejectedRefunds : Script ()
 offerRejectedRefunds = do
   operator <- allocateParty "operator"
@@ -83,7 +85,7 @@ offerRejectedRefunds = do
   bob <- allocateParty "bob"
   instrCid <- startOffer operator admin alice bob
   lockedDisclosure <- escrowDisclosure admin instrCid
-  rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = expireLockArgs
+  rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
   [refundCid] <- pure rej.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice
