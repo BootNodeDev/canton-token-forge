@@ -6,7 +6,7 @@ import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata, ChoiceContext(..), 
 import Splice.Api.Token.TransferInstructionV1
 import Splice.Api.Token.AllocationInstructionV1
 import Splice.Api.Token.BurnMintV1
-import Canton.TokenForge.Token (Token(..), mkToken, consumeInputs, spendInputs, holdingOwners)
+import Canton.TokenForge.Token (Token(..), mkToken, fetchInputs, spendInputs)
 import Canton.TokenForge.Locked (LockedToken(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
 import Canton.TokenForge.Allocation (allocateImpl)
@@ -214,19 +214,19 @@ template InstrumentConfig
         assertMsg "expectedAdmin must match" (expectedAdmin == admin)
         assertMsg "instrumentId must match this config" (argInstrumentId == mkInstrumentId admin instrumentId)
 
-        -- Every input and output owner must authorize the burn-mint. The choice
+        -- Fetch the inputs once, up front and without archiving, so every input
+        -- and output owner can be authorized before any side effect. The choice
         -- is controller admin :: extraActors, so an owner's authority is in scope
         -- when the owner is the admin or appears in extraActors - the admin need
-        -- not redundantly list itself to reissue its own holdings. Validated
-        -- before archiving so the error is clear rather than a raw
-        -- missing-authorization failure at archive/create.
-        inputOwners <- holdingOwners admin instrumentId inputHoldingCids
-        let requiredActors = inputOwners <> map (.owner) outputs
+        -- not redundantly list itself to reissue its own holdings.
+        inputs <- fetchInputs admin instrumentId inputHoldingCids
+        let requiredActors = map (\(_, token) -> token.owner) inputs <> map (.owner) outputs
         assertMsg "every input and output owner must be the admin or appear in extraActors" (all (`elem` (admin :: extraActors)) requiredActors)
 
-        -- Burn every input. This is admin-authorized reissuance, so inputs are
-        -- validated against the instrument but not against a single owner.
-        _ <- consumeInputs admin instrumentId None inputHoldingCids
+        -- Burn every input, then mint the outputs. This is admin-authorized
+        -- reissuance, so inputs are validated against the instrument but not
+        -- against a single owner.
+        _ <- forA inputs \(tcid, _) -> archive tcid
 
         outputCids <- forA outputs \o -> do
           assertMsg "output amount must be positive" (o.amount > 0.0)

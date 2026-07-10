@@ -33,27 +33,33 @@ mkToken : Party -> Party -> Text -> Decimal -> Metadata -> Token
 mkToken admin owner instrumentId amount meta =
   Token with admin; owner; instrumentId; amount; meta
 
--- | Consume input Token holdings of this instrument, archiving each and
--- returning its amount. fetchFromInterface downcasts to Token, returning None
--- for a LockedToken or any non-Token holding, so a locked or foreign input is
--- rejected with a clear message rather than an unchecked coercion. When
--- `requiredOwner` is set every input must also be owned by that party; the
--- admin-authorized burn-mint path passes None.
-consumeInputs
-  : Party -> Text -> Optional Party -> [ContractId HoldingV1.Holding] -> Update [Decimal]
-consumeInputs admin instrumentId requiredOwner cids = do
+-- | Fetch input Token holdings of this instrument WITHOUT archiving them,
+-- asserting the batch is free of duplicates. fetchFromInterface downcasts to
+-- Token, returning None for a LockedToken or any non-Token holding, so a locked
+-- or foreign input is rejected with a clear message rather than an unchecked
+-- coercion. Returning the fetched tokens lets a caller inspect their owners
+-- (burn-mint validates its extraActors) and archive afterward, so each input is
+-- fetched exactly once.
+fetchInputs : Party -> Text -> [ContractId HoldingV1.Holding] -> Update [(ContractId Token, Token)]
+fetchInputs admin instrumentId cids = do
   assertMsg "input holdings must not contain duplicates" (unique cids)
   forA cids \hcid -> do
     optToken <- fetchFromInterface @Token hcid
     case optToken of
       None -> abort "input holding is not a spendable Token (locked or foreign)"
       Some (tcid, token) -> do
-        case requiredOwner of
-          Some o -> assertMsg "input holding must be owned by the sender" (token.owner == o)
-          None -> pure ()
         assertMsg "input holding must belong to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
-        archive tcid
-        pure token.amount
+        pure (tcid, token)
+
+-- | Consume the sender's input holdings, archiving each and returning its
+-- amount. Every input must be owned by `sender`.
+consumeInputs : Party -> Text -> Party -> [ContractId HoldingV1.Holding] -> Update [Decimal]
+consumeInputs admin instrumentId sender cids = do
+  inputs <- fetchInputs admin instrumentId cids
+  forA inputs \(tcid, token) -> do
+    assertMsg "input holding must be owned by the sender" (token.owner == sender)
+    archive tcid
+    pure token.amount
 
 -- | Consume the sender's inputs to cover `requiredAmount`, returning any
 -- leftover to the sender as change (which carries no memo, being the sender's
@@ -61,7 +67,7 @@ consumeInputs admin instrumentId requiredOwner cids = do
 spendInputs
   : Party -> Text -> Party -> [ContractId HoldingV1.Holding] -> Decimal -> Update [ContractId HoldingV1.Holding]
 spendInputs admin instrumentId sender cids requiredAmount = do
-  amounts <- consumeInputs admin instrumentId (Some sender) cids
+  amounts <- consumeInputs admin instrumentId sender cids
   let total = sum amounts
   assertMsg "insufficient input amount" (total >= requiredAmount)
   if total > requiredAmount
@@ -69,17 +75,3 @@ spendInputs admin instrumentId sender cids requiredAmount = do
       changeCid <- create (mkToken admin sender instrumentId (total - requiredAmount) emptyMetadata)
       pure [toInterfaceContractId @HoldingV1.Holding changeCid]
     else pure []
-
--- | Fetch the owners of Token holdings WITHOUT archiving them, so a caller can
--- validate authorization requirements (burn-mint's extraActors) and fail with a
--- clear message before any archival side effect. A second fetch of the same
--- input inside consumeInputs is harmless (fetch is idempotent pre-archive).
-holdingOwners : Party -> Text -> [ContractId HoldingV1.Holding] -> Update [Party]
-holdingOwners admin instrumentId cids =
-  forA cids \hcid -> do
-    optToken <- fetchFromInterface @Token hcid
-    case optToken of
-      None -> abort "input holding is not a spendable Token (locked or foreign)"
-      Some (_, token) -> do
-        assertMsg "input holding must belong to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
-        pure token.owner
