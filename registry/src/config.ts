@@ -7,6 +7,7 @@ export interface Config {
   transferInstructionInterfaceId: string;
   preapprovalTemplateId: string;
   lockedTokenTemplateId: string;
+  allocationInterfaceId: string;
   port: number;
 }
 
@@ -25,6 +26,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     transferInstructionInterfaceId: require_("TRANSFER_INSTRUCTION_INTERFACE_ID"),
     preapprovalTemplateId: require_("PREAPPROVAL_TEMPLATE_ID"),
     lockedTokenTemplateId: require_("LOCKED_TOKEN_TEMPLATE_ID"),
+    allocationInterfaceId: require_("ALLOCATION_INTERFACE_ID"),
     port: Number(env.PORT ?? "8080"),
   };
 }

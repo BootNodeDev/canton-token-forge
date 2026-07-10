@@ -3,6 +3,7 @@ import type { Config } from "./config.js";
 import type { LedgerClient } from "./ledger.js";
 import { metadataRouter } from "./routes/metadata.js";
 import { transferRouter } from "./routes/transfer.js";
+import { allocationRouter } from "./routes/allocation.js";
 
 export interface ServerDeps {
   ledger: LedgerClient;
@@ -15,6 +16,7 @@ export function createServer(deps: ServerDeps): Express {
   app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
   app.use(metadataRouter(deps));
   app.use(transferRouter(deps));
+  app.use(allocationRouter(deps));
   // route groups mounted in later tasks
   return app;
 }
