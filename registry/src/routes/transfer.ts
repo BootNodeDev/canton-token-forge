@@ -17,7 +17,16 @@ export function transferRouter(deps: ServerDeps): Router {
       const { sender, receiver } = transfer;
       if (!sender || !receiver) return res.status(400).json({ error: "missing transfer.sender or transfer.receiver" });
 
-      const cfg = resolveOrRespond(res, resolveConfig(await activeConfigs(deps.ledger, deps.config), instrumentId.admin, instrumentId.id));
+      // The config set and the preapprovals are independent lookups, so fetch
+      // both up front: the common direct/offer path then costs one round-trip
+      // instead of two, at the price of one wasted preapproval query on the
+      // self and not-found paths.
+      const now = Date.now();
+      const [cfgRows, preapprovalRows] = await Promise.all([
+        activeConfigs(deps.ledger, deps.config),
+        deps.ledger.activeContracts(deps.config.preapprovalTemplateId, deps.config.operatorParty),
+      ]);
+      const cfg = resolveOrRespond(res, resolveConfig(cfgRows, instrumentId.admin, instrumentId.id));
       if (!cfg) return;
 
       // self and offer share the same empty context disclosing only the
@@ -33,11 +42,6 @@ export function transferRouter(deps: ServerDeps): Router {
       // expiresAt on-ledger, and the direct path hard-fails (no offer
       // fallback) against an out-of-window one, so an expired or
       // not-yet-valid preapproval must fall through to "offer" here.
-      const now = Date.now();
-      const preapprovalRows = await deps.ledger.activeContracts(
-        deps.config.preapprovalTemplateId,
-        deps.config.operatorParty,
-      );
       const pre = preapprovalRows.find(
         (p) =>
           matchesInstrument(p.payload, instrumentId) &&
