@@ -4,7 +4,7 @@ import { toDisclosed, PREAPPROVAL_CONTEXT_KEY, anyValueContractId } from "../dis
 import { resolveConfig } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
-import { findByContractId } from "./lookup.js";
+import { findByContractId, escrowDisclosure } from "./lookup.js";
 
 export function transferRouter(deps: ServerDeps): Router {
   const r = Router();
@@ -98,13 +98,8 @@ export function transferRouter(deps: ServerDeps): Router {
         }
         const cfg = result.entry;
 
-        const lockedRows = await deps.ledger.activeContracts(
-          deps.config.lockedTokenTemplateId,
-          deps.config.operatorParty,
-        );
-        const escrow = lockedRows.find((row) => row.contractId === instr.payload.lockedCid);
-
-        const disclosedContracts = [cfg, escrow].filter((c): c is ContractEntry => c != null).map(toDisclosed);
+        const escrow = await escrowDisclosure(deps.ledger, deps.config, instr.payload.lockedCid);
+        const disclosedContracts = [toDisclosed(cfg), ...escrow];
         res.json({ choiceContextData: {}, disclosedContracts });
       }),
     );

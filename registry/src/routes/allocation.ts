@@ -2,9 +2,8 @@ import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed, EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../disclose.js";
 import { resolveConfig } from "../mapping.js";
-import type { ContractEntry } from "../ledger.js";
 import { asyncHandler } from "./async-handler.js";
-import { findByContractId } from "./lookup.js";
+import { findByContractId, escrowDisclosure } from "./lookup.js";
 
 export function allocationRouter(deps: ServerDeps): Router {
   const r = Router();
@@ -47,13 +46,7 @@ export function allocationRouter(deps: ServerDeps): Router {
         );
         if (!alloc) return res.status(404).json({ error: "allocation not found" });
 
-        const lockedRows = await deps.ledger.activeContracts(
-          deps.config.lockedTokenTemplateId,
-          deps.config.operatorParty,
-        );
-        const escrow = lockedRows.find((row) => row.contractId === alloc.payload.lockedCid);
-
-        const disclosedContracts = [escrow].filter((c): c is ContractEntry => c != null).map(toDisclosed);
+        const disclosedContracts = await escrowDisclosure(deps.ledger, deps.config, alloc.payload.lockedCid);
         const choiceContextData = choice === "cancel" ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {};
         res.json({ choiceContextData, disclosedContracts });
       }),
