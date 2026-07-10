@@ -4,6 +4,8 @@ export interface Config {
   operatorParty: string;
   registryBaseUrl: string;
   instrumentConfigTemplateId: string;
+  instrumentConfigProposalTemplateId: string;
+  tokenRegistryTemplateId: string;
   transferInstructionInterfaceId: string;
   preapprovalTemplateId: string;
   lockedTokenTemplateId: string;
@@ -23,6 +25,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     operatorParty: require_("OPERATOR_PARTY"),
     registryBaseUrl: require_("REGISTRY_BASE_URL"),
     instrumentConfigTemplateId: require_("INSTRUMENT_CONFIG_TEMPLATE_ID"),
+    instrumentConfigProposalTemplateId: require_("INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID"),
+    tokenRegistryTemplateId: require_("TOKEN_REGISTRY_TEMPLATE_ID"),
     transferInstructionInterfaceId: require_("TRANSFER_INSTRUCTION_INTERFACE_ID"),
     preapprovalTemplateId: require_("PREAPPROVAL_TEMPLATE_ID"),
     lockedTokenTemplateId: require_("LOCKED_TOKEN_TEMPLATE_ID"),

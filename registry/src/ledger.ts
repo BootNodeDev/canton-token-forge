@@ -1,4 +1,5 @@
 import type { Config } from "./config.js";
+import type { DisclosedContract } from "./disclose.js";
 
 export interface ContractEntry {
   templateId: string;
@@ -22,7 +23,11 @@ export interface ExerciseCommand {
 
 export interface LedgerClient {
   activeContracts(templateOrInterfaceId: string, party: string): Promise<ContractEntry[]>;
-  submitAndWait(actAs: string[], commands: (CreateCommand | ExerciseCommand)[]): Promise<any>;
+  submitAndWait(
+    actAs: string[],
+    commands: (CreateCommand | ExerciseCommand)[],
+    disclosedContracts?: DisclosedContract[],
+  ): Promise<any>;
 }
 
 type FetchFn = typeof fetch;
@@ -78,7 +83,14 @@ export class HttpLedgerClient implements LedgerClient {
       }));
   }
 
-  async submitAndWait(actAs: string[], commands: (CreateCommand | ExerciseCommand)[]): Promise<any> {
+  // The disclosedContracts placement in this envelope (a top-level sibling of
+  // commands/actAs) is UNVERIFIED against a live node, same class of
+  // deferral as the rest of this JSON command envelope.
+  async submitAndWait(
+    actAs: string[],
+    commands: (CreateCommand | ExerciseCommand)[],
+    disclosedContracts: DisclosedContract[] = [],
+  ): Promise<any> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/commands/submit-and-wait-for-transaction`, {
       method: "POST",
       headers: {
@@ -91,6 +103,7 @@ export class HttpLedgerClient implements LedgerClient {
         ),
         actAs,
         commandId: crypto.randomUUID(),
+        disclosedContracts,
       }),
     });
     if (!res.ok) throw new Error(`ledger command submission failed: ${res.status}`);

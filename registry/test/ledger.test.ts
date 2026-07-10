@@ -105,6 +105,45 @@ describe("HttpLedgerClient.submitAndWait", () => {
         },
       },
     ]);
+    expect(body.disclosedContracts).toEqual([]);
+  });
+
+  it("carries a provided disclosedContracts array in the submit request body", async () => {
+    const { fakeFetch, calls } = recordingFetch({
+      ok: true,
+      json: async () => ({ transactionId: "tx-2" }),
+    });
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" } as any,
+      fakeFetch,
+    );
+
+    const disclosedContracts = [
+      {
+        templateId: "pkg:Canton.TokenForge.Registry:TokenRegistry",
+        contractId: "reg1",
+        createdEventBlob: "BLOB-REG",
+        synchronizerId: "sync-1",
+      },
+    ];
+
+    await client.submitAndWait(
+      ["admin::1"],
+      [
+        {
+          templateId: "pkg:Canton.TokenForge.Registry:TokenRegistry",
+          contractId: "reg1",
+          choice: "TokenRegistry_ProposeInstrument",
+          choiceArgument: {},
+        },
+      ],
+      disclosedContracts,
+    );
+
+    expect(calls).toHaveLength(1);
+    const [, init] = calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.disclosedContracts).toEqual(disclosedContracts);
   });
 
   it("throws when the ledger responds with a non-ok status", async () => {
