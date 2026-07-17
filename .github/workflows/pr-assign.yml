@@ -1,8 +1,3 @@
-# PR self-assign - house precedent from dAppBooster (issue #11).
-#
-# Assigns the author to their own PR on open so the board always has an owner.
-# Convenience, not a gate: kept out of pr.yml so that workflow stays read-only.
-# Uses the built-in GITHUB_TOKEN + gh CLI - no third-party action, no app install.
 name: pr-assign
 
 on:
@@ -16,8 +11,7 @@ jobs:
   assign-author:
     name: assign author
     runs-on: ubuntu-latest
-    # Skip fork PRs (their token is read-only, so the assign would error, not
-    # no-op) and bot authors (Renovate, etc.).
+    # Skip fork PRs (their read-only token would make the assign error) and bot authors.
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository && !endsWith(github.event.pull_request.user.login, '[bot]') }}
     steps:
       - name: Assign the author
