@@ -1,0 +1,22 @@
+# Add-to-project - drops every new issue and PR onto the org board.
+#
+# No label filtering: the board is the intake queue, triage happens there.
+# Auth is a repo PAT (ADD_TO_PROJECT_PAT) because the built-in GITHUB_TOKEN
+# cannot write to org-level Projects.
+name: add-to-project
+
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  add-to-project:
+    name: add to project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v2
+        with:
+          project-url: https://github.com/orgs/BootNodeDev/projects/26
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
