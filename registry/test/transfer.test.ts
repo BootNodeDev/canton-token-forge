@@ -158,6 +158,7 @@ describe('transfer factory', () => {
       .post('/registry/transfer-instruction/v1/transfer-factory')
       .send({ choiceArguments: { transfer: { sender: 'sender::1', receiver: 'receiver::1' } } })
     expect(res.status).toBe(400)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
   it('400s when the request omits both sender and receiver instead of treating it as a self-transfer', async () => {
@@ -167,6 +168,7 @@ describe('transfer factory', () => {
       .post('/registry/transfer-instruction/v1/transfer-factory')
       .send({ choiceArguments: { transfer: { instrumentId } } })
     expect(res.status).toBe(400)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
   it('404s when no config matches the instrumentId', async () => {
@@ -180,6 +182,7 @@ describe('transfer factory', () => {
         },
       })
     expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
   it('409s when (admin, instrumentId) is not unique', async () => {
@@ -195,6 +198,7 @@ describe('transfer factory', () => {
         },
       })
     expect(res.status).toBe(409)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
     expect(res.body.error).toBe('instrument id not unique')
     expect(res.body.contractIds.sort()).toEqual(['cfg1', 'cfg2'])
   })
@@ -265,6 +269,7 @@ describe('transfer-instruction choice-contexts', () => {
       .post('/registry/transfer-instruction/v1/nope/choice-contexts/accept')
       .send({ meta: {} })
     expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
   it("404s when no config matches the instruction's instrumentId", async () => {
@@ -278,6 +283,7 @@ describe('transfer-instruction choice-contexts', () => {
       .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
       .send({ meta: {} })
     expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
   it('409s instead of returning a context that omits the config when (admin, instrumentId) is not unique', async () => {
@@ -293,6 +299,7 @@ describe('transfer-instruction choice-contexts', () => {
       .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
       .send({ meta: {} })
     expect(res.status).toBe(409)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
     expect(res.body.error).toBe('instrument id not unique')
     expect(res.body.contractIds.sort()).toEqual(['cfg1', 'cfg2'])
   })
