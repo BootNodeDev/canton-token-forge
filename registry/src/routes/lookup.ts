@@ -7,9 +7,17 @@ import type {
   TokenRegistryPayload,
 } from "../payloads.js";
 
-// The ledger client returns payloads as unknown; each helper below pairs one
-// template id with its payload shape, so the casts that give the routes their
-// types all live here, one per query kind.
+// The ledger client returns payloads as unknown; the wrappers below pair one
+// template id with its payload shape. The cast that gives the routes their
+// types happens once here, in activeContractsAs, so each active-set query is a
+// one-line binding of a template-id field to a payload type.
+function activeContractsAs<P>(
+  ledger: LedgerClient,
+  templateId: string,
+  party: string,
+): Promise<ContractEntry<P>[]> {
+  return ledger.activeContracts(templateId, party) as Promise<ContractEntry<P>[]>;
+}
 
 // The InstrumentConfig active set for the operator, which the routes then run
 // through resolveConfig/resolveById. Centralized so the "which template, which
@@ -19,27 +27,21 @@ export function activeConfigs(
   ledger: LedgerClient,
   config: Pick<Config, "instrumentConfigTemplateId" | "operatorParty">,
 ): Promise<ContractEntry<InstrumentConfigPayload>[]> {
-  return ledger.activeContracts(config.instrumentConfigTemplateId, config.operatorParty) as Promise<
-    ContractEntry<InstrumentConfigPayload>[]
-  >;
+  return activeContractsAs<InstrumentConfigPayload>(ledger, config.instrumentConfigTemplateId, config.operatorParty);
 }
 
 export function activePreapprovals(
   ledger: LedgerClient,
   config: Pick<Config, "preapprovalTemplateId" | "operatorParty">,
 ): Promise<ContractEntry<PreapprovalPayload>[]> {
-  return ledger.activeContracts(config.preapprovalTemplateId, config.operatorParty) as Promise<
-    ContractEntry<PreapprovalPayload>[]
-  >;
+  return activeContractsAs<PreapprovalPayload>(ledger, config.preapprovalTemplateId, config.operatorParty);
 }
 
 export function activeRegistries(
   ledger: LedgerClient,
   config: Pick<Config, "tokenRegistryTemplateId" | "operatorParty">,
 ): Promise<ContractEntry<TokenRegistryPayload>[]> {
-  return ledger.activeContracts(config.tokenRegistryTemplateId, config.operatorParty) as Promise<
-    ContractEntry<TokenRegistryPayload>[]
-  >;
+  return activeContractsAs<TokenRegistryPayload>(ledger, config.tokenRegistryTemplateId, config.operatorParty);
 }
 
 // Locate a single active contract by its id within a template's active set.
