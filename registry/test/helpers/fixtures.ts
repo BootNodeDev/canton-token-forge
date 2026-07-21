@@ -5,6 +5,7 @@
 import type { Config } from '../../src/config'
 import type { DisclosedContract } from '../../src/disclose'
 import type { ContractEntry, CreateCommand, ExerciseCommand, LedgerClient } from '../../src/ledger'
+import type { Logger } from '../../src/logger'
 import type {
   InstrumentConfigPayload,
   InstrumentIdValue,
@@ -78,6 +79,26 @@ export interface RecordedCall {
   actAs: string[]
   commands: (CreateCommand | ExerciseCommand)[]
   disclosedContracts: DisclosedContract[]
+}
+
+// A ledger stub whose every call rejects, for exercising the failure paths:
+// the terminal 5xx error handler and the readiness probe's unavailable branch.
+export const rejectingLedger: LedgerClient = {
+  activeContracts: () => Promise.reject(new Error('ledger query failed: 503')),
+  submitAndWait: () => Promise.reject(new Error('ledger query failed: 503')),
+}
+
+// A logger that records the structured objects passed to error(), so a suite
+// can assert what the service logged without depending on pino.
+export function recordingLogger(): { logger: Logger; entries: object[] } {
+  const entries: object[] = []
+  const logger: Logger = {
+    info: () => {},
+    error: (obj: object | string) => {
+      if (typeof obj === 'object') entries.push(obj)
+    },
+  }
+  return { logger, entries }
 }
 
 // A ledger stub that also records submitAndWait calls for the admin suite,

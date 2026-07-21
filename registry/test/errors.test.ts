@@ -1,24 +1,7 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import type { LedgerClient } from '../src/ledger'
 import { createServer } from '../src/server'
-import { config, ledgerFrom } from './helpers/fixtures'
-
-function recordingLogger() {
-  const entries: object[] = []
-  const logger = {
-    info: () => {},
-    error: (obj: object | string) => {
-      if (typeof obj === 'object') entries.push(obj)
-    },
-  }
-  return { logger, entries }
-}
-
-const rejectingLedger: LedgerClient = {
-  activeContracts: () => Promise.reject(new Error('ledger query failed: 503')),
-  submitAndWait: () => Promise.reject(new Error('ledger query failed: 503')),
-}
+import { config, ledgerFrom, recordingLogger, rejectingLedger } from './helpers/fixtures'
 
 describe('async route errors', () => {
   it('maps a rejected ledger call to a 500 with a JSON error body instead of hanging', async () => {
