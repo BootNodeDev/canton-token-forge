@@ -1,10 +1,11 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
-import { SUPPORTED_APIS, toInstrument, resolveById, resolveOrRespond, instrumentIdentity } from "../mapping.js";
+import { SUPPORTED_APIS, toInstrument, resolveById, instrumentIdentity } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
 import type { InstrumentConfigPayload } from "../payloads.js";
 import { asyncHandler } from "./async-handler.js";
 import { activeConfigs } from "./lookup.js";
+import { resolveOrRespond } from "./respond.js";
 
 // Collapse rows to one entry per (admin, instrumentId): LF 2.1 has no
 // contract keys, so nothing prevents duplicates, but the list endpoint

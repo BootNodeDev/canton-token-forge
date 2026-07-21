@@ -1,10 +1,11 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed, PREAPPROVAL_CONTEXT_KEY, anyValueContractId } from "../disclose.js";
-import { resolveConfig, resolveOrRespond, matchesInstrument } from "../mapping.js";
+import { resolveConfig, matchesInstrument } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
 import { findByContractId, escrowDisclosure, activeConfigs, activePreapprovals } from "./lookup.js";
 import type { InstrumentIdValue, TransferInstructionPayload } from "../payloads.js";
+import { resolveOrRespond } from "./respond.js";
 
 interface TransferFactoryBody {
   choiceArguments?: {
