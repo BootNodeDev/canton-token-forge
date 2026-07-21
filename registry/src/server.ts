@@ -69,7 +69,11 @@ export function createServer(deps: ServerDeps): Express {
     asyncHandler(async (_req, res) => {
       try {
         await activeRegistries(deps.ledger, deps.config)
-      } catch {
+      } catch (err) {
+        // Surface why readiness is failing: the 503 is returned to the
+        // orchestrator, but without this the ledger outage behind it is
+        // invisible in the service logs, unlike every other failure path.
+        logger.error({ err }, 'readiness probe failed')
         return res.status(503).json({ status: 'unavailable' })
       }
       res.json({ status: 'ready' })

@@ -1,7 +1,7 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { createServer } from '../src/server'
-import { config, ledgerFrom, rejectingLedger } from './helpers/fixtures'
+import { config, ledgerFrom, recordingLogger, rejectingLedger } from './helpers/fixtures'
 
 describe('health', () => {
   it('GET /healthz returns 200 ok', async () => {
@@ -23,5 +23,14 @@ describe('health', () => {
     const res = await request(app).get('/readyz')
     expect(res.status).toBe(503)
     expect(res.body).toEqual({ status: 'unavailable' })
+  })
+
+  it('logs the ledger error when the readiness probe fails', async () => {
+    const { logger, entries } = recordingLogger()
+    const app = createServer({ ledger: rejectingLedger, config, logger })
+    const res = await request(app).get('/readyz')
+    expect(res.status).toBe(503)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toHaveProperty('err')
   })
 })
