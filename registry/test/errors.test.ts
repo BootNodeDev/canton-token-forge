@@ -10,7 +10,7 @@ describe('async route errors', () => {
       activeContracts: () => Promise.reject(new Error('ledger query failed: 503')),
       submitAndWait: () => Promise.reject(new Error('ledger query failed: 503')),
     }
-    const app = createServer({ ledger, config })
+    const app = createServer({ ledger, config, logger: { info: () => {}, error: () => {} } })
     const res = await request(app).get('/registry/metadata/v1/instruments')
     expect(res.status).toBe(500)
     expect(res.body).toEqual({ error: 'ledger query failed: 503' })
@@ -18,11 +18,42 @@ describe('async route errors', () => {
 
   it('preserves the 4xx status express.json() puts on a malformed body instead of reporting 500', async () => {
     const ledger = ledgerFrom({})
-    const app = createServer({ ledger, config })
+    const entries: object[] = []
+    const logger = {
+      info: () => {},
+      error: (obj: object | string) => {
+        if (typeof obj === 'object') entries.push(obj)
+      },
+    }
+    const app = createServer({ ledger, config, logger })
     const res = await request(app)
       .post('/admin/instruments')
       .set('content-type', 'application/json')
       .send('{"admin":')
     expect(res.status).toBe(400)
+    expect(entries).toHaveLength(0)
+  })
+
+  it('logs the 5xx from the terminal error middleware', async () => {
+    const entries: object[] = []
+    const logger = {
+      info: () => {},
+      error: (obj: object | string) => {
+        if (typeof obj === 'object') entries.push(obj)
+      },
+    }
+    const ledger: LedgerClient = {
+      activeContracts: () => Promise.reject(new Error('ledger query failed: 503')),
+      submitAndWait: () => Promise.reject(new Error('ledger query failed: 503')),
+    }
+    const app = createServer({ ledger, config, logger })
+    const res = await request(app).get('/registry/metadata/v1/instruments')
+    expect(res.status).toBe(500)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      status: 500,
+      method: 'GET',
+      path: '/registry/metadata/v1/instruments',
+    })
   })
 })

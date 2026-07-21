@@ -3,6 +3,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import * as OpenApiValidator from 'express-openapi-validator'
 import type { Config } from './config.js'
 import type { LedgerClient } from './ledger.js'
+import { createLogger, type Logger } from './logger.js'
 import { openapiDir, specFiles } from './openapi.js'
 import { adminRouter } from './routes/admin.js'
 import { allocationRouter } from './routes/allocation.js'
@@ -12,6 +13,7 @@ import { transferRouter } from './routes/transfer.js'
 export interface ServerDeps {
   ledger: LedgerClient
   config: Config
+  logger?: Logger
 }
 
 function statusFromError(err: unknown): number {
@@ -26,6 +28,7 @@ function statusFromError(err: unknown): number {
 
 export function createServer(deps: ServerDeps): Express {
   const app = express()
+  const logger = deps.logger ?? createLogger()
   app.use(express.json())
 
   // One validator per vendored standard spec, requests only. Paths a given
@@ -68,11 +71,15 @@ export function createServer(deps: ServerDeps): Express {
   // has all four parameters. It honors a status carried on the error (e.g.
   // express.json() tags a malformed body with 400) so framework-level client
   // errors are not re-classified as 500.
-  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) return next(err)
-    res
-      .status(statusFromError(err))
-      .json({ error: err instanceof Error ? err.message : 'internal error' })
+    const status = statusFromError(err)
+    // 5xx means the service itself failed (usually the ledger connection);
+    // without this line a live-node outage is invisible in operator logs.
+    if (status >= 500) {
+      logger.error({ err, status, method: req.method, path: req.originalUrl }, 'request failed')
+    }
+    res.status(status).json({ error: err instanceof Error ? err.message : 'internal error' })
   })
 
   return app
