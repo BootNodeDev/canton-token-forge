@@ -57,6 +57,7 @@ describe('allocation factory', () => {
       .post('/registry/allocation-instruction/v1/allocation-factory')
       .send({ choiceArguments: { allocation: {} } })
     expect(res.status).toBe(400)
+    validateAgainst('allocation-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
   it('404s when no config matches the instrumentId', async () => {
@@ -66,6 +67,7 @@ describe('allocation factory', () => {
       .post('/registry/allocation-instruction/v1/allocation-factory')
       .send({ choiceArguments: { allocation: { instrumentId } } })
     expect(res.status).toBe(404)
+    validateAgainst('allocation-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
   it('409s when (admin, instrumentId) is not unique', async () => {
@@ -77,6 +79,7 @@ describe('allocation factory', () => {
       .post('/registry/allocation-instruction/v1/allocation-factory')
       .send({ choiceArguments: { allocation: { instrumentId } } })
     expect(res.status).toBe(409)
+    validateAgainst('allocation-instruction#/components/schemas/ErrorResponse', res.body)
     expect(res.body.error).toBe('instrument id not unique')
     expect(res.body.contractIds.sort()).toEqual(['cfg1', 'cfg2'])
   })
@@ -140,5 +143,6 @@ describe('allocation choice-contexts', () => {
       .post('/registry/allocations/v1/nope/choice-contexts/cancel')
       .send({ meta: {} })
     expect(res.status).toBe(404)
+    validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
   })
 })
