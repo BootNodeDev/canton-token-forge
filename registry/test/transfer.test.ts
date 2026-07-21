@@ -92,10 +92,11 @@ describe('transfer factory', () => {
     )
     expect(res.body.transferKind).toBe('direct')
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(2)
-    expect(res.body.choiceContext.disclosedContracts.map((d: any) => d.contractId).sort()).toEqual([
-      'cfg1',
-      'pre1',
-    ])
+    expect(
+      (res.body.choiceContext.disclosedContracts as { contractId: string }[])
+        .map((d) => d.contractId)
+        .sort(),
+    ).toEqual(['cfg1', 'pre1'])
     expect(res.body.choiceContext.choiceContextData[PREAPPROVAL_CONTEXT_KEY]).toEqual({
       tag: 'AV_ContractId',
       value: 'pre1',
@@ -213,7 +214,9 @@ describe('transfer-instruction choice-contexts', () => {
     expect(res.status).toBe(200)
     validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
     expect(res.body.choiceContextData).toEqual({})
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort()
+    const ids = (res.body.disclosedContracts as { contractId: string }[])
+      .map((d) => d.contractId)
+      .sort()
     expect(ids).toEqual(['cfg1', 'locked1'])
   })
 
@@ -230,7 +233,9 @@ describe('transfer-instruction choice-contexts', () => {
     expect(res.status).toBe(200)
     validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
     expect(res.body.choiceContextData).toEqual({})
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort()
+    const ids = (res.body.disclosedContracts as { contractId: string }[])
+      .map((d) => d.contractId)
+      .sort()
     expect(ids).toEqual(['cfg1', 'locked1'])
   })
 
@@ -247,7 +252,9 @@ describe('transfer-instruction choice-contexts', () => {
     expect(res.status).toBe(200)
     validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
     expect(res.body.choiceContextData).toEqual({})
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort()
+    const ids = (res.body.disclosedContracts as { contractId: string }[])
+      .map((d) => d.contractId)
+      .sort()
     expect(ids).toEqual(['cfg1', 'locked1'])
   })
 

@@ -95,7 +95,9 @@ describe('allocation choice-contexts', () => {
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
     expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toEqual(anyValueBool(true))
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort()
+    const ids = (res.body.disclosedContracts as { contractId: string }[])
+      .map((d) => d.contractId)
+      .sort()
     expect(ids).toEqual(['locked1'])
   })
 
@@ -111,7 +113,9 @@ describe('allocation choice-contexts', () => {
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
     expect(res.body.choiceContextData).toEqual({})
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort()
+    const ids = (res.body.disclosedContracts as { contractId: string }[])
+      .map((d) => d.contractId)
+      .sort()
     expect(ids).toEqual(['locked1'])
   })
 
