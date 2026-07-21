@@ -1,6 +1,15 @@
 import type { Config } from "../config.js";
 import type { ContractEntry, LedgerClient } from "../ledger.js";
 import { toDisclosed, type DisclosedContract } from "../disclose.js";
+import type {
+  InstrumentConfigPayload,
+  PreapprovalPayload,
+  TokenRegistryPayload,
+} from "../payloads.js";
+
+// The ledger client returns payloads as unknown; each helper below pairs one
+// template id with its payload shape, so the casts that give the routes their
+// types all live here, one per query kind.
 
 // The InstrumentConfig active set for the operator, which the routes then run
 // through resolveConfig/resolveById. Centralized so the "which template, which
@@ -9,8 +18,28 @@ import { toDisclosed, type DisclosedContract } from "../disclose.js";
 export function activeConfigs(
   ledger: LedgerClient,
   config: Pick<Config, "instrumentConfigTemplateId" | "operatorParty">,
-): Promise<ContractEntry[]> {
-  return ledger.activeContracts(config.instrumentConfigTemplateId, config.operatorParty);
+): Promise<ContractEntry<InstrumentConfigPayload>[]> {
+  return ledger.activeContracts(config.instrumentConfigTemplateId, config.operatorParty) as Promise<
+    ContractEntry<InstrumentConfigPayload>[]
+  >;
+}
+
+export function activePreapprovals(
+  ledger: LedgerClient,
+  config: Pick<Config, "preapprovalTemplateId" | "operatorParty">,
+): Promise<ContractEntry<PreapprovalPayload>[]> {
+  return ledger.activeContracts(config.preapprovalTemplateId, config.operatorParty) as Promise<
+    ContractEntry<PreapprovalPayload>[]
+  >;
+}
+
+export function activeRegistries(
+  ledger: LedgerClient,
+  config: Pick<Config, "tokenRegistryTemplateId" | "operatorParty">,
+): Promise<ContractEntry<TokenRegistryPayload>[]> {
+  return ledger.activeContracts(config.tokenRegistryTemplateId, config.operatorParty) as Promise<
+    ContractEntry<TokenRegistryPayload>[]
+  >;
 }
 
 // Locate a single active contract by its id within a template's active set.
@@ -18,13 +47,13 @@ export function activeConfigs(
 // transfer instruction) this way before acting on it, so the query lives in
 // one place; live-node work that changes how a contract is located by id
 // then has a single call site to update.
-export async function findByContractId(
+export async function findByContractId<P = unknown>(
   ledger: LedgerClient,
   templateId: string,
   party: string,
   contractId: string,
-): Promise<ContractEntry | undefined> {
-  const rows = await ledger.activeContracts(templateId, party);
+): Promise<ContractEntry<P> | undefined> {
+  const rows = (await ledger.activeContracts(templateId, party)) as ContractEntry<P>[];
   return rows.find((row) => row.contractId === contractId);
 }
 

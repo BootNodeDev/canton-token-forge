@@ -2,14 +2,17 @@ import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { SUPPORTED_APIS, toInstrument, resolveById, resolveOrRespond, instrumentIdentity } from "../mapping.js";
 import type { ContractEntry } from "../ledger.js";
+import type { InstrumentConfigPayload } from "../payloads.js";
 import { asyncHandler } from "./async-handler.js";
 import { activeConfigs } from "./lookup.js";
 
 // Collapse rows to one entry per (admin, instrumentId): LF 2.1 has no
 // contract keys, so nothing prevents duplicates, but the list endpoint
 // should not surface them as visible duplicates the way get-by-id does.
-function dedupeByAdminAndInstrumentId(rows: ContractEntry[]): ContractEntry[] {
-  const seen = new Map<string, ContractEntry>();
+function dedupeByAdminAndInstrumentId(
+  rows: ContractEntry<InstrumentConfigPayload>[],
+): ContractEntry<InstrumentConfigPayload>[] {
+  const seen = new Map<string, ContractEntry<InstrumentConfigPayload>>();
   for (const row of rows) {
     const key = instrumentIdentity(row.payload);
     if (!seen.has(key)) seen.set(key, row);

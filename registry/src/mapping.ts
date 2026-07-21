@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import type { ContractEntry } from "./ledger.js";
+import type { InstrumentConfigPayload, InstrumentIdValue } from "./payloads.js";
 
 // Map from token standard API name to the minor version of the API
 // supported by this registry. Shared between GetRegistryInfoResponse and
@@ -23,11 +24,18 @@ export interface Instrument {
   supportedApis: Record<string, number>;
 }
 
+// The two payload fields that identify an instrument on-ledger. Config,
+// proposal, and preapproval payloads all carry them.
+interface InstrumentKeyedPayload {
+  admin: string;
+  instrumentId: string;
+}
+
 // The InstrumentConfig contract payload uses the Daml record field names
 // (admin, operator, instrumentId, name, symbol, decimals, faucet), not the
 // metadata standard's `id`. This maps the on-ledger payload to the
 // standard's Instrument shape.
-export function toInstrument(payload: any): Instrument {
+export function toInstrument(payload: InstrumentConfigPayload): Instrument {
   return {
     id: payload.instrumentId,
     name: payload.name,
@@ -42,16 +50,16 @@ export function toInstrument(payload: any): Instrument {
 // standard API carries the same identity as InstrumentId { admin, id }. These
 // two helpers are the single place that bridges the two field namings, so the
 // admin-and-id equality rule the whole service depends on is defined once.
-export function matchesInstrument(payload: any, id: { admin: string; id: string }): boolean {
+export function matchesInstrument(payload: InstrumentKeyedPayload, id: InstrumentIdValue): boolean {
   return payload.admin === id.admin && payload.instrumentId === id.id;
 }
 
-export function instrumentIdentity(payload: any): string {
+export function instrumentIdentity(payload: InstrumentKeyedPayload): string {
   return `${payload.admin}::${payload.instrumentId}`;
 }
 
-export type ResolveResult =
-  | { kind: "ok"; entry: ContractEntry }
+export type ResolveResult<P = unknown> =
+  | { kind: "ok"; entry: ContractEntry<P> }
   | { kind: "none" }
   | { kind: "conflict"; contractIds: string[] };
 
@@ -59,13 +67,17 @@ export type ResolveResult =
 // InstrumentConfigs from sharing the same logical identity. Every "pick one
 // config" call site resolves through this shared uniqueness check so a
 // duplicate surfaces as a 409 instead of silently picking one.
-export function resolveUnique(matches: ContractEntry[]): ResolveResult {
+export function resolveUnique<P>(matches: ContractEntry<P>[]): ResolveResult<P> {
   if (matches.length === 0) return { kind: "none" };
   if (matches.length > 1) return { kind: "conflict", contractIds: matches.map((m) => m.contractId) };
   return { kind: "ok", entry: matches[0] };
 }
 
-export function resolveConfig(rows: ContractEntry[], admin: string, id: string): ResolveResult {
+export function resolveConfig(
+  rows: ContractEntry<InstrumentConfigPayload>[],
+  admin: string,
+  id: string,
+): ResolveResult<InstrumentConfigPayload> {
   const matches = rows.filter((r) => matchesInstrument(r.payload, { admin, id }));
   return resolveUnique(matches);
 }
@@ -73,7 +85,10 @@ export function resolveConfig(rows: ContractEntry[], admin: string, id: string):
 // The metadata standard's get-by-id path (/instruments/:instrumentId) only
 // carries the instrumentId, not the admin, so it cannot use resolveConfig
 // directly; it resolves uniqueness by instrumentId alone.
-export function resolveById(rows: ContractEntry[], id: string): ResolveResult {
+export function resolveById(
+  rows: ContractEntry<InstrumentConfigPayload>[],
+  id: string,
+): ResolveResult<InstrumentConfigPayload> {
   const matches = rows.filter((r) => r.payload.instrumentId === id);
   return resolveUnique(matches);
 }
@@ -83,7 +98,7 @@ export function resolveById(rows: ContractEntry[], id: string): ResolveResult {
 // (admin, instrumentId)) and return the resolved entry, or undefined when a
 // response was already sent. Every config-resolving route funnels through
 // this so the status codes and error strings live in one place.
-export function resolveOrRespond(res: Response, result: ResolveResult): ContractEntry | undefined {
+export function resolveOrRespond<P>(res: Response, result: ResolveResult<P>): ContractEntry<P> | undefined {
   if (result.kind === "none") {
     res.status(404).json({ error: "instrument not found" });
     return undefined;
