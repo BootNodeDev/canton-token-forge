@@ -4,8 +4,10 @@ import { createServer } from "../src/server";
 import { validateAgainst } from "./helpers/schema";
 import { PREAPPROVAL_CONTEXT_KEY } from "../src/disclose";
 import { config, instrumentId, cfgEntry, lockedTokenEntry, ledgerFrom } from "./helpers/fixtures";
+import type { ContractEntry } from "../src/ledger";
+import type { PreapprovalPayload, TransferInstructionPayload } from "../src/payloads";
 
-function preapprovalEntry(overrides: any = {}) {
+function preapprovalEntry(overrides: Partial<PreapprovalPayload> = {}): ContractEntry<PreapprovalPayload> {
   return {
     templateId: config.preapprovalTemplateId,
     contractId: "pre1",
@@ -22,7 +24,9 @@ function preapprovalEntry(overrides: any = {}) {
   };
 }
 
-function instructionEntry(overrides: any = {}) {
+function instructionEntry(
+  overrides: Partial<TransferInstructionPayload> = {},
+): ContractEntry<TransferInstructionPayload> {
   return {
     templateId: config.transferInstructionInterfaceId,
     contractId: "instr1",

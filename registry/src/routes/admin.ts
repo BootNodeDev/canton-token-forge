@@ -3,7 +3,15 @@ import type { ServerDeps } from "../server.js";
 import { toDisclosed } from "../disclose.js";
 import { matchesInstrument } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
-import { findByContractId, activeConfigs } from "./lookup.js";
+import { findByContractId, activeConfigs, activeRegistries } from "./lookup.js";
+import type { InstrumentConfigProposalPayload } from "../payloads.js";
+
+// A required proposal field must be a present, non-empty string. Checking the
+// type alone would let "" through, which the ledger would take as a malformed
+// instrument id/name/symbol rather than reject.
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
 
 // canton-token-forge admin endpoints that drive the Plan 04 propose-accept
 // instrument-registration workflow. These sit outside the four standard
@@ -20,8 +28,16 @@ export function adminRouter(deps: ServerDeps): Router {
   r.post(
     "/admin/instruments",
     asyncHandler(async (req, res) => {
-      const { admin, instrumentId, name, symbol, decimals, faucet } = req.body ?? {};
-      if (!admin || !instrumentId || !name || !symbol || typeof decimals !== "number") {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const { admin, instrumentId, name, symbol, decimals } = body;
+      const faucet = body.faucet ?? null;
+      if (
+        !isNonEmptyString(admin) ||
+        !isNonEmptyString(instrumentId) ||
+        !isNonEmptyString(name) ||
+        !isNonEmptyString(symbol) ||
+        typeof decimals !== "number"
+      ) {
         return res.status(400).json({ error: "missing proposal fields" });
       }
 
@@ -29,7 +45,7 @@ export function adminRouter(deps: ServerDeps): Router {
       // singleton; take it directly rather than through resolveUnique. A second
       // active registry would be an operator misconfiguration, not a routine
       // duplicate to surface as a 409 the way instrument configs are.
-      const regs = await deps.ledger.activeContracts(deps.config.tokenRegistryTemplateId, deps.config.operatorParty);
+      const regs = await activeRegistries(deps.ledger, deps.config);
       const reg = regs[0];
       if (!reg) return res.status(503).json({ error: "registry not initialized" });
 
@@ -40,7 +56,7 @@ export function adminRouter(deps: ServerDeps): Router {
             templateId: deps.config.tokenRegistryTemplateId,
             contractId: reg.contractId,
             choice: "TokenRegistry_ProposeInstrument",
-            choiceArgument: { admin, instrumentId, name, symbol, decimals, faucet: faucet ?? null },
+            choiceArgument: { admin, instrumentId, name, symbol, decimals, faucet },
           },
         ],
         [toDisclosed(reg)],
@@ -56,7 +72,7 @@ export function adminRouter(deps: ServerDeps): Router {
   r.post(
     "/admin/proposals/:proposalId/accept",
     asyncHandler(async (req, res) => {
-      const prop = await findByContractId(
+      const prop = await findByContractId<InstrumentConfigProposalPayload>(
         deps.ledger,
         deps.config.instrumentConfigProposalTemplateId,
         deps.config.operatorParty,
@@ -88,7 +104,7 @@ export function adminRouter(deps: ServerDeps): Router {
   r.post(
     "/admin/proposals/:proposalId/reject",
     asyncHandler(async (req, res) => {
-      const prop = await findByContractId(
+      const prop = await findByContractId<InstrumentConfigProposalPayload>(
         deps.ledger,
         deps.config.instrumentConfigProposalTemplateId,
         deps.config.operatorParty,

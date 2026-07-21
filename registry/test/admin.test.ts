@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { createServer } from "../src/server";
 import { config, cfgEntry, recordingLedger } from "./helpers/fixtures";
+import type { ContractEntry, ExerciseCommand } from "../src/ledger";
+import type { InstrumentConfigProposalPayload, TokenRegistryPayload } from "../src/payloads";
 
-function registryEntry(overrides: any = {}) {
+function registryEntry(overrides: Partial<TokenRegistryPayload> = {}): ContractEntry<TokenRegistryPayload> {
   return {
     templateId: config.tokenRegistryTemplateId,
     contractId: "reg1",
@@ -17,7 +19,9 @@ function registryEntry(overrides: any = {}) {
   };
 }
 
-function proposalEntry(overrides: any = {}) {
+function proposalEntry(
+  overrides: Partial<InstrumentConfigProposalPayload> = {},
+): ContractEntry<InstrumentConfigProposalPayload> {
   return {
     templateId: config.instrumentConfigProposalTemplateId,
     contractId: "prop1",
@@ -90,7 +94,8 @@ describe("POST /admin/instruments", () => {
       decimals: 10,
     });
     expect(res.status).toBe(202);
-    expect((calls[0].commands[0] as any).choiceArgument.faucet).toBeNull();
+    const cmd = calls[0].commands[0] as ExerciseCommand;
+    expect(cmd.choiceArgument.faucet).toBeNull();
   });
 
   it("400s when a required field is missing", async () => {
@@ -104,6 +109,21 @@ describe("POST /admin/instruments", () => {
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeTruthy();
+  });
+
+  it("400s when a required field is an empty string rather than submitting it to the ledger", async () => {
+    const { ledger, calls } = recordingLedger({ [config.tokenRegistryTemplateId]: [registryEntry()] });
+    const app = createServer({ ledger, config });
+    const res = await request(app).post("/admin/instruments").send({
+      admin: "admin::1",
+      instrumentId: "",
+      name: "",
+      symbol: "",
+      decimals: 10,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeTruthy();
+    expect(calls).toHaveLength(0);
   });
 
   it("400s when decimals is null rather than forwarding a null Int to the ledger", async () => {

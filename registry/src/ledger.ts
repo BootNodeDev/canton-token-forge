@@ -2,24 +2,24 @@ import { randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
 import type { DisclosedContract } from "./disclose.js";
 
-export interface ContractEntry {
+export interface ContractEntry<P = unknown> {
   templateId: string;
   contractId: string;
   createdEventBlob: string;
   synchronizerId: string;
-  payload: any;
+  payload: P;
 }
 
 export interface CreateCommand {
   templateId: string;
-  createArguments: any;
+  createArguments: Record<string, unknown>;
 }
 
 export interface ExerciseCommand {
   templateId: string;
   contractId: string;
   choice: string;
-  choiceArgument: any;
+  choiceArgument: Record<string, unknown>;
 }
 
 export interface LedgerClient {
@@ -28,13 +28,31 @@ export interface LedgerClient {
     actAs: string[],
     commands: (CreateCommand | ExerciseCommand)[],
     disclosedContracts?: DisclosedContract[],
-  ): Promise<any>;
+  ): Promise<unknown>;
 }
 
 type FetchFn = typeof fetch;
 
 function isExerciseCommand(command: CreateCommand | ExerciseCommand): command is ExerciseCommand {
   return "contractId" in command;
+}
+
+// Shape of one row of the /v2/state/active-contracts response as this
+// service consumes it. Like the rest of the JSON envelope it is UNVERIFIED
+// against a live node, and adjusting it here and in the mapping below is the
+// single place a live-node drift lands.
+interface ActiveContractsRow {
+  contractEntry?: {
+    JsActiveContract?: {
+      createdEvent: {
+        templateId: string;
+        contractId: string;
+        createdEventBlob: string;
+        createArgument: unknown;
+      };
+      synchronizerId: string;
+    };
+  };
 }
 
 export class HttpLedgerClient implements LedgerClient {
@@ -71,17 +89,20 @@ export class HttpLedgerClient implements LedgerClient {
       }),
     });
     if (!res.ok) throw new Error(`ledger query failed: ${res.status}`);
-    const rows = (await res.json()) as any[];
-    return rows
-      .map((r) => r?.contractEntry?.JsActiveContract)
-      .filter(Boolean)
-      .map((ac) => ({
-        templateId: ac.createdEvent.templateId,
-        contractId: ac.createdEvent.contractId,
-        createdEventBlob: ac.createdEvent.createdEventBlob,
-        synchronizerId: ac.synchronizerId,
-        payload: ac.createdEvent.createArgument,
-      }));
+    const rows = (await res.json()) as ActiveContractsRow[];
+    return rows.flatMap((r) => {
+      const ac = r?.contractEntry?.JsActiveContract;
+      if (!ac) return [];
+      return [
+        {
+          templateId: ac.createdEvent.templateId,
+          contractId: ac.createdEvent.contractId,
+          createdEventBlob: ac.createdEvent.createdEventBlob,
+          synchronizerId: ac.synchronizerId,
+          payload: ac.createdEvent.createArgument,
+        },
+      ];
+    });
   }
 
   // The disclosedContracts placement in this envelope (a top-level sibling of
@@ -91,7 +112,7 @@ export class HttpLedgerClient implements LedgerClient {
     actAs: string[],
     commands: (CreateCommand | ExerciseCommand)[],
     disclosedContracts: DisclosedContract[] = [],
-  ): Promise<any> {
+  ): Promise<unknown> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/commands/submit-and-wait-for-transaction`, {
       method: "POST",
       headers: {

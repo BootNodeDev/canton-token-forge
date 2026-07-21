@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { HttpLedgerClient } from "../src/ledger";
 
-function recordingFetch(response: any) {
-  const calls: [string, any][] = [];
-  const fakeFetch = (async (url: string, init: any) => {
+function recordingFetch(response: { ok: boolean; status?: number; json?: () => Promise<unknown> }) {
+  const calls: [string, RequestInit][] = [];
+  const fakeFetch = (async (url: string, init: RequestInit) => {
     calls.push([url, init]);
-    return response;
-  }) as any;
+    return response as Response;
+  }) as typeof fetch;
   return { fakeFetch, calls };
 }
 
@@ -31,7 +31,7 @@ describe("HttpLedgerClient.activeContracts", () => {
       ],
     });
     const client = new HttpLedgerClient(
-      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" } as any,
+      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
       fakeFetch,
     );
     const rows = await client.activeContracts(
@@ -64,7 +64,7 @@ describe("HttpLedgerClient.submitAndWait", () => {
       json: async () => ({ transactionId: "tx-1" }),
     });
     const client = new HttpLedgerClient(
-      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" } as any,
+      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
       fakeFetch,
     );
 
@@ -114,7 +114,7 @@ describe("HttpLedgerClient.submitAndWait", () => {
       json: async () => ({ transactionId: "tx-2" }),
     });
     const client = new HttpLedgerClient(
-      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" } as any,
+      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
       fakeFetch,
     );
 
@@ -153,7 +153,7 @@ describe("HttpLedgerClient.submitAndWait", () => {
       json: async () => ({}),
     });
     const client = new HttpLedgerClient(
-      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" } as any,
+      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
       fakeFetch,
     );
 

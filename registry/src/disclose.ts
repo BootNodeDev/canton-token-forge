@@ -1,11 +1,8 @@
 import type { ContractEntry } from "./ledger.js";
 
-export interface DisclosedContract {
-  templateId: string;
-  contractId: string;
-  createdEventBlob: string;
-  synchronizerId: string;
-}
+// A disclosure is a ContractEntry minus its decoded payload: the ledger
+// only needs the blob, and deriving the type keeps the two from drifting.
+export type DisclosedContract = Omit<ContractEntry, "payload">;
 
 export function toDisclosed(e: ContractEntry): DisclosedContract {
   return {

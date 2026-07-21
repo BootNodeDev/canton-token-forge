@@ -4,6 +4,11 @@ import { toDisclosed, EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../disclose.
 import { resolveConfig, resolveOrRespond } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
 import { findByContractId, escrowDisclosure, activeConfigs } from "./lookup.js";
+import type { AllocationPayload, InstrumentIdValue } from "../payloads.js";
+
+interface AllocationFactoryBody {
+  choiceArguments?: { allocation?: { instrumentId?: InstrumentIdValue } };
+}
 
 export function allocationRouter(deps: ServerDeps): Router {
   const r = Router();
@@ -11,7 +16,8 @@ export function allocationRouter(deps: ServerDeps): Router {
   r.post(
     "/registry/allocation-instruction/v1/allocation-factory",
     asyncHandler(async (req, res) => {
-      const instrumentId = req.body?.choiceArguments?.allocation?.instrumentId;
+      const instrumentId = (req.body as AllocationFactoryBody | undefined)?.choiceArguments?.allocation
+        ?.instrumentId;
       if (!instrumentId) return res.status(400).json({ error: "missing allocation.instrumentId" });
 
       const rows = await activeConfigs(deps.ledger, deps.config);
@@ -34,7 +40,7 @@ export function allocationRouter(deps: ServerDeps): Router {
     r.post(
       `/registry/allocations/v1/:allocationId/choice-contexts/${choice}`,
       asyncHandler(async (req, res) => {
-        const alloc = await findByContractId(
+        const alloc = await findByContractId<AllocationPayload>(
           deps.ledger,
           deps.config.allocationInterfaceId,
           deps.config.operatorParty,

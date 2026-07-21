@@ -3,7 +3,14 @@ import type { ServerDeps } from "../server.js";
 import { toDisclosed, PREAPPROVAL_CONTEXT_KEY, anyValueContractId } from "../disclose.js";
 import { resolveConfig, resolveOrRespond, matchesInstrument } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
-import { findByContractId, escrowDisclosure, activeConfigs } from "./lookup.js";
+import { findByContractId, escrowDisclosure, activeConfigs, activePreapprovals } from "./lookup.js";
+import type { InstrumentIdValue, TransferInstructionPayload } from "../payloads.js";
+
+interface TransferFactoryBody {
+  choiceArguments?: {
+    transfer?: { instrumentId?: InstrumentIdValue; sender?: string; receiver?: string };
+  };
+}
 
 export function transferRouter(deps: ServerDeps): Router {
   const r = Router();
@@ -11,10 +18,9 @@ export function transferRouter(deps: ServerDeps): Router {
   r.post(
     "/registry/transfer-instruction/v1/transfer-factory",
     asyncHandler(async (req, res) => {
-      const transfer = req.body?.choiceArguments?.transfer;
-      const instrumentId = transfer?.instrumentId;
-      if (!instrumentId) return res.status(400).json({ error: "missing transfer.instrumentId" });
-      const { sender, receiver } = transfer;
+      const transfer = (req.body as TransferFactoryBody | undefined)?.choiceArguments?.transfer;
+      if (!transfer?.instrumentId) return res.status(400).json({ error: "missing transfer.instrumentId" });
+      const { instrumentId, sender, receiver } = transfer;
       if (!sender || !receiver) return res.status(400).json({ error: "missing transfer.sender or transfer.receiver" });
 
       // The config set and the preapprovals are independent lookups, so fetch
@@ -24,7 +30,7 @@ export function transferRouter(deps: ServerDeps): Router {
       const now = Date.now();
       const [cfgRows, preapprovalRows] = await Promise.all([
         activeConfigs(deps.ledger, deps.config),
-        deps.ledger.activeContracts(deps.config.preapprovalTemplateId, deps.config.operatorParty),
+        activePreapprovals(deps.ledger, deps.config),
       ]);
       const cfg = resolveOrRespond(res, resolveConfig(cfgRows, instrumentId.admin, instrumentId.id));
       if (!cfg) return;
@@ -72,7 +78,7 @@ export function transferRouter(deps: ServerDeps): Router {
     r.post(
       `/registry/transfer-instruction/v1/:transferInstructionId/choice-contexts/${choice}`,
       asyncHandler(async (req, res) => {
-        const instr = await findByContractId(
+        const instr = await findByContractId<TransferInstructionPayload>(
           deps.ledger,
           deps.config.transferInstructionInterfaceId,
           deps.config.operatorParty,
