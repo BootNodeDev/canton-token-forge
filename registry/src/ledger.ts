@@ -129,6 +129,6 @@ export class HttpLedgerClient implements LedgerClient {
       }),
     });
     if (!res.ok) throw new Error(`ledger command submission failed: ${res.status}`);
-    return (await res.json()) as unknown;
+    return res.json();
   }
 }
