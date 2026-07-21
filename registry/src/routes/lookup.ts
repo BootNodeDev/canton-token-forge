@@ -1,11 +1,11 @@
-import type { Config } from "../config.js";
-import type { ContractEntry, LedgerClient } from "../ledger.js";
-import { toDisclosed, type DisclosedContract } from "../disclose.js";
+import type { Config } from '../config.js'
+import { type DisclosedContract, toDisclosed } from '../disclose.js'
+import type { ContractEntry, LedgerClient } from '../ledger.js'
 import type {
   InstrumentConfigPayload,
   PreapprovalPayload,
   TokenRegistryPayload,
-} from "../payloads.js";
+} from '../payloads.js'
 
 // The ledger client returns payloads as unknown; the wrappers below pair one
 // template id with its payload shape. The cast that gives the routes their
@@ -16,7 +16,7 @@ function activeContractsAs<P>(
   templateId: string,
   party: string,
 ): Promise<ContractEntry<P>[]> {
-  return ledger.activeContracts(templateId, party) as Promise<ContractEntry<P>[]>;
+  return ledger.activeContracts(templateId, party) as Promise<ContractEntry<P>[]>
 }
 
 // The InstrumentConfig active set for the operator, which the routes then run
@@ -25,23 +25,35 @@ function activeContractsAs<P>(
 // findByContractId and escrowDisclosure below.
 export function activeConfigs(
   ledger: LedgerClient,
-  config: Pick<Config, "instrumentConfigTemplateId" | "operatorParty">,
+  config: Pick<Config, 'instrumentConfigTemplateId' | 'operatorParty'>,
 ): Promise<ContractEntry<InstrumentConfigPayload>[]> {
-  return activeContractsAs<InstrumentConfigPayload>(ledger, config.instrumentConfigTemplateId, config.operatorParty);
+  return activeContractsAs<InstrumentConfigPayload>(
+    ledger,
+    config.instrumentConfigTemplateId,
+    config.operatorParty,
+  )
 }
 
 export function activePreapprovals(
   ledger: LedgerClient,
-  config: Pick<Config, "preapprovalTemplateId" | "operatorParty">,
+  config: Pick<Config, 'preapprovalTemplateId' | 'operatorParty'>,
 ): Promise<ContractEntry<PreapprovalPayload>[]> {
-  return activeContractsAs<PreapprovalPayload>(ledger, config.preapprovalTemplateId, config.operatorParty);
+  return activeContractsAs<PreapprovalPayload>(
+    ledger,
+    config.preapprovalTemplateId,
+    config.operatorParty,
+  )
 }
 
 export function activeRegistries(
   ledger: LedgerClient,
-  config: Pick<Config, "tokenRegistryTemplateId" | "operatorParty">,
+  config: Pick<Config, 'tokenRegistryTemplateId' | 'operatorParty'>,
 ): Promise<ContractEntry<TokenRegistryPayload>[]> {
-  return activeContractsAs<TokenRegistryPayload>(ledger, config.tokenRegistryTemplateId, config.operatorParty);
+  return activeContractsAs<TokenRegistryPayload>(
+    ledger,
+    config.tokenRegistryTemplateId,
+    config.operatorParty,
+  )
 }
 
 // Locate a single active contract by its id within a template's active set.
@@ -55,8 +67,8 @@ export async function findByContractId<P = unknown>(
   party: string,
   contractId: string,
 ): Promise<ContractEntry<P> | undefined> {
-  const rows = await activeContractsAs<P>(ledger, templateId, party);
-  return rows.find((row) => row.contractId === contractId);
+  const rows = await activeContractsAs<P>(ledger, templateId, party)
+  return rows.find((row) => row.contractId === contractId)
 }
 
 // Resolve the escrow LockedToken behind a lockedCid and return it as a
@@ -65,9 +77,14 @@ export async function findByContractId<P = unknown>(
 // both disclose it this way before the counterparty exercises its choice.
 export async function escrowDisclosure(
   ledger: LedgerClient,
-  config: Pick<Config, "lockedTokenTemplateId" | "operatorParty">,
+  config: Pick<Config, 'lockedTokenTemplateId' | 'operatorParty'>,
   lockedCid: string,
 ): Promise<DisclosedContract[]> {
-  const escrow = await findByContractId(ledger, config.lockedTokenTemplateId, config.operatorParty, lockedCid);
-  return escrow ? [toDisclosed(escrow)] : [];
+  const escrow = await findByContractId(
+    ledger,
+    config.lockedTokenTemplateId,
+    config.operatorParty,
+    lockedCid,
+  )
+  return escrow ? [toDisclosed(escrow)] : []
 }

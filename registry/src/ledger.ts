@@ -1,40 +1,40 @@
-import { randomUUID } from "node:crypto";
-import type { Config } from "./config.js";
-import type { DisclosedContract } from "./disclose.js";
+import { randomUUID } from 'node:crypto'
+import type { Config } from './config.js'
+import type { DisclosedContract } from './disclose.js'
 
 export interface ContractEntry<P = unknown> {
-  templateId: string;
-  contractId: string;
-  createdEventBlob: string;
-  synchronizerId: string;
-  payload: P;
+  templateId: string
+  contractId: string
+  createdEventBlob: string
+  synchronizerId: string
+  payload: P
 }
 
 export interface CreateCommand {
-  templateId: string;
-  createArguments: Record<string, unknown>;
+  templateId: string
+  createArguments: Record<string, unknown>
 }
 
 export interface ExerciseCommand {
-  templateId: string;
-  contractId: string;
-  choice: string;
-  choiceArgument: Record<string, unknown>;
+  templateId: string
+  contractId: string
+  choice: string
+  choiceArgument: Record<string, unknown>
 }
 
 export interface LedgerClient {
-  activeContracts(templateOrInterfaceId: string, party: string): Promise<ContractEntry[]>;
+  activeContracts(templateOrInterfaceId: string, party: string): Promise<ContractEntry[]>
   submitAndWait(
     actAs: string[],
     commands: (CreateCommand | ExerciseCommand)[],
     disclosedContracts?: DisclosedContract[],
-  ): Promise<unknown>;
+  ): Promise<unknown>
 }
 
-type FetchFn = typeof fetch;
+type FetchFn = typeof fetch
 
 function isExerciseCommand(command: CreateCommand | ExerciseCommand): command is ExerciseCommand {
-  return "contractId" in command;
+  return 'contractId' in command
 }
 
 // Shape of one row of the /v2/state/active-contracts response as this
@@ -45,27 +45,27 @@ interface ActiveContractsRow {
   contractEntry?: {
     JsActiveContract?: {
       createdEvent: {
-        templateId: string;
-        contractId: string;
-        createdEventBlob: string;
-        createArgument: unknown;
-      };
-      synchronizerId: string;
-    };
-  };
+        templateId: string
+        contractId: string
+        createdEventBlob: string
+        createArgument: unknown
+      }
+      synchronizerId: string
+    }
+  }
 }
 
 export class HttpLedgerClient implements LedgerClient {
   constructor(
-    private readonly config: Pick<Config, "ledgerApiUrl" | "ledgerApiToken">,
+    private readonly config: Pick<Config, 'ledgerApiUrl' | 'ledgerApiToken'>,
     private readonly fetchFn: FetchFn = fetch,
   ) {}
 
   async activeContracts(templateOrInterfaceId: string, party: string): Promise<ContractEntry[]> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/state/active-contracts`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "content-type": "application/json",
+        'content-type': 'application/json',
         authorization: `Bearer ${this.config.ledgerApiToken}`,
       },
       body: JSON.stringify({
@@ -87,12 +87,12 @@ export class HttpLedgerClient implements LedgerClient {
         verbose: false,
         activeAtOffset: 0,
       }),
-    });
-    if (!res.ok) throw new Error(`ledger query failed: ${res.status}`);
-    const rows = (await res.json()) as ActiveContractsRow[];
+    })
+    if (!res.ok) throw new Error(`ledger query failed: ${res.status}`)
+    const rows = (await res.json()) as ActiveContractsRow[]
     return rows.flatMap((r) => {
-      const ac = r?.contractEntry?.JsActiveContract;
-      if (!ac) return [];
+      const ac = r?.contractEntry?.JsActiveContract
+      if (!ac) return []
       return [
         {
           templateId: ac.createdEvent.templateId,
@@ -101,8 +101,8 @@ export class HttpLedgerClient implements LedgerClient {
           synchronizerId: ac.synchronizerId,
           payload: ac.createdEvent.createArgument,
         },
-      ];
-    });
+      ]
+    })
   }
 
   // The disclosedContracts placement in this envelope (a top-level sibling of
@@ -113,22 +113,25 @@ export class HttpLedgerClient implements LedgerClient {
     commands: (CreateCommand | ExerciseCommand)[],
     disclosedContracts: DisclosedContract[] = [],
   ): Promise<unknown> {
-    const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/commands/submit-and-wait-for-transaction`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.config.ledgerApiToken}`,
+    const res = await this.fetchFn(
+      `${this.config.ledgerApiUrl}/v2/commands/submit-and-wait-for-transaction`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${this.config.ledgerApiToken}`,
+        },
+        body: JSON.stringify({
+          commands: commands.map((command) =>
+            isExerciseCommand(command) ? { ExerciseCommand: command } : { CreateCommand: command },
+          ),
+          actAs,
+          commandId: randomUUID(),
+          disclosedContracts,
+        }),
       },
-      body: JSON.stringify({
-        commands: commands.map((command) =>
-          isExerciseCommand(command) ? { ExerciseCommand: command } : { CreateCommand: command },
-        ),
-        actAs,
-        commandId: randomUUID(),
-        disclosedContracts,
-      }),
-    });
-    if (!res.ok) throw new Error(`ledger command submission failed: ${res.status}`);
-    return res.json();
+    )
+    if (!res.ok) throw new Error(`ledger command submission failed: ${res.status}`)
+    return res.json()
   }
 }

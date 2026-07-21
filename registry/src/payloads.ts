@@ -9,54 +9,54 @@
 // allocation choice arguments as { admin, id }. On-ledger config payloads
 // instead carry (admin, instrumentId); mapping.ts bridges the two namings.
 export interface InstrumentIdValue {
-  admin: string;
-  id: string;
+  admin: string
+  id: string
 }
 
 export interface InstrumentConfigPayload {
-  admin: string;
-  operator: string;
-  instrumentId: string;
-  name: string;
-  symbol: string;
-  decimals: number | string;
-  faucet: unknown;
+  admin: string
+  operator: string
+  instrumentId: string
+  name: string
+  symbol: string
+  decimals: number | string
+  faucet: unknown
 }
 
-export type InstrumentConfigProposalPayload = InstrumentConfigPayload;
+export type InstrumentConfigProposalPayload = InstrumentConfigPayload
 
 export interface TokenRegistryPayload {
-  operator: string;
-  registryBaseUrl: string;
+  operator: string
+  registryBaseUrl: string
 }
 
 export interface PreapprovalPayload {
-  admin: string;
-  instrumentId: string;
-  receiver: string;
-  validFrom: string;
-  expiresAt: string;
+  admin: string
+  instrumentId: string
+  receiver: string
+  validFrom: string
+  expiresAt: string
 }
 
 export interface TransferInstructionPayload {
-  admin: string;
+  admin: string
   transfer: {
-    sender: string;
-    receiver: string;
-    instrumentId: InstrumentIdValue;
-    amount: string;
-    meta: unknown;
-  };
-  lockedCid: string;
+    sender: string
+    receiver: string
+    instrumentId: InstrumentIdValue
+    amount: string
+    meta: unknown
+  }
+  lockedCid: string
 }
 
 export interface AllocationPayload {
-  admin: string;
-  allocation: unknown;
-  lockedCid: string;
-  meta: unknown;
+  admin: string
+  allocation: unknown
+  lockedCid: string
+  meta: unknown
 }
 
 export interface LockedTokenPayload {
-  admin: string;
+  admin: string
 }
