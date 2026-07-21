@@ -58,9 +58,7 @@ export function instrumentIdentity(payload: InstrumentKeyedPayload): string {
 }
 
 export type ResolveResult<P = unknown> =
-  | { kind: "ok"; entry: ContractEntry<P> }
-  | { kind: "none" }
-  | { kind: "conflict"; contractIds: string[] };
+  { kind: "ok"; entry: ContractEntry<P> } | { kind: "none" } | { kind: "conflict"; contractIds: string[] };
 
 // Because LF 2.1 has no contract keys, nothing on-ledger prevents two active
 // InstrumentConfigs from sharing the same logical identity. Every "pick one

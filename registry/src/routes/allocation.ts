@@ -50,7 +50,8 @@ export function allocationRouter(deps: ServerDeps): Router {
         if (!alloc) return res.status(404).json({ error: "allocation not found" });
 
         const disclosedContracts = await escrowDisclosure(deps.ledger, deps.config, alloc.payload.lockedCid);
-        const choiceContextData = choice === "cancel" ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {};
+        const choiceContextData =
+          choice === "cancel" ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {};
         res.json({ choiceContextData, disclosedContracts });
       }),
     );

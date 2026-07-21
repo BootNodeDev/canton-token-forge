@@ -53,7 +53,9 @@ describe("transfer factory", () => {
     const app = createServer({ ledger, config });
     const res = await request(app)
       .post("/registry/transfer-instruction/v1/transfer-factory")
-      .send({ choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } } });
+      .send({
+        choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } },
+      });
     expect(res.status).toBe(200);
     validateAgainst("transfer-instruction#/components/schemas/TransferFactoryWithChoiceContext", res.body);
     expect(res.body.factoryId).toBe("cfg1");
@@ -71,15 +73,15 @@ describe("transfer factory", () => {
     const app = createServer({ ledger, config });
     const res = await request(app)
       .post("/registry/transfer-instruction/v1/transfer-factory")
-      .send({ choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } } });
+      .send({
+        choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } },
+      });
     expect(res.status).toBe(200);
     validateAgainst("transfer-instruction#/components/schemas/TransferFactoryWithChoiceContext", res.body);
     expect(res.body.transferKind).toBe("direct");
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(2);
     expect(
-      (res.body.choiceContext.disclosedContracts as { contractId: string }[])
-        .map((d) => d.contractId)
-        .sort(),
+      (res.body.choiceContext.disclosedContracts as { contractId: string }[]).map((d) => d.contractId).sort(),
     ).toEqual(["cfg1", "pre1"]);
     expect(res.body.choiceContext.choiceContextData[PREAPPROVAL_CONTEXT_KEY]).toEqual({
       tag: "AV_ContractId",
@@ -105,7 +107,10 @@ describe("transfer factory", () => {
   });
 
   it("falls through to offer when the only preapproval is out of its validity window", async () => {
-    const expired = preapprovalEntry({ validFrom: "2020-01-01T00:00:00Z", expiresAt: "2021-01-01T00:00:00Z" });
+    const expired = preapprovalEntry({
+      validFrom: "2020-01-01T00:00:00Z",
+      expiresAt: "2021-01-01T00:00:00Z",
+    });
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
       [config.preapprovalTemplateId]: [expired],
@@ -113,7 +118,9 @@ describe("transfer factory", () => {
     const app = createServer({ ledger, config });
     const res = await request(app)
       .post("/registry/transfer-instruction/v1/transfer-factory")
-      .send({ choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } } });
+      .send({
+        choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } },
+      });
     expect(res.status).toBe(200);
     validateAgainst("transfer-instruction#/components/schemas/TransferFactoryWithChoiceContext", res.body);
     expect(res.body.transferKind).toBe("offer");
@@ -143,7 +150,9 @@ describe("transfer factory", () => {
     const app = createServer({ ledger, config });
     const res = await request(app)
       .post("/registry/transfer-instruction/v1/transfer-factory")
-      .send({ choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } } });
+      .send({
+        choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } },
+      });
     expect(res.status).toBe(404);
   });
 
@@ -154,7 +163,9 @@ describe("transfer factory", () => {
     const app = createServer({ ledger, config });
     const res = await request(app)
       .post("/registry/transfer-instruction/v1/transfer-factory")
-      .send({ choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } } });
+      .send({
+        choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } },
+      });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("instrument id not unique");
     expect((res.body.contractIds as string[]).sort()).toEqual(["cfg1", "cfg2"]);

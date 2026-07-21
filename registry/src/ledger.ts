@@ -113,21 +113,24 @@ export class HttpLedgerClient implements LedgerClient {
     commands: (CreateCommand | ExerciseCommand)[],
     disclosedContracts: DisclosedContract[] = [],
   ): Promise<unknown> {
-    const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/commands/submit-and-wait-for-transaction`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.config.ledgerApiToken}`,
+    const res = await this.fetchFn(
+      `${this.config.ledgerApiUrl}/v2/commands/submit-and-wait-for-transaction`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.config.ledgerApiToken}`,
+        },
+        body: JSON.stringify({
+          commands: commands.map((command) =>
+            isExerciseCommand(command) ? { ExerciseCommand: command } : { CreateCommand: command },
+          ),
+          actAs,
+          commandId: randomUUID(),
+          disclosedContracts,
+        }),
       },
-      body: JSON.stringify({
-        commands: commands.map((command) =>
-          isExerciseCommand(command) ? { ExerciseCommand: command } : { CreateCommand: command },
-        ),
-        actAs,
-        commandId: randomUUID(),
-        disclosedContracts,
-      }),
-    });
+    );
     if (!res.ok) throw new Error(`ledger command submission failed: ${res.status}`);
     return res.json();
   }

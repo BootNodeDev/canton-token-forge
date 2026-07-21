@@ -82,20 +82,25 @@ export function adminRouter(deps: ServerDeps): Router {
 
       const cfgRows = await activeConfigs(deps.ledger, deps.config);
       const dupIds = cfgRows
-        .filter((r) => matchesInstrument(r.payload, { admin: prop.payload.admin, id: prop.payload.instrumentId }))
+        .filter((r) =>
+          matchesInstrument(r.payload, { admin: prop.payload.admin, id: prop.payload.instrumentId }),
+        )
         .map((r) => r.contractId);
       if (dupIds.length > 0) {
         return res.status(409).json({ error: "instrument id already registered", contractIds: dupIds });
       }
 
-      await deps.ledger.submitAndWait([deps.config.operatorParty], [
-        {
-          templateId: deps.config.instrumentConfigProposalTemplateId,
-          contractId: prop.contractId,
-          choice: "InstrumentConfigProposal_Accept",
-          choiceArgument: {},
-        },
-      ]);
+      await deps.ledger.submitAndWait(
+        [deps.config.operatorParty],
+        [
+          {
+            templateId: deps.config.instrumentConfigProposalTemplateId,
+            contractId: prop.contractId,
+            choice: "InstrumentConfigProposal_Accept",
+            choiceArgument: {},
+          },
+        ],
+      );
       return res.status(200).json({ status: "accepted" });
     }),
   );
@@ -112,14 +117,17 @@ export function adminRouter(deps: ServerDeps): Router {
       );
       if (!prop) return res.status(404).json({ error: "proposal not found" });
 
-      await deps.ledger.submitAndWait([deps.config.operatorParty], [
-        {
-          templateId: deps.config.instrumentConfigProposalTemplateId,
-          contractId: prop.contractId,
-          choice: "InstrumentConfigProposal_Reject",
-          choiceArgument: {},
-        },
-      ]);
+      await deps.ledger.submitAndWait(
+        [deps.config.operatorParty],
+        [
+          {
+            templateId: deps.config.instrumentConfigProposalTemplateId,
+            contractId: prop.contractId,
+            choice: "InstrumentConfigProposal_Reject",
+            choiceArgument: {},
+          },
+        ],
+      );
       return res.status(200).json({ status: "rejected" });
     }),
   );

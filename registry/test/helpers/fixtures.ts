@@ -24,7 +24,9 @@ export const config: Config = {
 
 export const instrumentId: InstrumentIdValue = { admin: "admin::1", id: "CC" };
 
-export function cfgEntry(overrides: Partial<InstrumentConfigPayload> = {}): ContractEntry<InstrumentConfigPayload> {
+export function cfgEntry(
+  overrides: Partial<InstrumentConfigPayload> = {},
+): ContractEntry<InstrumentConfigPayload> {
   return {
     templateId: config.instrumentConfigTemplateId,
     contractId: "cfg1",
@@ -43,7 +45,9 @@ export function cfgEntry(overrides: Partial<InstrumentConfigPayload> = {}): Cont
   };
 }
 
-export function lockedTokenEntry(overrides: Partial<LockedTokenPayload> = {}): ContractEntry<LockedTokenPayload> {
+export function lockedTokenEntry(
+  overrides: Partial<LockedTokenPayload> = {},
+): ContractEntry<LockedTokenPayload> {
   return {
     templateId: config.lockedTokenTemplateId,
     contractId: "locked1",

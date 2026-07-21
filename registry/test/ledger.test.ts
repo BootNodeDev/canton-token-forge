@@ -31,10 +31,7 @@ describe("HttpLedgerClient.activeContracts", () => {
           },
         ]),
     });
-    const client = new HttpLedgerClient(
-      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
-      fakeFetch,
-    );
+    const client = new HttpLedgerClient({ ledgerApiUrl: "http://ledger", ledgerApiToken: "t" }, fakeFetch);
     const rows = await client.activeContracts(
       "pkg:Canton.TokenForge.Registry:InstrumentConfig",
       "operator::1",
@@ -52,9 +49,10 @@ describe("HttpLedgerClient.activeContracts", () => {
     expect(url).toBe("http://ledger/v2/state/active-contracts");
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string);
-    expect(body.filter.filtersByParty["operator::1"].cumulative[0].identifierFilter.TemplateFilter.value.templateId).toBe(
-      "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-    );
+    expect(
+      body.filter.filtersByParty["operator::1"].cumulative[0].identifierFilter.TemplateFilter.value
+        .templateId,
+    ).toBe("pkg:Canton.TokenForge.Registry:InstrumentConfig");
   });
 });
 
@@ -64,23 +62,23 @@ describe("HttpLedgerClient.submitAndWait", () => {
       ok: true,
       json: () => Promise.resolve({ transactionId: "tx-1" }),
     });
-    const client = new HttpLedgerClient(
-      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
-      fakeFetch,
-    );
+    const client = new HttpLedgerClient({ ledgerApiUrl: "http://ledger", ledgerApiToken: "t" }, fakeFetch);
 
-    const result = await client.submitAndWait(["operator::1"], [
-      {
-        templateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-        createArguments: { id: "CC" },
-      },
-      {
-        templateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-        contractId: "00abc",
-        choice: "InstrumentConfig_Archive",
-        choiceArgument: {},
-      },
-    ]);
+    const result = await client.submitAndWait(
+      ["operator::1"],
+      [
+        {
+          templateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
+          createArguments: { id: "CC" },
+        },
+        {
+          templateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
+          contractId: "00abc",
+          choice: "InstrumentConfig_Archive",
+          choiceArgument: {},
+        },
+      ],
+    );
 
     expect(result).toEqual({ transactionId: "tx-1" });
     expect(calls).toHaveLength(1);
@@ -114,10 +112,7 @@ describe("HttpLedgerClient.submitAndWait", () => {
       ok: true,
       json: () => Promise.resolve({ transactionId: "tx-2" }),
     });
-    const client = new HttpLedgerClient(
-      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
-      fakeFetch,
-    );
+    const client = new HttpLedgerClient({ ledgerApiUrl: "http://ledger", ledgerApiToken: "t" }, fakeFetch);
 
     const disclosedContracts = [
       {
@@ -153,15 +148,10 @@ describe("HttpLedgerClient.submitAndWait", () => {
       status: 400,
       json: () => Promise.resolve({}),
     });
-    const client = new HttpLedgerClient(
-      { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
-      fakeFetch,
-    );
+    const client = new HttpLedgerClient({ ledgerApiUrl: "http://ledger", ledgerApiToken: "t" }, fakeFetch);
 
     await expect(
-      client.submitAndWait(["operator::1"], [
-        { templateId: "T", createArguments: {} },
-      ]),
+      client.submitAndWait(["operator::1"], [{ templateId: "T", createArguments: {} }]),
     ).rejects.toThrow(/400/);
   });
 });

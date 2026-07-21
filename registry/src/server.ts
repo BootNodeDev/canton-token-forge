@@ -13,7 +13,9 @@ export interface ServerDeps {
 
 function statusFromError(err: unknown): number {
   if (err && typeof err === "object") {
-    const status = (err as { status?: unknown; statusCode?: unknown }).status ?? (err as { statusCode?: unknown }).statusCode;
+    const status =
+      (err as { status?: unknown; statusCode?: unknown }).status ??
+      (err as { statusCode?: unknown }).statusCode;
     if (typeof status === "number" && status >= 400 && status <= 599) return status;
   }
   return 500;

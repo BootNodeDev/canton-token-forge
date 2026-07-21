@@ -16,7 +16,13 @@ function allocationEntry(overrides: Partial<AllocationPayload> = {}): ContractEn
     payload: {
       admin: instrumentId.admin,
       allocation: {
-        settlement: { executor: "executor::1", settlementRef: { id: "ref1", cid: null }, requestedAt: "2020-01-01T00:00:00Z", allocateBefore: "2999-01-01T00:00:00Z", settleBefore: "2999-01-01T00:00:00Z" },
+        settlement: {
+          executor: "executor::1",
+          settlementRef: { id: "ref1", cid: null },
+          requestedAt: "2020-01-01T00:00:00Z",
+          allocateBefore: "2999-01-01T00:00:00Z",
+          settleBefore: "2999-01-01T00:00:00Z",
+        },
         transferLegId: "leg1",
         transferLeg: { sender: "sender::1", receiver: "receiver::1", amount: "10.0", instrumentId },
       },

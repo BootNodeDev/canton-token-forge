@@ -22,7 +22,8 @@ export function transferRouter(deps: ServerDeps): Router {
       const transfer = (req.body as TransferFactoryBody | undefined)?.choiceArguments?.transfer;
       if (!transfer?.instrumentId) return res.status(400).json({ error: "missing transfer.instrumentId" });
       const { instrumentId, sender, receiver } = transfer;
-      if (!sender || !receiver) return res.status(400).json({ error: "missing transfer.sender or transfer.receiver" });
+      if (!sender || !receiver)
+        return res.status(400).json({ error: "missing transfer.sender or transfer.receiver" });
 
       // The config set and the preapprovals are independent lookups, so fetch
       // both up front: the common direct/offer path then costs one round-trip

@@ -43,8 +43,6 @@ export function validateAgainst(pointer: string, body: unknown): void {
   }
   const valid = validate(body);
   if (!valid) {
-    throw new Error(
-      `schema validation failed for ${pointer}: ${JSON.stringify(validate.errors, null, 2)}`,
-    );
+    throw new Error(`schema validation failed for ${pointer}: ${JSON.stringify(validate.errors, null, 2)}`);
   }
 }

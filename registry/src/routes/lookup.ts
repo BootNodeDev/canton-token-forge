@@ -1,11 +1,7 @@
 import type { Config } from "../config.js";
 import type { ContractEntry, LedgerClient } from "../ledger.js";
 import { toDisclosed, type DisclosedContract } from "../disclose.js";
-import type {
-  InstrumentConfigPayload,
-  PreapprovalPayload,
-  TokenRegistryPayload,
-} from "../payloads.js";
+import type { InstrumentConfigPayload, PreapprovalPayload, TokenRegistryPayload } from "../payloads.js";
 
 // The ledger client returns payloads as unknown; the wrappers below pair one
 // template id with its payload shape. The cast that gives the routes their
@@ -27,7 +23,11 @@ export function activeConfigs(
   ledger: LedgerClient,
   config: Pick<Config, "instrumentConfigTemplateId" | "operatorParty">,
 ): Promise<ContractEntry<InstrumentConfigPayload>[]> {
-  return activeContractsAs<InstrumentConfigPayload>(ledger, config.instrumentConfigTemplateId, config.operatorParty);
+  return activeContractsAs<InstrumentConfigPayload>(
+    ledger,
+    config.instrumentConfigTemplateId,
+    config.operatorParty,
+  );
 }
 
 export function activePreapprovals(
@@ -41,7 +41,11 @@ export function activeRegistries(
   ledger: LedgerClient,
   config: Pick<Config, "tokenRegistryTemplateId" | "operatorParty">,
 ): Promise<ContractEntry<TokenRegistryPayload>[]> {
-  return activeContractsAs<TokenRegistryPayload>(ledger, config.tokenRegistryTemplateId, config.operatorParty);
+  return activeContractsAs<TokenRegistryPayload>(
+    ledger,
+    config.tokenRegistryTemplateId,
+    config.operatorParty,
+  );
 }
 
 // Locate a single active contract by its id within a template's active set.
@@ -68,6 +72,11 @@ export async function escrowDisclosure(
   config: Pick<Config, "lockedTokenTemplateId" | "operatorParty">,
   lockedCid: string,
 ): Promise<DisclosedContract[]> {
-  const escrow = await findByContractId(ledger, config.lockedTokenTemplateId, config.operatorParty, lockedCid);
+  const escrow = await findByContractId(
+    ledger,
+    config.lockedTokenTemplateId,
+    config.operatorParty,
+    lockedCid,
+  );
   return escrow ? [toDisclosed(escrow)] : [];
 }
