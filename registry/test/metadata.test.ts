@@ -3,27 +3,33 @@ import request from "supertest";
 import { createServer } from "../src/server";
 import { validateAgainst } from "./helpers/schema";
 import { config } from "./helpers/fixtures";
+import type { LedgerClient } from "../src/ledger";
+import type { InstrumentConfigPayload } from "../src/payloads";
 
-function ledgerWith(payloads: any[]) {
+function ledgerWith(payloads: InstrumentConfigPayload[]): LedgerClient {
   return {
-    activeContracts: async () =>
-      payloads.map((p, i) => ({
-        templateId: config.instrumentConfigTemplateId,
-        contractId: `c${i}`,
-        createdEventBlob: "b",
-        synchronizerId: "s",
-        payload: p,
-      })),
-  } as any;
+    activeContracts: () =>
+      Promise.resolve(
+        payloads.map((p, i) => ({
+          templateId: config.instrumentConfigTemplateId,
+          contractId: `c${i}`,
+          createdEventBlob: "b",
+          synchronizerId: "s",
+          payload: p,
+        })),
+      ),
+    submitAndWait: () => Promise.reject(new Error("submitAndWait not expected in this test")),
+  };
 }
 
-const cantonCoin = {
+const cantonCoin: InstrumentConfigPayload = {
   admin: "admin::1",
   operator: "op::1",
   instrumentId: "CC",
   name: "Canton Coin",
   symbol: "CC",
   decimals: 10,
+  faucet: null,
 };
 
 describe("metadata", () => {

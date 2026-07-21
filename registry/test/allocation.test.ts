@@ -4,8 +4,10 @@ import { createServer } from "../src/server";
 import { validateAgainst } from "./helpers/schema";
 import { EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../src/disclose";
 import { config, instrumentId, cfgEntry, lockedTokenEntry, ledgerFrom } from "./helpers/fixtures";
+import type { ContractEntry } from "../src/ledger";
+import type { AllocationPayload } from "../src/payloads";
 
-function allocationEntry(overrides: any = {}) {
+function allocationEntry(overrides: Partial<AllocationPayload> = {}): ContractEntry<AllocationPayload> {
   return {
     templateId: config.allocationInterfaceId,
     contractId: "alloc1",

@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { createServer } from "../src/server";
 import { config, cfgEntry, recordingLedger } from "./helpers/fixtures";
+import type { ContractEntry, ExerciseCommand } from "../src/ledger";
+import type { InstrumentConfigProposalPayload, TokenRegistryPayload } from "../src/payloads";
 
-function registryEntry(overrides: any = {}) {
+function registryEntry(overrides: Partial<TokenRegistryPayload> = {}): ContractEntry<TokenRegistryPayload> {
   return {
     templateId: config.tokenRegistryTemplateId,
     contractId: "reg1",
@@ -17,7 +19,9 @@ function registryEntry(overrides: any = {}) {
   };
 }
 
-function proposalEntry(overrides: any = {}) {
+function proposalEntry(
+  overrides: Partial<InstrumentConfigProposalPayload> = {},
+): ContractEntry<InstrumentConfigProposalPayload> {
   return {
     templateId: config.instrumentConfigProposalTemplateId,
     contractId: "prop1",
@@ -90,7 +94,8 @@ describe("POST /admin/instruments", () => {
       decimals: 10,
     });
     expect(res.status).toBe(202);
-    expect((calls[0].commands[0] as any).choiceArgument.faucet).toBeNull();
+    const cmd = calls[0].commands[0] as ExerciseCommand;
+    expect(cmd.choiceArgument.faucet).toBeNull();
   });
 
   it("400s when a required field is missing", async () => {
