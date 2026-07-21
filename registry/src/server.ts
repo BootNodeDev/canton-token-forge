@@ -1,6 +1,9 @@
+import path from 'node:path'
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'
+import * as OpenApiValidator from 'express-openapi-validator'
 import type { Config } from './config.js'
 import type { LedgerClient } from './ledger.js'
+import { openapiDir, specFiles } from './openapi.js'
 import { adminRouter } from './routes/admin.js'
 import { allocationRouter } from './routes/allocation.js'
 import { metadataRouter } from './routes/metadata.js'
@@ -24,6 +27,34 @@ function statusFromError(err: unknown): number {
 export function createServer(deps: ServerDeps): Express {
   const app = express()
   app.use(express.json())
+
+  // One validator per vendored standard spec, requests only. Paths a given
+  // spec does not document are ignored so the other specs' routes and the
+  // service-specific /admin and health endpoints pass through; responses
+  // stay schema-checked in the test suite instead of per-request.
+  // Splice/CN integer-width format hints that the schemas' type: integer
+  // already covers, so we register them permissively only to keep ajv quiet.
+  const customFormats = {
+    int8: { type: 'number' as const, validate: () => true },
+    int32: { type: 'number' as const, validate: () => true },
+  }
+  for (const specFile of Object.values(specFiles)) {
+    app.use(
+      OpenApiValidator.middleware({
+        apiSpec: path.join(openapiDir, specFile),
+        validateRequests: {
+          // Tolerate undeclared query params (cache-busters, client
+          // instrumentation): the specs never forbid them and the handlers
+          // ignore them, so rejecting them adds no safety, only friction.
+          allowUnknownQueryParameters: true,
+        },
+        validateResponses: false,
+        ignoreUndocumented: true,
+        formats: customFormats,
+      }),
+    )
+  }
+
   app.get('/healthz', (_req, res) => res.json({ status: 'ok' }))
   app.use(metadataRouter(deps))
   app.use(transferRouter(deps))
