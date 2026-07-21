@@ -1,10 +1,11 @@
 import { Router } from "express";
 import type { ServerDeps } from "../server.js";
 import { toDisclosed, EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../disclose.js";
-import { resolveConfig, resolveOrRespond } from "../mapping.js";
+import { resolveConfig } from "../mapping.js";
 import { asyncHandler } from "./async-handler.js";
 import { findByContractId, escrowDisclosure, activeConfigs } from "./lookup.js";
 import type { AllocationPayload, InstrumentIdValue } from "../payloads.js";
+import { resolveOrRespond } from "./respond.js";
 
 interface AllocationFactoryBody {
   choiceArguments?: { allocation?: { instrumentId?: InstrumentIdValue } };
