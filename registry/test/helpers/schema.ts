@@ -1,27 +1,17 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import Ajv, { type ValidateFunction } from 'ajv'
 import addFormats from 'ajv-formats'
 import { load as loadYaml } from 'js-yaml'
-
-const testDir = path.dirname(fileURLToPath(import.meta.url))
-const openapiDir = path.resolve(testDir, '../../openapi')
+import { openapiDir, specFiles } from '../../src/openapi'
 
 const ajv = new Ajv({ strict: false })
 addFormats(ajv)
-// The metadata spec annotates `decimals` with `format: int8`, which
-// ajv-formats does not define. Register it as an always-valid format so the
-// surrounding `type: integer` still governs and Ajv emits no "unknown format"
-// warning.
+// The specs annotate `decimals` with `format: int8`, which ajv-formats does
+// not define (unlike int32, which it validates as a real range). Register it
+// as an always-valid format so the surrounding `type: integer` still governs
+// and Ajv emits no "unknown format" warning.
 ajv.addFormat('int8', true)
-
-const specFiles: Record<string, string> = {
-  metadata: 'token-metadata-v1.yaml',
-  'transfer-instruction': 'transfer-instruction-v1.yaml',
-  allocation: 'allocation-v1.yaml',
-  'allocation-instruction': 'allocation-instruction-v1.yaml',
-}
 
 for (const [specId, fileName] of Object.entries(specFiles)) {
   const doc = loadYaml(readFileSync(path.join(openapiDir, fileName), 'utf8'))
