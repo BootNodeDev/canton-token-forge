@@ -25,6 +25,7 @@ export const config: Config = {
   lockedTokenTemplateId: 'pkg:Canton.TokenForge.Registry:LockedToken',
   allocationInterfaceId: 'pkg:Splice.Api.Token.AllocationV1:Allocation',
   port: 0,
+  shutdownTimeoutMs: 8_000,
 }
 
 export const instrumentId: InstrumentIdValue = { admin: 'admin::1', id: 'CC' }
