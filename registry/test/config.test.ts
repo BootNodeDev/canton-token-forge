@@ -61,4 +61,10 @@ describe('loadConfig shutdown timeout parsing', () => {
       /invalid SHUTDOWN_TIMEOUT_MS/,
     )
   })
+
+  it('throws on a zero SHUTDOWN_TIMEOUT_MS (would fire the backstop immediately)', () => {
+    expect(() => loadConfig({ ...baseEnv, SHUTDOWN_TIMEOUT_MS: '0' })).toThrow(
+      /invalid SHUTDOWN_TIMEOUT_MS/,
+    )
+  })
 })

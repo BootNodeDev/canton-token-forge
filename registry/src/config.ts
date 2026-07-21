@@ -34,7 +34,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const parseTimeoutMs = (raw: string | undefined): number => {
     if (!raw) return DEFAULT_SHUTDOWN_TIMEOUT_MS
     const n = Number(raw)
-    if (!Number.isInteger(n) || n < 0) {
+    if (!Number.isInteger(n) || n < 1) {
       throw new Error(`invalid SHUTDOWN_TIMEOUT_MS: ${raw}`)
     }
     return n
