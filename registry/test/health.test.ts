@@ -18,18 +18,12 @@ describe('health', () => {
     expect(res.body).toEqual({ status: 'ready' })
   })
 
-  it('GET /readyz returns 503 when the ledger is unreachable', async () => {
-    const app = createServer({ ledger: rejectingLedger, config })
-    const res = await request(app).get('/readyz')
-    expect(res.status).toBe(503)
-    expect(res.body).toEqual({ status: 'unavailable' })
-  })
-
-  it('logs the ledger error when the readiness probe fails', async () => {
+  it('GET /readyz returns 503 and logs the error when the ledger is unreachable', async () => {
     const { logger, entries } = recordingLogger()
     const app = createServer({ ledger: rejectingLedger, config, logger })
     const res = await request(app).get('/readyz')
     expect(res.status).toBe(503)
+    expect(res.body).toEqual({ status: 'unavailable' })
     expect(entries).toHaveLength(1)
     expect(entries[0]).toHaveProperty('err')
   })
