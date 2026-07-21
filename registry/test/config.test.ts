@@ -67,4 +67,10 @@ describe('loadConfig shutdown timeout parsing', () => {
       /invalid SHUTDOWN_TIMEOUT_MS/,
     )
   })
+
+  it('throws when SHUTDOWN_TIMEOUT_MS overflows the setTimeout range', () => {
+    expect(() => loadConfig({ ...baseEnv, SHUTDOWN_TIMEOUT_MS: '2147483648' })).toThrow(
+      /invalid SHUTDOWN_TIMEOUT_MS/,
+    )
+  })
 })
