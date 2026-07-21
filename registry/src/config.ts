@@ -11,9 +11,11 @@ export interface Config {
   lockedTokenTemplateId: string
   allocationInterfaceId: string
   port: number
+  shutdownTimeoutMs: number
 }
 
 const DEFAULT_PORT = 8080
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000
 
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const require_ = (k: string): string => {
@@ -26,6 +28,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     const n = Number(raw)
     if (!Number.isInteger(n) || n < 1 || n > 65535) {
       throw new Error(`invalid PORT: ${raw}`)
+    }
+    return n
+  }
+  const parseTimeoutMs = (raw: string | undefined): number => {
+    if (!raw) return DEFAULT_SHUTDOWN_TIMEOUT_MS
+    const n = Number(raw)
+    if (!Number.isInteger(n) || n < 0) {
+      throw new Error(`invalid SHUTDOWN_TIMEOUT_MS: ${raw}`)
     }
     return n
   }
@@ -42,5 +52,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     lockedTokenTemplateId: require_('LOCKED_TOKEN_TEMPLATE_ID'),
     allocationInterfaceId: require_('ALLOCATION_INTERFACE_ID'),
     port: parsePort(env.PORT),
+    shutdownTimeoutMs: parseTimeoutMs(env.SHUTDOWN_TIMEOUT_MS),
   }
 }

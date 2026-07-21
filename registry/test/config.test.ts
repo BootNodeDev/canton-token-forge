@@ -36,3 +36,29 @@ describe('loadConfig port parsing', () => {
     expect(() => loadConfig({ ...baseEnv, PORT: '70000' })).toThrow(/invalid PORT/)
   })
 })
+
+describe('loadConfig shutdown timeout parsing', () => {
+  it('defaults to 10000 when SHUTDOWN_TIMEOUT_MS is unset', () => {
+    expect(loadConfig({ ...baseEnv }).shutdownTimeoutMs).toBe(10000)
+  })
+
+  it('defaults to 10000 when SHUTDOWN_TIMEOUT_MS is an empty string', () => {
+    expect(loadConfig({ ...baseEnv, SHUTDOWN_TIMEOUT_MS: '' }).shutdownTimeoutMs).toBe(10000)
+  })
+
+  it('parses a valid SHUTDOWN_TIMEOUT_MS', () => {
+    expect(loadConfig({ ...baseEnv, SHUTDOWN_TIMEOUT_MS: '30000' }).shutdownTimeoutMs).toBe(30000)
+  })
+
+  it('throws on a non-numeric SHUTDOWN_TIMEOUT_MS', () => {
+    expect(() => loadConfig({ ...baseEnv, SHUTDOWN_TIMEOUT_MS: 'abc' })).toThrow(
+      /invalid SHUTDOWN_TIMEOUT_MS/,
+    )
+  })
+
+  it('throws on a negative SHUTDOWN_TIMEOUT_MS', () => {
+    expect(() => loadConfig({ ...baseEnv, SHUTDOWN_TIMEOUT_MS: '-1' })).toThrow(
+      /invalid SHUTDOWN_TIMEOUT_MS/,
+    )
+  })
+})
