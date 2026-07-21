@@ -38,12 +38,12 @@ describe('loadConfig port parsing', () => {
 })
 
 describe('loadConfig shutdown timeout parsing', () => {
-  it('defaults to 10000 when SHUTDOWN_TIMEOUT_MS is unset', () => {
-    expect(loadConfig({ ...baseEnv }).shutdownTimeoutMs).toBe(10000)
+  it('defaults to 8000 when SHUTDOWN_TIMEOUT_MS is unset', () => {
+    expect(loadConfig({ ...baseEnv }).shutdownTimeoutMs).toBe(8000)
   })
 
-  it('defaults to 10000 when SHUTDOWN_TIMEOUT_MS is an empty string', () => {
-    expect(loadConfig({ ...baseEnv, SHUTDOWN_TIMEOUT_MS: '' }).shutdownTimeoutMs).toBe(10000)
+  it('defaults to 8000 when SHUTDOWN_TIMEOUT_MS is an empty string', () => {
+    expect(loadConfig({ ...baseEnv, SHUTDOWN_TIMEOUT_MS: '' }).shutdownTimeoutMs).toBe(8000)
   })
 
   it('parses a valid SHUTDOWN_TIMEOUT_MS', () => {

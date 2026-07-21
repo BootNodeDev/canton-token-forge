@@ -15,7 +15,7 @@ export interface Config {
 }
 
 const DEFAULT_PORT = 8080
-const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 8_000
 // Node's setTimeout clamps any delay above 2^31-1 back to 1ms, which would turn
 // a long grace window into an immediate force-close, so we reject those values.
 const MAX_SHUTDOWN_TIMEOUT_MS = 2_147_483_647
