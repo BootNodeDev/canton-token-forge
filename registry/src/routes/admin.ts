@@ -6,6 +6,13 @@ import { asyncHandler } from "./async-handler.js";
 import { findByContractId, activeConfigs, activeRegistries } from "./lookup.js";
 import type { InstrumentConfigProposalPayload } from "../payloads.js";
 
+// A required proposal field must be a present, non-empty string. Checking the
+// type alone would let "" through, which the ledger would take as a malformed
+// instrument id/name/symbol rather than reject.
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 // canton-token-forge admin endpoints that drive the Plan 04 propose-accept
 // instrument-registration workflow. These sit outside the four standard
 // registry API groups, so there is no vendored OpenAPI spec to validate
@@ -25,10 +32,10 @@ export function adminRouter(deps: ServerDeps): Router {
       const { admin, instrumentId, name, symbol, decimals } = body;
       const faucet = body.faucet ?? null;
       if (
-        typeof admin !== "string" ||
-        typeof instrumentId !== "string" ||
-        typeof name !== "string" ||
-        typeof symbol !== "string" ||
+        !isNonEmptyString(admin) ||
+        !isNonEmptyString(instrumentId) ||
+        !isNonEmptyString(name) ||
+        !isNonEmptyString(symbol) ||
         typeof decimals !== "number"
       ) {
         return res.status(400).json({ error: "missing proposal fields" });

@@ -111,6 +111,21 @@ describe("POST /admin/instruments", () => {
     expect(res.body.error).toBeTruthy();
   });
 
+  it("400s when a required field is an empty string rather than submitting it to the ledger", async () => {
+    const { ledger, calls } = recordingLedger({ [config.tokenRegistryTemplateId]: [registryEntry()] });
+    const app = createServer({ ledger, config });
+    const res = await request(app).post("/admin/instruments").send({
+      admin: "admin::1",
+      instrumentId: "",
+      name: "",
+      symbol: "",
+      decimals: 10,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeTruthy();
+    expect(calls).toHaveLength(0);
+  });
+
   it("400s when decimals is null rather than forwarding a null Int to the ledger", async () => {
     const { ledger, calls } = recordingLedger({ [config.tokenRegistryTemplateId]: [registryEntry()] });
     const app = createServer({ ledger, config });
