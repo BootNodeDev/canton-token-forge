@@ -2,6 +2,7 @@ import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { createServer } from '../src/server'
 import { cfgEntry, config, ledgerFrom } from './helpers/fixtures'
+import { validateAgainst } from './helpers/schema'
 
 describe('runtime request validation', () => {
   it('400s a transfer-factory request missing the spec-required choiceArguments', async () => {
@@ -11,6 +12,7 @@ describe('runtime request validation', () => {
       .post('/registry/transfer-instruction/v1/transfer-factory')
       .send({})
     expect(res.status).toBe(400)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
     expect(res.body.error).toMatch(/choiceArguments/)
   })
 
@@ -21,6 +23,7 @@ describe('runtime request validation', () => {
       .post('/registry/allocation-instruction/v1/allocation-factory')
       .send({})
     expect(res.status).toBe(400)
+    validateAgainst('allocation-instruction#/components/schemas/ErrorResponse', res.body)
     expect(res.body.error).toMatch(/choiceArguments/)
   })
 
