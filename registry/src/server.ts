@@ -49,7 +49,12 @@ export function createServer(deps: ServerDeps): Express {
     app.use(
       OpenApiValidator.middleware({
         apiSpec: path.join(specDir, specFile),
-        validateRequests: true,
+        validateRequests: {
+          // Tolerate undeclared query params (cache-busters, client
+          // instrumentation): the specs never forbid them and the handlers
+          // ignore them, so rejecting them adds no safety, only friction.
+          allowUnknownQueryParameters: true,
+        },
         validateResponses: false,
         ignoreUndocumented: true,
         formats: customFormats,

@@ -31,6 +31,14 @@ describe('runtime request validation', () => {
     expect(res.status).toBe(400)
   })
 
+  it('accepts an undocumented query param on a documented endpoint', async () => {
+    const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [] })
+    const app = createServer({ ledger, config })
+    const res = await request(app).get('/registry/metadata/v1/instruments?_=cachebuster')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ instruments: [] })
+  })
+
   it('leaves the undocumented admin endpoints unvalidated by the specs', async () => {
     const ledger = ledgerFrom({ [config.instrumentConfigProposalTemplateId]: [] })
     const app = createServer({ ledger, config })
