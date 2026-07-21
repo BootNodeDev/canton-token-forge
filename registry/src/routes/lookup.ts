@@ -55,7 +55,7 @@ export async function findByContractId<P = unknown>(
   party: string,
   contractId: string,
 ): Promise<ContractEntry<P> | undefined> {
-  const rows = (await ledger.activeContracts(templateId, party)) as ContractEntry<P>[];
+  const rows = await activeContractsAs<P>(ledger, templateId, party);
   return rows.find((row) => row.contractId === contractId);
 }
 
