@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
-import { createServer } from "../src/server";
-import { config, ledgerFrom } from "./helpers/fixtures";
-import type { LedgerClient } from "../src/ledger";
+import { createServer } from "../src/server.js";
+import { config, ledgerFrom } from "./helpers/fixtures.js";
+import type { LedgerClient } from "../src/ledger.js";
 
 describe("async route errors", () => {
   it("maps a rejected ledger call to a 500 with a JSON error body instead of hanging", async () => {

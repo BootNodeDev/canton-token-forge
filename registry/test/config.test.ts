@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadConfig } from "../src/config";
+import { loadConfig } from "../src/config.js";
 
 const baseEnv: Record<string, string> = {
   LEDGER_API_URL: "http://ledger",

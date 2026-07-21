@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
-import { createServer } from "../src/server";
-import { validateAgainst } from "./helpers/schema";
-import { config } from "./helpers/fixtures";
-import type { LedgerClient } from "../src/ledger";
-import type { InstrumentConfigPayload } from "../src/payloads";
+import { createServer } from "../src/server.js";
+import { validateAgainst } from "./helpers/schema.js";
+import { config } from "./helpers/fixtures.js";
+import type { LedgerClient } from "../src/ledger.js";
+import type { InstrumentConfigPayload } from "../src/payloads.js";
 
 function ledgerWith(payloads: InstrumentConfigPayload[]): LedgerClient {
   return {

@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
-import { createServer } from "../src/server";
-import { validateAgainst } from "./helpers/schema";
-import { EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../src/disclose";
-import { config, instrumentId, cfgEntry, lockedTokenEntry, ledgerFrom } from "./helpers/fixtures";
-import type { ContractEntry } from "../src/ledger";
-import type { AllocationPayload } from "../src/payloads";
+import { createServer } from "../src/server.js";
+import { validateAgainst } from "./helpers/schema.js";
+import { EXPIRE_LOCK_CONTEXT_KEY, anyValueBool } from "../src/disclose.js";
+import { config, instrumentId, cfgEntry, lockedTokenEntry, ledgerFrom } from "./helpers/fixtures.js";
+import type { ContractEntry } from "../src/ledger.js";
+import type { AllocationPayload } from "../src/payloads.js";
 
 function allocationEntry(overrides: Partial<AllocationPayload> = {}): ContractEntry<AllocationPayload> {
   return {
@@ -70,7 +70,7 @@ describe("allocation factory", () => {
       .send({ choiceArguments: { allocation: { instrumentId } } });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("instrument id not unique");
-    expect(res.body.contractIds.sort()).toEqual(["cfg1", "cfg2"]);
+    expect((res.body.contractIds as string[]).sort()).toEqual(["cfg1", "cfg2"]);
   });
 });
 
@@ -87,7 +87,7 @@ describe("allocation choice-contexts", () => {
     expect(res.status).toBe(200);
     validateAgainst("allocation#/components/schemas/ChoiceContext", res.body);
     expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toEqual(anyValueBool(true));
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort();
+    const ids = (res.body.disclosedContracts as { contractId: string }[]).map((d) => d.contractId).sort();
     expect(ids).toEqual(["locked1"]);
   });
 
@@ -103,7 +103,7 @@ describe("allocation choice-contexts", () => {
     expect(res.status).toBe(200);
     validateAgainst("allocation#/components/schemas/ChoiceContext", res.body);
     expect(res.body.choiceContextData).toEqual({});
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort();
+    const ids = (res.body.disclosedContracts as { contractId: string }[]).map((d) => d.contractId).sort();
     expect(ids).toEqual(["locked1"]);
   });
 

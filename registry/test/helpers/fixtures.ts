@@ -2,10 +2,10 @@
 // Config so suites cannot drift from the real shape; the entry builders and
 // ledger stubs are the ones duplicated verbatim across the transfer,
 // allocation, admin, and metadata suites.
-import type { Config } from "../../src/config";
-import type { ContractEntry, CreateCommand, ExerciseCommand, LedgerClient } from "../../src/ledger";
-import type { DisclosedContract } from "../../src/disclose";
-import type { InstrumentConfigPayload, InstrumentIdValue, LockedTokenPayload } from "../../src/payloads";
+import type { Config } from "../../src/config.js";
+import type { ContractEntry, CreateCommand, ExerciseCommand, LedgerClient } from "../../src/ledger.js";
+import type { DisclosedContract } from "../../src/disclose.js";
+import type { InstrumentConfigPayload, InstrumentIdValue, LockedTokenPayload } from "../../src/payloads.js";
 
 export const config: Config = {
   ledgerApiUrl: "http://ledger",

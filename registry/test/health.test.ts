@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
-import { createServer } from "../src/server";
-import { config, ledgerFrom } from "./helpers/fixtures";
+import { createServer } from "../src/server.js";
+import { config, ledgerFrom } from "./helpers/fixtures.js";
 
 describe("health", () => {
   it("GET /healthz returns 200 ok", async () => {

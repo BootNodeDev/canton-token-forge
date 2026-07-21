@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
-import { createServer } from "../src/server";
-import { validateAgainst } from "./helpers/schema";
-import { PREAPPROVAL_CONTEXT_KEY } from "../src/disclose";
-import { config, instrumentId, cfgEntry, lockedTokenEntry, ledgerFrom } from "./helpers/fixtures";
-import type { ContractEntry } from "../src/ledger";
-import type { PreapprovalPayload, TransferInstructionPayload } from "../src/payloads";
+import { createServer } from "../src/server.js";
+import { validateAgainst } from "./helpers/schema.js";
+import { PREAPPROVAL_CONTEXT_KEY } from "../src/disclose.js";
+import { config, instrumentId, cfgEntry, lockedTokenEntry, ledgerFrom } from "./helpers/fixtures.js";
+import type { ContractEntry } from "../src/ledger.js";
+import type { PreapprovalPayload, TransferInstructionPayload } from "../src/payloads.js";
 
 function preapprovalEntry(overrides: Partial<PreapprovalPayload> = {}): ContractEntry<PreapprovalPayload> {
   return {
@@ -76,7 +76,11 @@ describe("transfer factory", () => {
     validateAgainst("transfer-instruction#/components/schemas/TransferFactoryWithChoiceContext", res.body);
     expect(res.body.transferKind).toBe("direct");
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(2);
-    expect(res.body.choiceContext.disclosedContracts.map((d: any) => d.contractId).sort()).toEqual(["cfg1", "pre1"]);
+    expect(
+      (res.body.choiceContext.disclosedContracts as { contractId: string }[])
+        .map((d) => d.contractId)
+        .sort(),
+    ).toEqual(["cfg1", "pre1"]);
     expect(res.body.choiceContext.choiceContextData[PREAPPROVAL_CONTEXT_KEY]).toEqual({
       tag: "AV_ContractId",
       value: "pre1",
@@ -153,7 +157,7 @@ describe("transfer factory", () => {
       .send({ choiceArguments: { transfer: { instrumentId, sender: "sender::1", receiver: "receiver::1" } } });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("instrument id not unique");
-    expect(res.body.contractIds.sort()).toEqual(["cfg1", "cfg2"]);
+    expect((res.body.contractIds as string[]).sort()).toEqual(["cfg1", "cfg2"]);
   });
 });
 
@@ -171,7 +175,7 @@ describe("transfer-instruction choice-contexts", () => {
     expect(res.status).toBe(200);
     validateAgainst("transfer-instruction#/components/schemas/ChoiceContext", res.body);
     expect(res.body.choiceContextData).toEqual({});
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort();
+    const ids = (res.body.disclosedContracts as { contractId: string }[]).map((d) => d.contractId).sort();
     expect(ids).toEqual(["cfg1", "locked1"]);
   });
 
@@ -188,7 +192,7 @@ describe("transfer-instruction choice-contexts", () => {
     expect(res.status).toBe(200);
     validateAgainst("transfer-instruction#/components/schemas/ChoiceContext", res.body);
     expect(res.body.choiceContextData).toEqual({});
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort();
+    const ids = (res.body.disclosedContracts as { contractId: string }[]).map((d) => d.contractId).sort();
     expect(ids).toEqual(["cfg1", "locked1"]);
   });
 
@@ -205,7 +209,7 @@ describe("transfer-instruction choice-contexts", () => {
     expect(res.status).toBe(200);
     validateAgainst("transfer-instruction#/components/schemas/ChoiceContext", res.body);
     expect(res.body.choiceContextData).toEqual({});
-    const ids = res.body.disclosedContracts.map((d: any) => d.contractId).sort();
+    const ids = (res.body.disclosedContracts as { contractId: string }[]).map((d) => d.contractId).sort();
     expect(ids).toEqual(["cfg1", "locked1"]);
   });
 
@@ -245,6 +249,6 @@ describe("transfer-instruction choice-contexts", () => {
       .send({ meta: {} });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("instrument id not unique");
-    expect(res.body.contractIds.sort()).toEqual(["cfg1", "cfg2"]);
+    expect((res.body.contractIds as string[]).sort()).toEqual(["cfg1", "cfg2"]);
   });
 });

@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { HttpLedgerClient } from "../src/ledger";
+import { HttpLedgerClient } from "../src/ledger.js";
 
 function recordingFetch(response: { ok: boolean; status?: number; json?: () => Promise<unknown> }) {
   const calls: [string, RequestInit][] = [];
-  const fakeFetch = (async (url: string, init: RequestInit) => {
+  const fakeFetch = ((url: string, init: RequestInit) => {
     calls.push([url, init]);
-    return response as Response;
+    return Promise.resolve(response as Response);
   }) as typeof fetch;
   return { fakeFetch, calls };
 }
@@ -14,21 +14,22 @@ describe("HttpLedgerClient.activeContracts", () => {
   it("maps JSON Ledger API entries to ContractEntry", async () => {
     const { fakeFetch, calls } = recordingFetch({
       ok: true,
-      json: async () => [
-        {
-          contractEntry: {
-            JsActiveContract: {
-              createdEvent: {
-                templateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-                contractId: "00abc",
-                createdEventBlob: "BLOB==",
-                createArgument: { id: "CC" },
+      json: () =>
+        Promise.resolve([
+          {
+            contractEntry: {
+              JsActiveContract: {
+                createdEvent: {
+                  templateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
+                  contractId: "00abc",
+                  createdEventBlob: "BLOB==",
+                  createArgument: { id: "CC" },
+                },
+                synchronizerId: "sync-1",
               },
-              synchronizerId: "sync-1",
             },
           },
-        },
-      ],
+        ]),
     });
     const client = new HttpLedgerClient(
       { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
@@ -61,7 +62,7 @@ describe("HttpLedgerClient.submitAndWait", () => {
   it("submits create/exercise commands as actAs and returns the response", async () => {
     const { fakeFetch, calls } = recordingFetch({
       ok: true,
-      json: async () => ({ transactionId: "tx-1" }),
+      json: () => Promise.resolve({ transactionId: "tx-1" }),
     });
     const client = new HttpLedgerClient(
       { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
@@ -111,7 +112,7 @@ describe("HttpLedgerClient.submitAndWait", () => {
   it("carries a provided disclosedContracts array in the submit request body", async () => {
     const { fakeFetch, calls } = recordingFetch({
       ok: true,
-      json: async () => ({ transactionId: "tx-2" }),
+      json: () => Promise.resolve({ transactionId: "tx-2" }),
     });
     const client = new HttpLedgerClient(
       { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },
@@ -150,7 +151,7 @@ describe("HttpLedgerClient.submitAndWait", () => {
     const { fakeFetch } = recordingFetch({
       ok: false,
       status: 400,
-      json: async () => ({}),
+      json: () => Promise.resolve({}),
     });
     const client = new HttpLedgerClient(
       { ledgerApiUrl: "http://ledger", ledgerApiToken: "t" },

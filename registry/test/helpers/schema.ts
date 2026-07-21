@@ -2,14 +2,17 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { load as loadYaml } from "js-yaml";
-import Ajv, { type ValidateFunction } from "ajv";
-import addFormats from "ajv-formats";
+import { Ajv, type ValidateFunction } from "ajv";
+import addFormatsModule from "ajv-formats";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const openapiDir = path.resolve(testDir, "../../openapi");
 
 const ajv = new Ajv({ strict: false });
-addFormats(ajv);
+// ajv-formats is CJS-only, so under NodeNext moduleResolution the default
+// import resolves to the module namespace rather than the plugin function;
+// its .default property is the actual callable (same object at runtime).
+addFormatsModule.default(ajv);
 // The metadata spec annotates `decimals` with `format: int8`, which
 // ajv-formats does not define. Register it as an always-valid format so the
 // surrounding `type: integer` still governs and Ajv emits no "unknown format"

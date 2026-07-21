@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
-import { createServer } from "../src/server";
-import { config, cfgEntry, recordingLedger } from "./helpers/fixtures";
-import type { ContractEntry, ExerciseCommand } from "../src/ledger";
-import type { InstrumentConfigProposalPayload, TokenRegistryPayload } from "../src/payloads";
+import { createServer } from "../src/server.js";
+import { config, cfgEntry, recordingLedger } from "./helpers/fixtures.js";
+import type { ContractEntry, ExerciseCommand } from "../src/ledger.js";
+import type { InstrumentConfigProposalPayload, TokenRegistryPayload } from "../src/payloads.js";
 
 function registryEntry(overrides: Partial<TokenRegistryPayload> = {}): ContractEntry<TokenRegistryPayload> {
   return {
@@ -180,7 +180,7 @@ describe("POST /admin/proposals/:proposalId/accept", () => {
     const app = createServer({ ledger, config });
     const res = await request(app).post("/admin/proposals/prop1/accept").send({});
     expect(res.status).toBe(409);
-    expect(res.body.contractIds.sort()).toEqual(["cfg1", "cfg2"]);
+    expect((res.body.contractIds as string[]).sort()).toEqual(["cfg1", "cfg2"]);
     expect(calls).toHaveLength(0);
   });
 
