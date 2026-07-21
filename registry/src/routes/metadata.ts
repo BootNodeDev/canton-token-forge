@@ -1,11 +1,11 @@
-import { Router } from "express";
-import type { ServerDeps } from "../server.js";
-import { SUPPORTED_APIS, toInstrument, resolveById, instrumentIdentity } from "../mapping.js";
-import type { ContractEntry } from "../ledger.js";
-import type { InstrumentConfigPayload } from "../payloads.js";
-import { asyncHandler } from "./async-handler.js";
-import { activeConfigs } from "./lookup.js";
-import { resolveOrRespond } from "./respond.js";
+import { Router } from 'express'
+import type { ContractEntry } from '../ledger.js'
+import { instrumentIdentity, resolveById, SUPPORTED_APIS, toInstrument } from '../mapping.js'
+import type { InstrumentConfigPayload } from '../payloads.js'
+import type { ServerDeps } from '../server.js'
+import { asyncHandler } from './async-handler.js'
+import { activeConfigs } from './lookup.js'
+import { resolveOrRespond } from './respond.js'
 
 // Collapse rows to one entry per (admin, instrumentId): LF 2.1 has no
 // contract keys, so nothing prevents duplicates, but the list endpoint
@@ -13,42 +13,42 @@ import { resolveOrRespond } from "./respond.js";
 function dedupeByAdminAndInstrumentId(
   rows: ContractEntry<InstrumentConfigPayload>[],
 ): ContractEntry<InstrumentConfigPayload>[] {
-  const seen = new Map<string, ContractEntry<InstrumentConfigPayload>>();
+  const seen = new Map<string, ContractEntry<InstrumentConfigPayload>>()
   for (const row of rows) {
-    const key = instrumentIdentity(row.payload);
-    if (!seen.has(key)) seen.set(key, row);
+    const key = instrumentIdentity(row.payload)
+    if (!seen.has(key)) seen.set(key, row)
   }
-  return [...seen.values()];
+  return [...seen.values()]
 }
 
 export function metadataRouter(deps: ServerDeps): Router {
-  const r = Router();
+  const r = Router()
 
-  r.get("/registry/metadata/v1/info", (_req, res) => {
+  r.get('/registry/metadata/v1/info', (_req, res) => {
     res.json({
       adminId: deps.config.operatorParty,
       supportedApis: SUPPORTED_APIS,
-    });
-  });
+    })
+  })
 
   r.get(
-    "/registry/metadata/v1/instruments",
+    '/registry/metadata/v1/instruments',
     asyncHandler(async (_req, res) => {
-      const rows = await activeConfigs(deps.ledger, deps.config);
-      const instruments = dedupeByAdminAndInstrumentId(rows).map((row) => toInstrument(row.payload));
-      res.json({ instruments });
+      const rows = await activeConfigs(deps.ledger, deps.config)
+      const instruments = dedupeByAdminAndInstrumentId(rows).map((row) => toInstrument(row.payload))
+      res.json({ instruments })
     }),
-  );
+  )
 
   r.get(
-    "/registry/metadata/v1/instruments/:instrumentId",
+    '/registry/metadata/v1/instruments/:instrumentId',
     asyncHandler(async (req, res) => {
-      const rows = await activeConfigs(deps.ledger, deps.config);
-      const cfg = resolveOrRespond(res, resolveById(rows, req.params.instrumentId));
-      if (!cfg) return;
-      res.json(toInstrument(cfg.payload));
+      const rows = await activeConfigs(deps.ledger, deps.config)
+      const cfg = resolveOrRespond(res, resolveById(rows, req.params.instrumentId))
+      if (!cfg) return
+      res.json(toInstrument(cfg.payload))
     }),
-  );
+  )
 
-  return r;
+  return r
 }
