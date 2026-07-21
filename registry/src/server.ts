@@ -1,4 +1,7 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'
+import * as OpenApiValidator from 'express-openapi-validator'
 import type { Config } from './config.js'
 import type { LedgerClient } from './ledger.js'
 import { adminRouter } from './routes/admin.js'
@@ -24,6 +27,36 @@ function statusFromError(err: unknown): number {
 export function createServer(deps: ServerDeps): Express {
   const app = express()
   app.use(express.json())
+
+  // One validator per vendored standard spec, requests only. Paths a given
+  // spec does not document are ignored so the other specs' routes and the
+  // service-specific /admin and health endpoints pass through; responses
+  // stay schema-checked in the test suite instead of per-request.
+  const specDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../openapi')
+  const specFiles = [
+    'token-metadata-v1.yaml',
+    'transfer-instruction-v1.yaml',
+    'allocation-v1.yaml',
+    'allocation-instruction-v1.yaml',
+  ]
+  // Splice/CN integer-width format hints that the schemas' type: integer
+  // already covers, so we register them permissively only to keep ajv quiet.
+  const customFormats = {
+    int8: { type: 'number' as const, validate: () => true },
+    int32: { type: 'number' as const, validate: () => true },
+  }
+  for (const specFile of specFiles) {
+    app.use(
+      OpenApiValidator.middleware({
+        apiSpec: path.join(specDir, specFile),
+        validateRequests: true,
+        validateResponses: false,
+        ignoreUndocumented: true,
+        formats: customFormats,
+      }),
+    )
+  }
+
   app.get('/healthz', (_req, res) => res.json({ status: 'ok' }))
   app.use(metadataRouter(deps))
   app.use(transferRouter(deps))
