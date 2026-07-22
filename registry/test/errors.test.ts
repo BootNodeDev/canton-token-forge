@@ -1,33 +1,39 @@
-import { describe, it, expect } from "vitest";
-import request from "supertest";
-import { createServer } from "../src/server";
+import request from 'supertest'
+import { describe, expect, it } from 'vitest'
+import { createServer } from '../src/server'
+import { config, ledgerFrom, recordingLogger, rejectingLedger } from './helpers/fixtures'
 
-const config = {
-  operatorParty: "op::1",
-  registryBaseUrl: "http://r",
-  instrumentConfigTemplateId: "pkg:Canton.TokenForge.Registry:InstrumentConfig",
-} as any;
+describe('async route errors', () => {
+  it('maps a rejected ledger call to a 500 with a JSON error body instead of hanging', async () => {
+    const { logger } = recordingLogger()
+    const app = createServer({ ledger: rejectingLedger, config, logger })
+    const res = await request(app).get('/registry/metadata/v1/instruments')
+    expect(res.status).toBe(500)
+    expect(res.body).toEqual({ error: 'ledger query failed: 503' })
+  })
 
-describe("async route errors", () => {
-  it("maps a rejected ledger call to a 500 with a JSON error body instead of hanging", async () => {
-    const ledger = {
-      activeContracts: async () => {
-        throw new Error("ledger query failed: 503");
-      },
-    } as any;
-    const app = createServer({ ledger, config });
-    const res = await request(app).get("/registry/metadata/v1/instruments");
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: "ledger query failed: 503" });
-  });
-
-  it("preserves the 4xx status express.json() puts on a malformed body instead of reporting 500", async () => {
-    const ledger = { activeContracts: async () => [] } as any;
-    const app = createServer({ ledger, config });
+  it('preserves the 4xx status express.json() puts on a malformed body instead of reporting 500', async () => {
+    const ledger = ledgerFrom({})
+    const { logger, entries } = recordingLogger()
+    const app = createServer({ ledger, config, logger })
     const res = await request(app)
-      .post("/admin/instruments")
-      .set("content-type", "application/json")
-      .send('{"admin":');
-    expect(res.status).toBe(400);
-  });
-});
+      .post('/admin/instruments')
+      .set('content-type', 'application/json')
+      .send('{"admin":')
+    expect(res.status).toBe(400)
+    expect(entries).toHaveLength(0)
+  })
+
+  it('logs the 5xx from the terminal error middleware', async () => {
+    const { logger, entries } = recordingLogger()
+    const app = createServer({ ledger: rejectingLedger, config, logger })
+    const res = await request(app).get('/registry/metadata/v1/instruments')
+    expect(res.status).toBe(500)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      status: 500,
+      method: 'GET',
+      path: '/registry/metadata/v1/instruments',
+    })
+  })
+})

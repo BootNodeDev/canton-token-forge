@@ -1,4 +1,4 @@
-import type { NextFunction, Request, RequestHandler, Response } from "express";
+import type { NextFunction, Request, RequestHandler, Response } from 'express'
 
 // Express 4 does not forward a rejected promise from an async handler to
 // error-handling middleware, so an unhandled ledger error would otherwise
@@ -9,6 +9,6 @@ export function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
 ): RequestHandler {
   return (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
+    Promise.resolve(fn(req, res, next)).catch(next)
+  }
 }

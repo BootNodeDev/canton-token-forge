@@ -1,12 +1,30 @@
-import { describe, it, expect } from "vitest";
-import request from "supertest";
-import { createServer } from "../src/server";
+import request from 'supertest'
+import { describe, expect, it } from 'vitest'
+import { createServer } from '../src/server'
+import { config, ledgerFrom, recordingLogger, rejectingLedger } from './helpers/fixtures'
 
-describe("health", () => {
-  it("GET /healthz returns 200 ok", async () => {
-    const app = createServer({ ledger: {} as any, config: {} as any });
-    const res = await request(app).get("/healthz");
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: "ok" });
-  });
-});
+describe('health', () => {
+  it('GET /healthz returns 200 ok', async () => {
+    const app = createServer({ ledger: ledgerFrom({}), config })
+    const res = await request(app).get('/healthz')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ status: 'ok' })
+  })
+
+  it('GET /readyz returns 200 when the ledger responds', async () => {
+    const app = createServer({ ledger: ledgerFrom({}), config })
+    const res = await request(app).get('/readyz')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ status: 'ready' })
+  })
+
+  it('GET /readyz returns 503 and logs the error when the ledger is unreachable', async () => {
+    const { logger, entries } = recordingLogger()
+    const app = createServer({ ledger: rejectingLedger, config, logger })
+    const res = await request(app).get('/readyz')
+    expect(res.status).toBe(503)
+    expect(res.body).toEqual({ status: 'unavailable' })
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toHaveProperty('err')
+  })
+})
