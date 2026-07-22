@@ -7,6 +7,8 @@ import { createLogger, type Logger } from './logger.js'
 import { openapiDir, specFiles } from './openapi.js'
 import { adminRouter } from './routes/admin.js'
 import { allocationRouter } from './routes/allocation.js'
+import { asyncHandler } from './routes/async-handler.js'
+import { activeRegistries } from './routes/lookup.js'
 import { metadataRouter } from './routes/metadata.js'
 import { transferRouter } from './routes/transfer.js'
 
@@ -59,6 +61,25 @@ export function createServer(deps: ServerDeps): Express {
   }
 
   app.get('/healthz', (_req, res) => res.json({ status: 'ok' }))
+
+  // Liveness (/healthz) must not depend on the ledger; readiness does, so
+  // an orchestrator can hold traffic while the ledger connection is down.
+  app.get(
+    '/readyz',
+    asyncHandler(async (_req, res) => {
+      try {
+        await activeRegistries(deps.ledger, deps.config)
+      } catch (err) {
+        // Surface why readiness is failing: the 503 is returned to the
+        // orchestrator, but without this the ledger outage behind it is
+        // invisible in the service logs, unlike every other failure path.
+        logger.error({ err }, 'readiness probe failed')
+        return res.status(503).json({ status: 'unavailable' })
+      }
+      res.json({ status: 'ready' })
+    }),
+  )
+
   app.use(metadataRouter(deps))
   app.use(transferRouter(deps))
   app.use(allocationRouter(deps))
