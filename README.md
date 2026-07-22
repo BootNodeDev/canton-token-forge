@@ -35,7 +35,8 @@ Plan 01+.
 - `scripts/build-harness.sh` - build the Amulet test harness (unused by default; only
   built by Plan 05 conformance).
 - `versions.env` - the single knob: `SPLICE_TAG`.
-- `AGENTS.md` - the operational guide (toolchain, gotchas, versioning model).
+- `CLAUDE.md` - the operational guide (toolchain, gotchas, versioning model);
+  `AGENTS.md` is a thin pointer to it for non-Claude agents.
 
 ## Requirements
 
@@ -48,7 +49,7 @@ Plan 01+.
 
 Edit `SPLICE_TAG` in `versions.env`, run `npm run setup`. No other file changes -
 unless the new tag ships a different SDK, in which case also update `sdk-version`
-in the two `daml.yaml` files (see AGENTS.md).
+in the two `daml.yaml` files (see CLAUDE.md).
 
 ## License
 
