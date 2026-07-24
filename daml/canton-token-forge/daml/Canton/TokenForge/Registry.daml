@@ -1,13 +1,15 @@
 module Canton.TokenForge.Registry where
 
-import DA.List (unique)
 import DA.TextMap qualified as TextMap
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata, ChoiceContext(..), AnyValue(..))
 import Splice.Api.Token.TransferInstructionV1
-import Canton.TokenForge.Token (Token(..), mkToken)
+import Splice.Api.Token.AllocationInstructionV1
+import Splice.Api.Token.BurnMintV1
+import Canton.TokenForge.Token (Token(..), mkToken, consumeInputs, spendInputs)
 import Canton.TokenForge.Locked (LockedToken(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
+import Canton.TokenForge.Allocation (allocateImpl)
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | Faucet policy for an instrument.
@@ -98,6 +100,20 @@ template InstrumentConfig
       controller admin, receiver
       do create TokenTransferPreapproval with admin; instrumentId; receiver
 
+    -- Self-service faucet. Enabled only when `faucet` is set; capped per tap.
+    nonconsuming choice InstrumentConfig_Tap : ContractId Token
+      with
+        user : Party
+        amount : Decimal
+      controller user
+      do
+        case faucet of
+          None -> abort "faucet is not enabled for this instrument"
+          Some fc -> do
+            assertMsg "tap amount must be positive" (amount > 0.0)
+            assertMsg "tap amount exceeds per-tap cap" (amount <= fc.maxPerTap)
+            create (mkToken admin user instrumentId amount emptyMetadata)
+
     interface instance TransferFactory for InstrumentConfig where
       view = TransferFactoryView with admin; meta = emptyMetadata
 
@@ -106,6 +122,37 @@ template InstrumentConfig
       transferFactory_publicFetchImpl _self arg = do
         assertMsg "expectedAdmin must match" (arg.expectedAdmin == admin)
         pure (view $ toInterface @TransferFactory this)
+
+    interface instance AllocationFactory for InstrumentConfig where
+      view = AllocationFactoryView with admin; meta = emptyMetadata
+
+      allocationFactory_allocateImpl _self arg = allocateImpl admin instrumentId arg
+
+      allocationFactory_publicFetchImpl _self arg = do
+        assertMsg "expectedAdmin must match" (arg.expectedAdmin == admin)
+        pure (view $ toInterface @AllocationFactory this)
+
+    interface instance BurnMintFactory for InstrumentConfig where
+      view = BurnMintFactoryView with admin; meta = emptyMetadata
+
+      burnMintFactory_burnMintImpl _self arg = do
+        let BurnMintFactory_BurnMint{expectedAdmin, instrumentId = argInstrumentId, inputHoldingCids, outputs} = arg
+        assertMsg "expectedAdmin must match" (expectedAdmin == admin)
+        assertMsg "instrumentId must match this config" (argInstrumentId == mkInstrumentId admin instrumentId)
+
+        -- Burn every input. This is admin-authorized reissuance, so inputs are
+        -- validated against the instrument but not against a single owner.
+        _ <- consumeInputs admin instrumentId None inputHoldingCids
+
+        outputCids <- forA outputs \o -> do
+          assertMsg "output amount must be positive" (o.amount > 0.0)
+          c <- create (mkToken admin o.owner instrumentId o.amount emptyMetadata)
+          pure (toInterfaceContractId @HoldingV1.Holding c)
+        pure BurnMintFactory_BurnMintResult with outputCids
+
+      burnMintFactory_publicFetchImpl _self arg = do
+        assertMsg "expectedAdmin must match" (arg.expectedAdmin == admin)
+        pure (view $ toInterface @BurnMintFactory this)
 
 -- | Well-known choice-context key under which the app backend supplies the
 -- receiver's TokenTransferPreapproval cid to enable a direct transfer.
@@ -144,33 +191,11 @@ transferImpl admin instrumentId arg = do
   assertMsg "expectedAdmin must match the instrument admin" (expectedAdmin == admin)
   assertMsg "transfer instrument must match this config" (transfer.instrumentId == mkInstrumentId admin instrumentId)
   assertMsg "amount must be positive" (transfer.amount > 0.0)
-  assertMsg "input holdings must not contain duplicates" (unique transfer.inputHoldingCids)
   now <- getTime
   assertMsg "transfer requestedAt must be in the past" (transfer.requestedAt <= now)
   assertMsg "transfer has expired (executeBefore reached)" (now < transfer.executeBefore)
 
-  -- Consume the sender's input holdings. fetchFromInterface downcasts to Token,
-  -- returning None for a LockedToken or any non-Token holding, so a locked or
-  -- foreign input is rejected with a clear message.
-  amounts <- forA transfer.inputHoldingCids \hcid -> do
-    optToken <- fetchFromInterface @Token hcid
-    case optToken of
-      None -> abort "input holding is not a spendable Token (locked or foreign)"
-      Some (tcid, token) -> do
-        assertMsg "input holding must be owned by the sender" (token.owner == transfer.sender)
-        assertMsg "input holding must belong to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
-        archive tcid
-        pure token.amount
-  let total = sum amounts
-  assertMsg "insufficient input amount" (total >= transfer.amount)
-
-  senderChangeCids <-
-    if total > transfer.amount
-      then do
-        -- change is the sender's own leftover, not transferred value, so it carries no memo
-        changeCid <- create (mkToken admin transfer.sender instrumentId (total - transfer.amount) emptyMetadata)
-        pure [toInterfaceContractId @HoldingV1.Holding changeCid]
-      else pure []
+  senderChangeCids <- spendInputs admin instrumentId transfer.sender transfer.inputHoldingCids transfer.amount
 
   direct <- isDirectTransfer admin instrumentId transfer extraArgs.context
   if direct

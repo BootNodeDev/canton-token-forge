@@ -1,0 +1,110 @@
+module Canton.TokenForge.Test.BurnMintTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.Time (time)
+import DA.Date (date, Month(Jan))
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
+import Splice.Api.Token.BurnMintV1
+import Canton.TokenForge.Types (mkInstrumentId)
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..), InstrumentConfig_LockHolding(..))
+
+-- Burn alice's 100 and mint 60 to alice + 40 to bob: total supply held
+-- constant across the rebalance, split across the two named owners.
+burnMintRebalances : Script ()
+burnMintRebalances = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  res <- submit admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
+    expectedAdmin = admin
+    instrumentId = mkInstrumentId admin "CC"
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]
+    outputs =
+      [ BurnMintOutput with owner = alice; amount = 60.0; context = emptyChoiceContext
+      , BurnMintOutput with owner = bob; amount = 40.0; context = emptyChoiceContext ]
+    extraActors = []
+    extraArgs = xargs
+  length res.outputCids === 2
+  case res.outputCids of
+    [aliceCid, bobCid] -> do
+      Some av <- queryInterfaceContractId alice aliceCid
+      av.owner === alice
+      av.amount === 60.0
+      Some bv <- queryInterfaceContractId bob bobCid
+      bv.owner === bob
+      bv.amount === 40.0
+    _ -> abort "expected exactly two output holdings"
+
+-- The choice arg's instrumentId must match this config; otherwise a
+-- burn/mint intended for a different instrument could be routed here.
+burnMintRejectsInstrumentIdMismatch : Script ()
+burnMintRejectsInstrumentIdMismatch = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  submitMustFail admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
+    expectedAdmin = admin
+    instrumentId = mkInstrumentId admin "WRONG"
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]
+    outputs = [ BurnMintOutput with owner = alice; amount = 100.0; context = emptyChoiceContext ]
+    extraActors = []
+    extraArgs = xargs
+
+burnMintRejectsNonPositiveOutput : Script ()
+burnMintRejectsNonPositiveOutput = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+
+  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  submitMustFail admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
+    expectedAdmin = admin
+    instrumentId = mkInstrumentId admin "CC"
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]
+    outputs = [ BurnMintOutput with owner = alice; amount = 0.0; context = emptyChoiceContext ]
+    extraActors = []
+    extraArgs = xargs
+
+-- A locked holding is not a spendable Token; fetchFromInterface's None
+-- branch must reject it rather than silently coercing it into a burn input.
+burnMintRejectsLockedInput : Script ()
+burnMintRejectsLockedInput = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  let later = time (date 2026 Jan 2) 0 0 0
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  locked <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+    owner = alice; tokenCid = tok; holders = [admin]; expiresAt = later
+
+  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  submitMustFail admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
+    expectedAdmin = admin
+    instrumentId = mkInstrumentId admin "CC"
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding locked]
+    outputs = [ BurnMintOutput with owner = alice; amount = 100.0; context = emptyChoiceContext ]
+    extraActors = []
+    extraArgs = xargs

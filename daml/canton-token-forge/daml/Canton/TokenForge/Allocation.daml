@@ -1,0 +1,84 @@
+module Canton.TokenForge.Allocation where
+
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.AllocationInstructionV1
+import Canton.TokenForge.Token (mkToken, spendInputs)
+import Canton.TokenForge.Locked (LockedToken(..), unlockHolding)
+import Canton.TokenForge.Types (mkInstrumentId)
+
+-- | An escrowed allocation for one transfer leg. Admin-signed; sender is a
+-- signatory; executor and receiver are observers.
+template TokenAllocation
+  with
+    admin : Party
+    allocation : AllocationSpecification
+    lockedCid : ContractId LockedToken
+    meta : Metadata
+  where
+    signatory admin, allocation.transferLeg.sender
+    observer allocation.settlement.executor, allocation.transferLeg.receiver
+
+    interface instance Allocation for TokenAllocation where
+      view = AllocationView with
+        allocation
+        holdingCids = [toInterfaceContractId lockedCid]
+        meta
+
+      allocation_executeTransferImpl _self _arg = do
+        -- mirrors transferInstruction_acceptImpl's executeBefore bound: past
+        -- settleBefore the escrow is only sender-reclaimable, not settleable
+        now <- getTime
+        assertMsg "allocation settlement window has closed (settleBefore reached)" (now < allocation.settlement.settleBefore)
+        archive lockedCid
+        let leg = allocation.transferLeg
+        receiverCid <- create (mkToken admin leg.receiver leg.instrumentId.id leg.amount leg.meta)
+        pure Allocation_ExecuteTransferResult with
+          senderHoldingCids = []
+          receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
+          meta = emptyMetadata
+
+      -- Mirrors Amulet's abortTwoStepTransfer: absent an early-release
+      -- authorization the sender can only reclaim once the settlement window has
+      -- closed, so a unilateral withdraw cannot break an in-flight settlement.
+      allocation_withdrawImpl _self _arg = do
+        now <- getTime
+        assertMsg "allocation cannot be withdrawn before the settlement window closes (settleBefore)" (now >= allocation.settlement.settleBefore)
+        backCid <- unlockHolding lockedCid
+        pure Allocation_WithdrawResult with senderHoldingCids = [backCid]; meta = emptyMetadata
+
+      allocation_cancelImpl _self _arg = do
+        backCid <- unlockHolding lockedCid
+        pure Allocation_CancelResult with senderHoldingCids = [backCid]; meta = emptyMetadata
+
+-- | Escrow the sender's funds and create a completed allocation. No pending
+-- AllocationInstruction step: there are no economics/approvals to wait on.
+allocateImpl
+  : Party  -- admin
+  -> Text  -- instrumentId
+  -> AllocationFactory_Allocate
+  -> Update AllocationInstructionResult
+allocateImpl admin instrumentId arg = do
+  let AllocationFactory_Allocate{expectedAdmin, allocation, requestedAt, inputHoldingCids} = arg
+      leg = allocation.transferLeg
+  assertMsg "expectedAdmin must match" (expectedAdmin == admin)
+  assertMsg "leg instrument must match" (leg.instrumentId == mkInstrumentId admin instrumentId)
+  assertMsg "leg amount must be positive" (leg.amount > 0.0)
+  now <- getTime
+  assertMsg "allocation requestedAt must be in the past" (requestedAt <= now)
+  assertMsg "allocation window has closed (allocateBefore reached)" (now < allocation.settlement.allocateBefore)
+  -- Mirrors Amulet's prepareTwoStepTransfer `requestedAt < transferBefore`:
+  -- reject an escrow whose settlement deadline is already unreachable.
+  assertMsg "requestedAt must be before settleBefore" (requestedAt < allocation.settlement.settleBefore)
+
+  senderChangeCids <- spendInputs admin instrumentId leg.sender inputHoldingCids leg.amount
+
+  locked <- create LockedToken with
+    admin; owner = leg.sender; instrumentId; amount = leg.amount
+    holders = [admin]; expiresAt = allocation.settlement.settleBefore; meta = emptyMetadata
+  allocCid <- create TokenAllocation with admin; allocation; lockedCid = locked; meta = emptyMetadata
+  pure AllocationInstructionResult with
+    output = AllocationInstructionResult_Completed with allocationCid = toInterfaceContractId @Allocation allocCid
+    senderChangeCids
+    meta = emptyMetadata

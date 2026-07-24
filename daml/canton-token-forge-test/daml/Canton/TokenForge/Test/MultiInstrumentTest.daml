@@ -1,0 +1,53 @@
+module Canton.TokenForge.Test.MultiInstrumentTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
+import Splice.Api.Token.BurnMintV1
+import Canton.TokenForge.Types (mkInstrumentId)
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..))
+
+-- Two instruments under different admins share one operator/registry. A
+-- holding minted under instrument A must not be spendable through instrument
+-- B's factory. adminA and alice (the token's actual signatory and owner) are
+-- included as co-actors so the transaction has enough authorization to fetch
+-- and archive the A-token; that isolates the rejection to the burn-mint
+-- instrument guard itself, rather than a visibility or missing-authorization
+-- failure that would reject the transaction for the wrong reason.
+multiInstrumentIsolationHolds : Script ()
+multiInstrumentIsolationHolds = do
+  operator <- allocateParty "operator"
+  adminA <- allocateParty "adminA"
+  adminB <- allocateParty "adminB"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfgA <- submit (actAs [operator, adminA]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin = adminA; instrumentId = "AA"; name = "AA"; symbol = "AA"; decimals = 10; faucet = None
+  cfgB <- submit (actAs [operator, adminB]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin = adminB; instrumentId = "BB"; name = "BB"; symbol = "BB"; decimals = 10; faucet = None
+
+  tokA <- submit adminA $ exerciseCmd cfgA InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  tokB <- submit adminB $ exerciseCmd cfgB InstrumentConfig_Mint with recipient = bob; amount = 50.0
+
+  -- each holding's view carries the issuing instrument's own admin
+  let tokAHcid = toInterfaceContractId @HoldingV1.Holding tokA
+      tokBHcid = toInterfaceContractId @HoldingV1.Holding tokB
+  Some tokAView <- queryInterfaceContractId alice tokAHcid
+  tokAView.owner === alice
+  tokAView.instrumentId === mkInstrumentId adminA "AA"
+  Some tokBView <- queryInterfaceContractId bob tokBHcid
+  tokBView.owner === bob
+  tokBView.instrumentId === mkInstrumentId adminB "BB"
+
+  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  submitMustFail (actAs [adminB, adminA, alice]) $
+    exerciseCmd (toInterfaceContractId @BurnMintFactory cfgB) BurnMintFactory_BurnMint with
+      expectedAdmin = adminB
+      instrumentId = mkInstrumentId adminB "BB"
+      inputHoldingCids = [tokAHcid]
+      outputs = [BurnMintOutput with owner = bob; amount = 100.0; context = emptyChoiceContext]
+      extraActors = [adminA, alice]
+      extraArgs = xargs

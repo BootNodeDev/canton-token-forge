@@ -1,7 +1,8 @@
 module Canton.TokenForge.Token where
 
+import DA.List (unique)
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (Metadata)
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | An unlocked holding of a canton-token-forge instrument. Signed by the instrument
@@ -31,3 +32,40 @@ template Token
 mkToken : Party -> Party -> Text -> Decimal -> Metadata -> Token
 mkToken admin owner instrumentId amount meta =
   Token with admin; owner; instrumentId; amount; meta
+
+-- | Consume input Token holdings of this instrument, archiving each and
+-- returning its amount. fetchFromInterface downcasts to Token, returning None
+-- for a LockedToken or any non-Token holding, so a locked or foreign input is
+-- rejected with a clear message rather than an unchecked coercion. When
+-- `requiredOwner` is set every input must also be owned by that party; the
+-- admin-authorized burn-mint path passes None.
+consumeInputs
+  : Party -> Text -> Optional Party -> [ContractId HoldingV1.Holding] -> Update [Decimal]
+consumeInputs admin instrumentId requiredOwner cids = do
+  assertMsg "input holdings must not contain duplicates" (unique cids)
+  forA cids \hcid -> do
+    optToken <- fetchFromInterface @Token hcid
+    case optToken of
+      None -> abort "input holding is not a spendable Token (locked or foreign)"
+      Some (tcid, token) -> do
+        case requiredOwner of
+          Some o -> assertMsg "input holding must be owned by the sender" (token.owner == o)
+          None -> pure ()
+        assertMsg "input holding must belong to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
+        archive tcid
+        pure token.amount
+
+-- | Consume the sender's inputs to cover `requiredAmount`, returning any
+-- leftover to the sender as change (which carries no memo, being the sender's
+-- own funds rather than delivered value). Fails if the inputs are insufficient.
+spendInputs
+  : Party -> Text -> Party -> [ContractId HoldingV1.Holding] -> Decimal -> Update [ContractId HoldingV1.Holding]
+spendInputs admin instrumentId sender cids requiredAmount = do
+  amounts <- consumeInputs admin instrumentId (Some sender) cids
+  let total = sum amounts
+  assertMsg "insufficient input amount" (total >= requiredAmount)
+  if total > requiredAmount
+    then do
+      changeCid <- create (mkToken admin sender instrumentId (total - requiredAmount) emptyMetadata)
+      pure [toInterfaceContractId @HoldingV1.Holding changeCid]
+    else pure []

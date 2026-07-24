@@ -43,3 +43,11 @@ template LockedToken
         now <- getTime
         assertMsg "lock has not expired yet" (now >= expiresAt)
         create (mkToken admin owner instrumentId amount meta)
+
+-- | Release a locked holding back to its owner as a spendable Holding via the
+-- lock's own unlock choice. Shared by the transfer reject/withdraw path and the
+-- allocation withdraw/cancel path so the two stay in step.
+unlockHolding : ContractId LockedToken -> Update (ContractId HoldingV1.Holding)
+unlockHolding lockedCid = do
+  tokenCid <- exercise lockedCid LockedToken_Unlock
+  pure (toInterfaceContractId @HoldingV1.Holding tokenCid)
