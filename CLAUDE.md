@@ -138,7 +138,7 @@ transfer/mint data flow.
 ## Code Style
 
 - Name every choice we define `TemplateName_ChoiceName` (e.g.
-  `TokenRegistry_RegisterInstrument`, `InstrumentConfig_Mint`), matching the CN
+  `TokenRegistry_ProposeInstrument`, `InstrumentConfig_Mint`), matching the CN
   Token Standard's own choice-naming convention (`TransferFactory_Transfer`,
   `AllocationFactory_Allocate`). Interface method implementations keep the names
   the standard interface dictates.

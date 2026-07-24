@@ -8,7 +8,8 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
 import Splice.Api.Token.BurnMintV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..), InstrumentConfig_LockHolding(..))
+import Canton.TokenForge.Registry (InstrumentConfig_Mint(..), InstrumentConfig_LockHolding(..))
+import Canton.TokenForge.Test.Util (registerInstrument)
 
 -- Burn alice's 100 and mint 60 to alice + 40 to bob: total supply held
 -- constant across the rebalance, split across the two named owners.
@@ -18,9 +19,7 @@ burnMintRebalances = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
   tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
@@ -51,9 +50,7 @@ burnMintRejectsInstrumentIdMismatch = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
   tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
@@ -70,9 +67,7 @@ burnMintRejectsNonPositiveOutput = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
   tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
@@ -91,9 +86,7 @@ burnMintRejectsLockedInput = do
   operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
-  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
-    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
   tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
   let later = time (date 2026 Jan 2) 0 0 0
   Some cfgDisclosure <- queryDisclosure admin cfg

@@ -18,8 +18,11 @@ data FaucetConfig = FaucetConfig
     maxPerTap : Decimal
   deriving (Eq, Show)
 
--- | Operator-owned registry anchor. Serves as the getRegistryInfo identity and
--- the creation entry point for instruments. Signed by the operator.
+-- | Operator-owned registry anchor. Serves as the getRegistryInfo identity
+-- (registryBaseUrl) for the metadata API and the creation entry point:
+-- instruments are proposed through TokenRegistry_ProposeInstrument (admin) and
+-- finalized by the operator accepting the resulting InstrumentConfigProposal.
+-- Signed by the operator.
 template TokenRegistry
   with
     operator : Party
@@ -27,8 +30,12 @@ template TokenRegistry
   where
     signatory operator
 
-    -- Admin co-authorizes so the admin-signed InstrumentConfig can be created.
-    nonconsuming choice TokenRegistry_RegisterInstrument : ContractId InstrumentConfig
+    -- Admin proposes an instrument through the registry. The operator identity
+    -- is taken from the registry contract, not an argument, so every proposal is
+    -- bound to this registry's real operator. Admin authority to create the
+    -- admin-signed proposal comes from the admin controller; the admin must have
+    -- this operator-signed registry disclosed to exercise the choice.
+    nonconsuming choice TokenRegistry_ProposeInstrument : ContractId InstrumentConfigProposal
       with
         admin : Party
         instrumentId : Text
@@ -36,11 +43,52 @@ template TokenRegistry
         symbol : Text
         decimals : Int
         faucet : Optional FaucetConfig
-      controller operator, admin
+      controller admin
+      do
+        create InstrumentConfigProposal with
+          admin; operator; instrumentId; name; symbol; decimals; faucet
+
+-- | An admin's request to register an instrument, pending the operator's
+-- approval. Created only via TokenRegistry_ProposeInstrument. Splitting
+-- registration into propose (admin) then accept (operator) gives the operator an
+-- explicit gate: it can decline a duplicate (admin, instrumentId) or any request
+-- failing an off-ledger policy check before an InstrumentConfig exists. The
+-- uniqueness check itself is off-ledger (the operator's registry service runs it
+-- before accepting), because LF 2.1 has no contract keys and a choice cannot
+-- enumerate other InstrumentConfigs.
+template InstrumentConfigProposal
+  with
+    admin : Party
+    operator : Party
+    instrumentId : Text
+    name : Text
+    symbol : Text
+    decimals : Int
+    faucet : Optional FaucetConfig
+  where
+    signatory admin
+    observer operator
+    ensure decimals >= 0 && decimals <= 18
+
+    -- Operator approves: creates the admin-signed InstrumentConfig. The admin
+    -- authority flows from this proposal's admin signatory; the operator
+    -- authority from being the accepting controller.
+    choice InstrumentConfigProposal_Accept : ContractId InstrumentConfig
+      controller operator
       do
         create InstrumentConfig with
           admin; operator; instrumentId; name; symbol; decimals; faucet
           meta = emptyMetadata
+
+    -- Operator declines the request.
+    choice InstrumentConfigProposal_Reject : ()
+      controller operator
+      do pure ()
+
+    -- Admin retracts a still-pending request.
+    choice InstrumentConfigProposal_Withdraw : ()
+      controller admin
+      do pure ()
 
 -- | Receiver opt-in that enables direct (1-step) transfers to them.
 template TokenTransferPreapproval
