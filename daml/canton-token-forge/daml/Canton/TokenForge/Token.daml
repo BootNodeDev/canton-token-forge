@@ -25,3 +25,9 @@ template Token
         amount
         lock = None
         meta
+
+-- | Construct a Token holding. Centralizes creation so metadata is threaded
+-- consistently across every mint, transfer, and unlock site.
+mkToken : Party -> Party -> Text -> Decimal -> Metadata -> Token
+mkToken admin owner instrumentId amount meta =
+  Token with admin; owner; instrumentId; amount; meta

@@ -1,0 +1,96 @@
+module Canton.TokenForge.Test.OfferTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.List (head)
+import DA.Time (time)
+import DA.Date (date, Month(Jan))
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceContext)
+import Splice.Api.Token.TransferInstructionV1
+import Canton.TokenForge.Types (mkInstrumentId)
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..))
+import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
+
+-- No app-backend context is needed for accept/reject/withdraw in these tests.
+noContextArgs : ExtraArgs
+noContextArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+
+-- Shared setup: mint 100 to alice, build a 40.0 transfer alice -> bob with no
+-- preapproval, and start the offer. Returns the pending instruction cid.
+startOffer : Party -> Party -> Party -> Party -> Script (ContractId TransferInstruction)
+startOffer operator admin alice bob = do
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 2) 0 0 0
+  setTime now
+  let factoryCid = toInterfaceContractId @TransferFactory cfg
+      transfer = Transfer with
+        sender = alice; receiver = bob; amount = 40.0; instrumentId = mkInstrumentId admin "CC"
+        requestedAt = now; executeBefore = later
+        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; meta = emptyMetadata
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd factoryCid TransferFactory_Transfer with
+    expectedAdmin = admin; transfer; extraArgs = noContextArgs
+  -- sender change (60.0) is created up front in both branches
+  [changeCid] <- pure res.senderChangeCids
+  Some cv <- queryInterfaceContractId alice changeCid
+  cv.amount === 60.0
+  case res.output of
+    TransferInstructionResult_Pending cid -> pure cid
+    _ -> abort "expected pending offer"
+
+-- Bob (the receiver) is not a stakeholder of the sender-owned escrow, so the
+-- app backend must disclose it alongside the accept/reject submission; admin
+-- can read it since it is the escrow's signatory.
+escrowDisclosure : Party -> ContractId TransferInstruction -> Script Disclosure
+escrowDisclosure admin instrCid = do
+  Some instr <- queryContractId admin (coerceContractId instrCid : ContractId TokenTransferInstruction)
+  Some d <- queryDisclosure admin instr.lockedCid
+  pure d
+
+offerAcceptedCompletes : Script ()
+offerAcceptedCompletes = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer operator admin alice bob
+  lockedDisclosure <- escrowDisclosure admin instrCid
+  acc <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
+  case acc.output of
+    TransferInstructionResult_Completed receiverHoldingCids -> do
+      Some bv <- queryInterfaceContractId bob (head receiverHoldingCids)
+      bv.owner === bob
+      bv.amount === 40.0
+    _ -> abort "expected completed after accept"
+
+offerRejectedRefunds : Script ()
+offerRejectedRefunds = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer operator admin alice bob
+  lockedDisclosure <- escrowDisclosure admin instrCid
+  rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
+  [refundCid] <- pure rej.senderChangeCids
+  Some rv <- queryInterfaceContractId alice refundCid
+  rv.owner === alice
+  rv.amount === 40.0
+
+offerWithdrawnRefunds : Script ()
+offerWithdrawnRefunds = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer operator admin alice bob
+  wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
+  [refundCid] <- pure wd.senderChangeCids
+  Some rv <- queryInterfaceContractId alice refundCid
+  rv.owner === alice
+  rv.amount === 40.0

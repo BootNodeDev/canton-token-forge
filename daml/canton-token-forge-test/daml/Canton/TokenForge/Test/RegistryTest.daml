@@ -22,3 +22,12 @@ registerAndMint = do
   hv.owner === alice
   hv.amount === 42.0
   hv.instrumentId === HoldingV1.InstrumentId with admin; id = "CC"
+
+-- RegisterInstrument requires the admin's authority, not just the operator's.
+registerRequiresAdmin : Script ()
+registerRequiresAdmin = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  submitMustFail operator $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"; decimals = 10; faucet = None

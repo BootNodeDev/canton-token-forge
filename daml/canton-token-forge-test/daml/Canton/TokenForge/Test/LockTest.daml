@@ -1,0 +1,61 @@
+module Canton.TokenForge.Test.LockTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.Time (time)
+import DA.Date (date, Month(Jan))
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_RegisterInstrument(..), InstrumentConfig_Mint(..), InstrumentConfig_LockHolding(..))
+import Canton.TokenForge.Locked (LockedToken_Unlock(..), LockedToken_ExpireLock(..))
+
+lockThenUnlock : Script ()
+lockThenUnlock = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 50.0
+
+  let expiresAt = time (date 2026 Jan 2) 0 0 0
+  -- The owner is not a stakeholder of the config, so it is disclosed explicitly.
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  locked <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+    owner = alice; tokenCid = tok; holders = [admin]; expiresAt
+  -- the locked holding exposes lock in its Holding view
+  let lhcid = toInterfaceContractId @HoldingV1.Holding locked
+  Some lv <- queryInterfaceContractId alice lhcid
+  ((.holders) <$> lv.lock) === Some [admin]
+  lv.amount === 50.0
+  -- holder unlocks, returning a Token to the owner
+  back <- submit admin $ exerciseCmd locked LockedToken_Unlock
+  Some hv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding back)
+  hv.owner === alice
+  hv.amount === 50.0
+
+-- Negative + expiry paths.
+lockRejectsAndExpires : Script ()
+lockRejectsAndExpires = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  reg <- submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
+  cfg <- submit (actAs [operator, admin]) $ exerciseCmd reg TokenRegistry_RegisterInstrument with
+    admin; instrumentId = "CC"; name = "CC"; symbol = "CC"; decimals = 10; faucet = None
+  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 50.0
+
+  let expiresAt = time (date 2026 Jan 2) 0 0 0
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  locked <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+    owner = alice; tokenCid = tok; holders = [admin]; expiresAt
+  -- a non-holder cannot unlock
+  submitMustFail alice $ exerciseCmd locked LockedToken_Unlock
+  -- owner cannot reclaim before expiry (ledger time is still 1970)
+  submitMustFail alice $ exerciseCmd locked LockedToken_ExpireLock
+  -- after expiry the owner reclaims a Token
+  setTime (time (date 2026 Jan 3) 0 0 0)
+  back <- submit alice $ exerciseCmd locked LockedToken_ExpireLock
+  Some hv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding back)
+  hv.owner === alice
+  hv.amount === 50.0
