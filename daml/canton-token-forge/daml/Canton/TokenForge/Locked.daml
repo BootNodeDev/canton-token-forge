@@ -1,13 +1,15 @@
 module Canton.TokenForge.Locked where
 
+import DA.TextMap qualified as TextMap
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (Metadata)
+import Splice.Api.Token.MetadataV1 (Metadata, ChoiceContext(..), AnyValue(..))
 import Canton.TokenForge.Token (Token(..), mkToken)
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | A locked holding of a canton-token-forge instrument (the LockedAmulet
--- analog). Signed by the instrument admin; the owner and lock holders are
--- observers.
+-- analog, signatory lock.holders, amulet). Co-signed by the admin, the owner,
+-- and the lock holders, so a holder is never bound into a lock it did not
+-- authorize.
 template LockedToken
   with
     admin : Party
@@ -18,8 +20,7 @@ template LockedToken
     expiresAt : Time
     meta : Metadata
   where
-    signatory admin
-    observer owner, holders
+    signatory admin, owner, holders
     ensure amount > 0.0
 
     interface instance HoldingV1.Holding for LockedToken where
@@ -31,9 +32,12 @@ template LockedToken
           holders; expiresAt = Some expiresAt; expiresAfter = None; context = None
         meta
 
-    -- Lock holders release the funds back to the owner.
+    -- Cooperative release (Amulet LockedAmulet_UnlockV2): owner and holders
+    -- jointly. In every escrow abort path the escrow's parent is signed by both
+    -- admin and sender, so owner and holder (admin) authority are already in
+    -- scope and this is satisfied for free.
     choice LockedToken_Unlock : ContractId Token
-      controller holders
+      controller owner :: holders
       do create (mkToken admin owner instrumentId amount meta)
 
     -- After expiry the owner can reclaim the funds.
@@ -51,3 +55,44 @@ unlockHolding : ContractId LockedToken -> Update (ContractId HoldingV1.Holding)
 unlockHolding lockedCid = do
   tokenCid <- exercise lockedCid LockedToken_Unlock
   pure (toInterfaceContractId @HoldingV1.Holding tokenCid)
+
+-- | Well-known choice-context key under which the app backend supplies the
+-- Amulet-style early-release signal for an escrow (Amulet's expire-lock key).
+-- Present-and-true means the lock holders authorize releasing before expiry.
+expireLockContextKey : Text
+expireLockContextKey = "canton-token-forge/expire-lock"
+
+-- | Read the early-release signal from the choice context; absent or non-bool
+-- means no signal.
+lookupExpireLock : ChoiceContext -> Bool
+lookupExpireLock ctx =
+  case TextMap.lookup expireLockContextKey ctx.values of
+    Some (AV_Bool b) -> b
+    _ -> False
+
+-- | Reclaim an escrowed LockedToken back to its owner, but only once the
+-- settlement deadline has passed. The early-release signal is deliberately NOT
+-- honored here: it is a bare caller-supplied boolean with nothing on-ledger
+-- backing it (unlike a disclosed contract cid), so a choice controlled by a
+-- single party could otherwise forge it to bypass the deadline. Every
+-- single-party abort path (the allocation and transfer withdraws) reclaims
+-- through this; early, coordinated release is available only via the
+-- jointly-authorized cancel path (abortEscrow below).
+reclaimAtDeadline : ContractId LockedToken -> Time -> Update (ContractId HoldingV1.Holding)
+reclaimAtDeadline lockedCid expiresAt = do
+  now <- getTime
+  assertMsg "escrow cannot be reclaimed before the settlement deadline" (now >= expiresAt)
+  unlockHolding lockedCid
+
+-- | Release an escrowed LockedToken back to its owner (Amulet
+-- abortTwoStepTransfer). With the early-release signal the escrow returns
+-- immediately; otherwise the settlement deadline must have passed. Use this
+-- ONLY on a jointly-authorized choice (the allocation cancel, controlled by
+-- executor, sender, and receiver together): there the co-signing controllers
+-- ARE the authorization for an early release, so the signal cannot be forged
+-- unilaterally. Never use it on a single-party choice - see reclaimAtDeadline.
+abortEscrow : ContractId LockedToken -> Time -> ChoiceContext -> Update (ContractId HoldingV1.Holding)
+abortEscrow lockedCid expiresAt ctx =
+  if lookupExpireLock ctx
+    then unlockHolding lockedCid
+    else reclaimAtDeadline lockedCid expiresAt

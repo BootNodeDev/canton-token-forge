@@ -3,8 +3,8 @@ module Canton.TokenForge.Test.RegistryTest where
 import Daml.Script
 import DA.Assert ((===))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_ProposeInstrument(..), InstrumentConfigProposal_Accept(..), InstrumentConfigProposal_Reject(..), InstrumentConfigProposal_Withdraw(..), InstrumentConfig_Mint(..))
-import Canton.TokenForge.Test.Util (proposeInstrument)
+import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_ProposeInstrument(..), InstrumentConfigProposal_Accept(..), InstrumentConfigProposal_Reject(..), InstrumentConfigProposal_Withdraw(..))
+import Canton.TokenForge.Test.Util (proposeInstrument, mintToken)
 
 -- Admin proposes through the registry, operator accepts, and the resulting
 -- InstrumentConfig mints.
@@ -17,7 +17,7 @@ proposeAcceptCreatesInstrument = do
   prop <- proposeInstrument operator admin "CC" "Canton Coin" "CC" 10 None
   cfg <- submit operator $ exerciseCmd prop InstrumentConfigProposal_Accept
 
-  tokenCid <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 42.0
+  tokenCid <- mintToken cfg admin alice 42.0
   let hcid = toInterfaceContractId @HoldingV1.Holding tokenCid
   Some hv <- queryInterfaceContractId alice hcid
   hv.owner === alice

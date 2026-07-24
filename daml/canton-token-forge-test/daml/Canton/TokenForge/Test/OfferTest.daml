@@ -9,9 +9,8 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceContext)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (InstrumentConfig_Mint(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
-import Canton.TokenForge.Test.Util (registerInstrument)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs)
 
 -- No app-backend context is needed for accept/reject/withdraw in these tests.
 noContextArgs : ExtraArgs
@@ -22,7 +21,7 @@ noContextArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadat
 startOffer : Party -> Party -> Party -> Party -> Script (ContractId TransferInstruction)
 startOffer operator admin alice bob = do
   cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
-  tok <- submit admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
+  tok <- mintToken cfg admin alice 100.0
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 2) 0 0 0
   setTime now
@@ -67,6 +66,8 @@ offerAcceptedCompletes = do
       bv.amount === 40.0
     _ -> abort "expected completed after accept"
 
+-- The receiver can reject a pending offer immediately, before the deadline and
+-- with no early-release signal; the escrow returns to the sender.
 offerRejectedRefunds : Script ()
 offerRejectedRefunds = do
   operator <- allocateParty "operator"
@@ -81,6 +82,8 @@ offerRejectedRefunds = do
   rv.owner === alice
   rv.amount === 40.0
 
+-- Once the deadline (executeBefore) has passed the sender can withdraw the
+-- unaccepted offer and reclaim the escrow.
 offerWithdrawnRefunds : Script ()
 offerWithdrawnRefunds = do
   operator <- allocateParty "operator"
@@ -88,8 +91,23 @@ offerWithdrawnRefunds = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer operator admin alice bob
+  setTime (time (date 2026 Jan 3) 0 0 0)
   wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
   [refundCid] <- pure wd.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice
   rv.amount === 40.0
+
+-- Before the deadline the sender cannot withdraw the escrow. The early-release
+-- signal is a bare caller-supplied boolean, so forging it must not bypass the
+-- deadline on this single-party path either - a unilateral abort cannot pull
+-- funds mid-offer.
+offerWithdrawBeforeExpiryFails : Script ()
+offerWithdrawBeforeExpiryFails = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer operator admin alice bob
+  submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
+  submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = expireLockArgs

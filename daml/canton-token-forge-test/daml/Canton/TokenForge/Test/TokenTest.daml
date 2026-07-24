@@ -5,12 +5,14 @@ import DA.Assert ((===))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
 import Canton.TokenForge.Token (Token(..))
+import Canton.TokenForge.Registry (InstrumentConfig_Mint(..))
+import Canton.TokenForge.Test.Util (registerInstrument)
 
 holdingViewIsExposed : Script ()
 holdingViewIsExposed = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
-  cid <- submit admin $ createCmd Token with
+  cid <- submit (actAs [admin, alice]) $ createCmd Token with
     admin; owner = alice; instrumentId = "CC"; amount = 100.0; meta = emptyMetadata
   -- read the Holding interface view
   let hcid = toInterfaceContractId @HoldingV1.Holding cid
@@ -19,3 +21,13 @@ holdingViewIsExposed = do
   hv.amount === 100.0
   hv.instrumentId === HoldingV1.InstrumentId with admin; id = "CC"
   hv.lock === None
+
+-- Under owner co-signing, minting to a third party needs that party's consent,
+-- so the admin cannot airdrop tokens to a recipient that did not authorize it.
+mintRequiresRecipient : Script ()
+mintRequiresRecipient = do
+  operator <- allocateParty "operator"
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  submitMustFail admin $ exerciseCmd cfg InstrumentConfig_Mint with recipient = alice; amount = 100.0
