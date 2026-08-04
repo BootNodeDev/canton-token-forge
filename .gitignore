@@ -9,3 +9,6 @@ deps/
 
 node_modules
 docs/
+
+# Canton sandbox ports/ready file written by scripts/sandbox.sh
+.canton-ports.json
