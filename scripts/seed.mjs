@@ -254,19 +254,25 @@ async function main() {
   console.log(`  instrument       ${instrumentId} (${symbol}, ${decimals} decimals)`)
   console.log(`  faucet           ${faucetMax ? `enabled, max ${faucetMax} per tap` : 'disabled'}\n`)
 
+  // Template ids start with `#`, which dotenv reads as the start of a comment
+  // unless the value is quoted, so every id is emitted single-quoted.
+  const quoted = (key, id) => console.log(`${key}='${id}'`)
+
   console.log('registry/.env')
   console.log(`LEDGER_API_URL=${base}`)
-  console.log(`LEDGER_API_TOKEN=${token}`)
+  // The sandbox runs without authentication and ignores the header, but the
+  // service requires the variable, so an unset token still needs a value.
+  console.log(`LEDGER_API_TOKEN=${token || 'sandbox'}`)
   console.log(`LEDGER_USER_ID=${userId}`)
   console.log(`OPERATOR_PARTY=${operator}`)
   console.log(`REGISTRY_BASE_URL=${registryBaseUrl}`)
-  console.log(`INSTRUMENT_CONFIG_TEMPLATE_ID=${INSTRUMENT_CONFIG}`)
-  console.log(`INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID=${INSTRUMENT_CONFIG_PROPOSAL}`)
-  console.log(`TOKEN_REGISTRY_TEMPLATE_ID=${TOKEN_REGISTRY}`)
-  console.log(`PREAPPROVAL_TEMPLATE_ID=${PREAPPROVAL}`)
-  console.log(`LOCKED_TOKEN_TEMPLATE_ID=${LOCKED_TOKEN}`)
-  console.log(`TRANSFER_INSTRUCTION_TEMPLATE_ID=${TRANSFER_INSTRUCTION}`)
-  console.log(`ALLOCATION_TEMPLATE_ID=${ALLOCATION}`)
+  quoted('INSTRUMENT_CONFIG_TEMPLATE_ID', INSTRUMENT_CONFIG)
+  quoted('INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID', INSTRUMENT_CONFIG_PROPOSAL)
+  quoted('TOKEN_REGISTRY_TEMPLATE_ID', TOKEN_REGISTRY)
+  quoted('PREAPPROVAL_TEMPLATE_ID', PREAPPROVAL)
+  quoted('LOCKED_TOKEN_TEMPLATE_ID', LOCKED_TOKEN)
+  quoted('TRANSFER_INSTRUCTION_TEMPLATE_ID', TRANSFER_INSTRUCTION)
+  quoted('ALLOCATION_TEMPLATE_ID', ALLOCATION)
   console.log(`PORT=8080`)
   console.log(`\nother template ids`)
   console.log(`  Token ${TOKEN}`)
