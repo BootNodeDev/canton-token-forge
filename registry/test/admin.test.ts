@@ -72,7 +72,9 @@ describe('POST /admin/instruments', () => {
           instrumentId: 'CC',
           name: 'Canton Coin',
           symbol: 'CC',
-          decimals: 10,
+          // Daml Int64 is encoded as a JSON string; a bare number is rejected
+          // with "Expected ujson.Str".
+          decimals: '10',
           faucet: null,
         },
       },

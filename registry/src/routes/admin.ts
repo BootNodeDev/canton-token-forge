@@ -56,7 +56,17 @@ export function adminRouter(deps: ServerDeps): Router {
             templateId: deps.config.tokenRegistryTemplateId,
             contractId: reg.contractId,
             choice: 'TokenRegistry_ProposeInstrument',
-            choiceArgument: { admin, instrumentId, name, symbol, decimals, faucet },
+            // Daml Int64 is encoded as a JSON string on the wire, so the
+            // numeric `decimals` of the request body is stringified here
+            // rather than at the API boundary.
+            choiceArgument: {
+              admin,
+              instrumentId,
+              name,
+              symbol,
+              decimals: String(decimals),
+              faucet,
+            },
           },
         ],
         [toDisclosed(reg)],
