@@ -15,6 +15,22 @@ const baseEnv: Record<string, string> = {
   ALLOCATION_INTERFACE_ID: 'pkg:I:Allocation',
 }
 
+describe('loadConfig ledger user id', () => {
+  it('reads LEDGER_USER_ID when it is set', () => {
+    expect(loadConfig({ ...baseEnv, LEDGER_USER_ID: 'participant_admin' }).ledgerUserId).toBe(
+      'participant_admin',
+    )
+  })
+
+  it('leaves the ledger user id unset when LEDGER_USER_ID is absent', () => {
+    expect(loadConfig({ ...baseEnv })).not.toHaveProperty('ledgerUserId')
+  })
+
+  it('leaves the ledger user id unset when LEDGER_USER_ID is an empty string', () => {
+    expect(loadConfig({ ...baseEnv, LEDGER_USER_ID: '' })).not.toHaveProperty('ledgerUserId')
+  })
+})
+
 describe('loadConfig port parsing', () => {
   it('defaults to 8080 when PORT is unset', () => {
     expect(loadConfig({ ...baseEnv }).port).toBe(8080)

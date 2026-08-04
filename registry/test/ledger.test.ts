@@ -144,7 +144,9 @@ describe('HttpLedgerClient.submitAndWait', () => {
     const [url, init] = calls[0]
     expect(url).toBe('http://ledger/v2/commands/submit-and-wait-for-transaction')
     expect(init.method).toBe('POST')
-    const body = JSON.parse(init.body as string)
+    // The participant reads every submission field one level deep, inside a
+    // `commands` object; a flat body loses all of them.
+    const body = JSON.parse(init.body as string).commands
     expect(body.actAs).toEqual(['operator::1'])
     expect(typeof body.commandId).toBe('string')
     expect(body.commands).toEqual([
@@ -199,8 +201,41 @@ describe('HttpLedgerClient.submitAndWait', () => {
 
     expect(calls).toHaveLength(1)
     const [, init] = calls[0]
-    const body = JSON.parse(init.body as string)
+    const body = JSON.parse(init.body as string).commands
     expect(body.disclosedContracts).toEqual(disclosedContracts)
+  })
+
+  it('sends the configured ledger user id', async () => {
+    const { fakeFetch, calls } = recordingFetch({
+      [SUBMIT]: { ok: true, json: async () => ({}) },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't', ledgerUserId: 'registry-service' },
+      fakeFetch,
+    )
+
+    await client.submitAndWait(['operator::1'], [{ templateId: 'T', createArguments: {} }])
+
+    const [, init] = calls[0]
+    expect(JSON.parse(init.body as string).commands.userId).toBe('registry-service')
+  })
+
+  // With authentication on, the participant derives the user id from the
+  // token's claims and rejects a submission that claims a different one, so an
+  // unset LEDGER_USER_ID must leave the field out rather than guess a value.
+  it('omits the user id when none is configured', async () => {
+    const { fakeFetch, calls } = recordingFetch({
+      [SUBMIT]: { ok: true, json: async () => ({}) },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await client.submitAndWait(['operator::1'], [{ templateId: 'T', createArguments: {} }])
+
+    const [, init] = calls[0]
+    expect(JSON.parse(init.body as string).commands).not.toHaveProperty('userId')
   })
 
   it('throws when the ledger responds with a non-ok status', async () => {

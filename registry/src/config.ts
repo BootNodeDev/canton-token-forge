@@ -1,6 +1,8 @@
 export interface Config {
   ledgerApiUrl: string
   ledgerApiToken: string
+  // Optional on purpose: see the userId note in ledger.ts submitAndWait.
+  ledgerUserId?: string
   operatorParty: string
   registryBaseUrl: string
   instrumentConfigTemplateId: string
@@ -45,6 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   return {
     ledgerApiUrl: require_('LEDGER_API_URL'),
     ledgerApiToken: require_('LEDGER_API_TOKEN'),
+    ...(env.LEDGER_USER_ID ? { ledgerUserId: env.LEDGER_USER_ID } : {}),
     operatorParty: require_('OPERATOR_PARTY'),
     registryBaseUrl: require_('REGISTRY_BASE_URL'),
     instrumentConfigTemplateId: require_('INSTRUMENT_CONFIG_TEMPLATE_ID'),

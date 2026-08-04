@@ -56,7 +56,7 @@ interface ActiveContractsRow {
 
 export class HttpLedgerClient implements LedgerClient {
   constructor(
-    private readonly config: Pick<Config, 'ledgerApiUrl' | 'ledgerApiToken'>,
+    private readonly config: Pick<Config, 'ledgerApiUrl' | 'ledgerApiToken' | 'ledgerUserId'>,
     private readonly fetchFn: FetchFn = fetch,
   ) {}
 
@@ -120,9 +120,14 @@ export class HttpLedgerClient implements LedgerClient {
     })
   }
 
-  // The disclosedContracts placement in this envelope (a top-level sibling of
-  // commands/actAs) is UNVERIFIED against a live node, same class of
-  // deferral as the rest of this JSON command envelope.
+  // Every submission field lives inside a nested `commands` object; the
+  // participant looks for them one level deep and rejects a flat body.
+  //
+  // `userId` names the ledger user the submission is made under, which the
+  // participant normally defaults from the token's claims. It is sent only
+  // when configured: an unauthenticated participant has no claims to default
+  // from and requires it, while an authenticated one rejects a submission
+  // claiming a user its token does not authorize.
   async submitAndWait(
     actAs: string[],
     commands: (CreateCommand | ExerciseCommand)[],
@@ -134,12 +139,17 @@ export class HttpLedgerClient implements LedgerClient {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({
-          commands: commands.map((command) =>
-            isExerciseCommand(command) ? { ExerciseCommand: command } : { CreateCommand: command },
-          ),
-          actAs,
-          commandId: randomUUID(),
-          disclosedContracts,
+          commands: {
+            commands: commands.map((command) =>
+              isExerciseCommand(command)
+                ? { ExerciseCommand: command }
+                : { CreateCommand: command },
+            ),
+            actAs,
+            commandId: randomUUID(),
+            ...(this.config.ledgerUserId ? { userId: this.config.ledgerUserId } : {}),
+            disclosedContracts,
+          },
         }),
       },
     )
