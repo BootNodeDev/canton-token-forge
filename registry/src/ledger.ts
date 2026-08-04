@@ -23,7 +23,7 @@ export interface ExerciseCommand {
 }
 
 export interface LedgerClient {
-  activeContracts(templateOrInterfaceId: string, party: string): Promise<ContractEntry[]>
+  activeContracts(templateId: string, party: string): Promise<ContractEntry[]>
   submitAndWait(
     actAs: string[],
     commands: (CreateCommand | ExerciseCommand)[],
@@ -78,7 +78,7 @@ export class HttpLedgerClient implements LedgerClient {
     return ((await res.json()) as { offset: number }).offset
   }
 
-  async activeContracts(templateOrInterfaceId: string, party: string): Promise<ContractEntry[]> {
+  async activeContracts(templateId: string, party: string): Promise<ContractEntry[]> {
     const activeAtOffset = await this.ledgerEnd()
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/state/active-contracts`, {
       method: 'POST',
@@ -91,7 +91,7 @@ export class HttpLedgerClient implements LedgerClient {
                 {
                   identifierFilter: {
                     TemplateFilter: {
-                      value: { templateId: templateOrInterfaceId, includeCreatedEventBlob: true },
+                      value: { templateId, includeCreatedEventBlob: true },
                     },
                   },
                 },

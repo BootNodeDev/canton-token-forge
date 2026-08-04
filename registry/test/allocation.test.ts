@@ -11,7 +11,7 @@ function allocationEntry(
   overrides: Partial<AllocationPayload> = {},
 ): ContractEntry<AllocationPayload> {
   return {
-    templateId: config.allocationInterfaceId,
+    templateId: config.allocationTemplateId,
     contractId: 'alloc1',
     createdEventBlob: 'BLOB-ALLOC',
     synchronizerId: 's',
@@ -88,7 +88,7 @@ describe('allocation factory', () => {
 describe('allocation choice-contexts', () => {
   it('cancel carries the expire-lock signal and discloses the escrow LockedToken', async () => {
     const ledger = ledgerFrom({
-      [config.allocationInterfaceId]: [allocationEntry()],
+      [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const app = createServer({ ledger, config })
@@ -106,7 +106,7 @@ describe('allocation choice-contexts', () => {
 
   it('withdraw discloses the escrow LockedToken but sends no signal', async () => {
     const ledger = ledgerFrom({
-      [config.allocationInterfaceId]: [allocationEntry()],
+      [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const app = createServer({ ledger, config })
@@ -124,7 +124,7 @@ describe('allocation choice-contexts', () => {
 
   it('execute-transfer sends no signal', async () => {
     const ledger = ledgerFrom({
-      [config.allocationInterfaceId]: [allocationEntry()],
+      [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const app = createServer({ ledger, config })
@@ -137,7 +137,7 @@ describe('allocation choice-contexts', () => {
   })
 
   it('404s when the allocation is not found', async () => {
-    const ledger = ledgerFrom({ [config.allocationInterfaceId]: [] })
+    const ledger = ledgerFrom({ [config.allocationTemplateId]: [] })
     const app = createServer({ ledger, config })
     const res = await request(app)
       .post('/registry/allocations/v1/nope/choice-contexts/cancel')
