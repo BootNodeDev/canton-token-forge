@@ -1,34 +1,56 @@
 import { describe, expect, it } from 'vitest'
 import { HttpLedgerClient } from '../src/ledger'
 
-function recordingFetch(response: { ok: boolean; status?: number; json?: () => Promise<unknown> }) {
+interface FakeResponse {
+  ok: boolean
+  status?: number
+  json?: () => Promise<unknown>
+}
+
+// Routes by path because a single client call now hits two endpoints: an
+// active-contract query first reads the ledger end to snapshot at.
+function recordingFetch(routes: Record<string, FakeResponse>) {
   const calls: [string, RequestInit][] = []
   const fakeFetch = (async (url: string, init: RequestInit) => {
     calls.push([url, init])
-    return response as Response
+    const res = routes[new URL(url).pathname]
+    if (!res) throw new Error(`unexpected request to ${url}`)
+    return res as Response
   }) as typeof fetch
   return { fakeFetch, calls }
 }
 
+const LEDGER_END = '/v2/state/ledger-end'
+const ACTIVE_CONTRACTS = '/v2/state/active-contracts'
+const SUBMIT = '/v2/commands/submit-and-wait-for-transaction'
+
+const ledgerEndAt = (offset: number): FakeResponse => ({
+  ok: true,
+  json: async () => ({ offset }),
+})
+
 describe('HttpLedgerClient.activeContracts', () => {
   it('maps JSON Ledger API entries to ContractEntry', async () => {
     const { fakeFetch, calls } = recordingFetch({
-      ok: true,
-      json: async () => [
-        {
-          contractEntry: {
-            JsActiveContract: {
-              createdEvent: {
-                templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
-                contractId: '00abc',
-                createdEventBlob: 'BLOB==',
-                createArgument: { id: 'CC' },
+      [LEDGER_END]: ledgerEndAt(7),
+      [ACTIVE_CONTRACTS]: {
+        ok: true,
+        json: async () => [
+          {
+            contractEntry: {
+              JsActiveContract: {
+                createdEvent: {
+                  templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
+                  contractId: '00abc',
+                  createdEventBlob: 'BLOB==',
+                  createArgument: { id: 'CC' },
+                },
+                synchronizerId: 'sync-1',
               },
-              synchronizerId: 'sync-1',
             },
           },
-        },
-      ],
+        ],
+      },
     })
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
@@ -46,8 +68,9 @@ describe('HttpLedgerClient.activeContracts', () => {
       payload: { id: 'CC' },
     })
 
-    expect(calls).toHaveLength(1)
-    const [url, init] = calls[0]
+    const query = calls.find(([url]) => url.endsWith(ACTIVE_CONTRACTS))
+    if (!query) throw new Error('no active-contracts request was made')
+    const [url, init] = query
     expect(url).toBe('http://ledger/v2/state/active-contracts')
     expect(init.method).toBe('POST')
     const body = JSON.parse(init.body as string)
@@ -56,13 +79,44 @@ describe('HttpLedgerClient.activeContracts', () => {
         .templateId,
     ).toBe('pkg:Canton.TokenForge.Registry:InstrumentConfig')
   })
+
+  it('snapshots the active contract set at the current ledger end', async () => {
+    const { fakeFetch, calls } = recordingFetch({
+      [LEDGER_END]: ledgerEndAt(4711),
+      [ACTIVE_CONTRACTS]: { ok: true, json: async () => [] },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await client.activeContracts('pkg:M:InstrumentConfig', 'operator::1')
+
+    expect(calls.map(([url]) => new URL(url).pathname)).toEqual([LEDGER_END, ACTIVE_CONTRACTS])
+    const [, init] = calls[1]
+    expect(JSON.parse(init.body as string).activeAtOffset).toBe(4711)
+  })
+
+  it('throws when the ledger end cannot be read', async () => {
+    const { fakeFetch } = recordingFetch({
+      [LEDGER_END]: { ok: false, status: 503, json: async () => ({}) },
+      [ACTIVE_CONTRACTS]: { ok: true, json: async () => [] },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(client.activeContracts('pkg:M:InstrumentConfig', 'operator::1')).rejects.toThrow(
+      /503/,
+    )
+  })
 })
 
 describe('HttpLedgerClient.submitAndWait', () => {
   it('submits create/exercise commands as actAs and returns the response', async () => {
     const { fakeFetch, calls } = recordingFetch({
-      ok: true,
-      json: async () => ({ transactionId: 'tx-1' }),
+      [SUBMIT]: { ok: true, json: async () => ({ transactionId: 'tx-1' }) },
     })
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
@@ -114,8 +168,7 @@ describe('HttpLedgerClient.submitAndWait', () => {
 
   it('carries a provided disclosedContracts array in the submit request body', async () => {
     const { fakeFetch, calls } = recordingFetch({
-      ok: true,
-      json: async () => ({ transactionId: 'tx-2' }),
+      [SUBMIT]: { ok: true, json: async () => ({ transactionId: 'tx-2' }) },
     })
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
@@ -152,9 +205,7 @@ describe('HttpLedgerClient.submitAndWait', () => {
 
   it('throws when the ledger responds with a non-ok status', async () => {
     const { fakeFetch } = recordingFetch({
-      ok: false,
-      status: 400,
-      json: async () => ({}),
+      [SUBMIT]: { ok: false, status: 400, json: async () => ({}) },
     })
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },

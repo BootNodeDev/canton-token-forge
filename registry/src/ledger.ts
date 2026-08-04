@@ -37,10 +37,9 @@ function isExerciseCommand(command: CreateCommand | ExerciseCommand): command is
   return 'contractId' in command
 }
 
-// Shape of one row of the /v2/state/active-contracts response as this
-// service consumes it. Like the rest of the JSON envelope it is UNVERIFIED
-// against a live node, and adjusting it here and in the mapping below is the
-// single place a live-node drift lands.
+// Shape of one row of the /v2/state/active-contracts response as this service
+// consumes it, verified against Canton 3.5.6. Adjusting it here and in the
+// mapping below is the single place a live-node drift lands.
 interface ActiveContractsRow {
   contractEntry?: {
     JsActiveContract?: {
@@ -61,13 +60,29 @@ export class HttpLedgerClient implements LedgerClient {
     private readonly fetchFn: FetchFn = fetch,
   ) {}
 
+  private headers(): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      authorization: `Bearer ${this.config.ledgerApiToken}`,
+    }
+  }
+
+  // An active-contract query is snapshotted at an offset, and offset 0 is the
+  // beginning of the ledger, where nothing is active yet. Reading the current
+  // end first is what makes the query return the live contract set.
+  private async ledgerEnd(): Promise<number> {
+    const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/state/ledger-end`, {
+      headers: this.headers(),
+    })
+    if (!res.ok) throw new Error(`ledger end query failed: ${res.status}`)
+    return ((await res.json()) as { offset: number }).offset
+  }
+
   async activeContracts(templateOrInterfaceId: string, party: string): Promise<ContractEntry[]> {
+    const activeAtOffset = await this.ledgerEnd()
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/state/active-contracts`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${this.config.ledgerApiToken}`,
-      },
+      headers: this.headers(),
       body: JSON.stringify({
         filter: {
           filtersByParty: {
@@ -85,7 +100,7 @@ export class HttpLedgerClient implements LedgerClient {
           },
         },
         verbose: false,
-        activeAtOffset: 0,
+        activeAtOffset,
       }),
     })
     if (!res.ok) throw new Error(`ledger query failed: ${res.status}`)
@@ -117,10 +132,7 @@ export class HttpLedgerClient implements LedgerClient {
       `${this.config.ledgerApiUrl}/v2/commands/submit-and-wait-for-transaction`,
       {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${this.config.ledgerApiToken}`,
-        },
+        headers: this.headers(),
         body: JSON.stringify({
           commands: commands.map((command) =>
             isExerciseCommand(command) ? { ExerciseCommand: command } : { CreateCommand: command },
