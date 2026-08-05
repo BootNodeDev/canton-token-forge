@@ -115,6 +115,71 @@ describe('transfer factory', () => {
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
   })
 
+  it('falls through to offer when the only preapproval is not yet valid', async () => {
+    const notYetValid = preapprovalEntry({
+      validFrom: '2999-01-01T00:00:00Z',
+      expiresAt: '2999-06-01T00:00:00Z',
+    })
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [notYetValid],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    expect(res.body.transferKind).toBe('offer')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
+  // The admin is a stakeholder of every preapproval it issued, so these two
+  // reach the match filter and must be rejected by it, not by visibility.
+  it('falls through to offer when the only preapproval is for a different receiver', async () => {
+    const otherReceiver = preapprovalEntry({ receiver: 'other::1' }, [
+      instrumentId.admin,
+      'other::1',
+    ])
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [otherReceiver],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    expect(res.body.transferKind).toBe('offer')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
+  it('falls through to offer when the only preapproval is for a different instrument', async () => {
+    const otherInstrument = preapprovalEntry({ instrumentId: 'USDX' })
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [otherInstrument],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    expect(res.body.transferKind).toBe('offer')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
   it('400s when choiceArguments.transfer.instrumentId is missing', async () => {
     const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [cfgEntry()] })
     const app = createServer({ ledger, config })
