@@ -348,7 +348,15 @@ async function main() {
   // nothing. A caller-supplied token is referenced rather than reprinted, to
   // keep a real credential out of terminal scrollback and CI logs.
   console.log(`LEDGER_API_TOKEN=${token ? '<the LEDGER_API_TOKEN you passed in>' : 'placeholder'}`)
-  console.log(`LEDGER_USER_ID=${userId}`)
+  // Only an unauthenticated participant needs to be told the ledger user: it
+  // has no claims to default one from. Where a token was supplied the
+  // participant derives the user from it and rejects a submission naming a
+  // different one, so the line is emitted commented out.
+  if (token) {
+    console.log('# LEDGER_USER_ID is unset on purpose: the participant reads it from the token')
+  } else {
+    console.log(`LEDGER_USER_ID=${userId}`)
+  }
   console.log(`OPERATOR_PARTY=${operator}`)
   console.log(`REGISTRY_BASE_URL=${onLedgerBaseUrl}`)
   quoted('INSTRUMENT_CONFIG_TEMPLATE_ID', INSTRUMENT_CONFIG)
