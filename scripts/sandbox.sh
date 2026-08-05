@@ -2,8 +2,7 @@
 #
 # sandbox.sh - build the production DAR and run a local Canton sandbox with the
 # JSON Ledger API enabled, so the registry service and the seed script have a
-# live participant to talk to. This is the Canton sandbox, unrelated to
-# docs/bootstrap-sandbox.sh (which provisions a Claude Code container).
+# live participant to talk to.
 #
 # Usage:
 #   bash scripts/sandbox.sh              # build the DAR, then start the sandbox
