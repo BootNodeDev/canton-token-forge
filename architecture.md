@@ -26,7 +26,7 @@ daml/                                    Container of dpm packages (mirrors upst
     daml.yaml                            SDK/LF pins; data-deps on the 7 splice-api-token-* interface DARs
     daml/Canton/TokenForge/
       Registry.daml                      InstrumentConfig rules/factory + preapproval; TransferFactory/AllocationFactory/BurnMintFactory instances
-      Token.daml                         Token holding template; HoldingV1.Holding interface instance
+      Token.daml                         Token holding template + HoldingV1.Holding instance; input fetch/consume/spend helpers
       Locked.daml                        LockedToken escrow shared by pending transfers and allocations
       Instruction.daml                   TokenTransferInstruction template + TransferInstruction interface instance
       Allocation.daml                    TokenAllocation template + Allocation interface instance
@@ -155,8 +155,12 @@ transfer.
 - **Rules/factory pattern:** `InstrumentConfig` is the per-instrument rules/factory
   (AmuletRules analog); it implements `TransferFactory`, `AllocationFactory`, and
   `BurnMintFactory`, and exposes minting as a nonconsuming choice.
-- **Module boundary:** transfer logic (`transferImpl`) lives in `Registry.daml`
-  and receives the config's `admin`/`instrumentId` as explicit params.
+- **Module boundary:** the helpers that fetch, validate and spend sender inputs
+  (`fetchInputs`/`consumeInputs`/`spendInputs`) live in `Token.daml`, and
+  `allocateImpl` lives in `Allocation.daml`; `Registry.daml` imports both, so
+  the transfer and allocation paths spend inputs through one implementation.
+  Each takes the config's `admin`/`instrumentId` as explicit params instead of
+  reading them back from the contract.
 - **Clean-room, interface-only:** no dependency on `splice-amulet` and no
   economics (no decay, fees, mining rounds, rewards, or DSO governance); issuance
   is free, authorized jointly by the admin and the recipient, plus an optional
