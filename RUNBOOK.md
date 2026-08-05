@@ -189,7 +189,7 @@ reason the seed script looks the way it does.
   Stop it, or start this one on a different `JSON_API_PORT`.
 - **"Party already exists"**: expected on a re-run. `scripts/seed.mjs` reuses an
   existing party for a hint instead of allocating it again.
-- **More than one active `InstrumentConfig`**: `expectOneConfig` in
+- **"found N InstrumentConfig contracts for ..."**: `expectOneConfig` in
   `scripts/seed.mjs` refuses to guess a winner and throws, naming the contract
   count and instrument id, when more than one config shares this
   `(admin, instrumentId)`. LF 2.1 has no contract keys, so nothing on-ledger
