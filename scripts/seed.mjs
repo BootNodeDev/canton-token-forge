@@ -30,15 +30,24 @@ import { fileURLToPath } from 'node:url'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dar = resolve(repoRoot, 'daml/canton-token-forge/.daml/dist/canton-token-forge-0.0.1.dar')
 
-const base = process.env.LEDGER_API_URL ?? 'http://localhost:7575'
-const token = process.env.LEDGER_API_TOKEN ?? ''
-const registryBaseUrl = process.env.REGISTRY_BASE_URL ?? 'http://localhost:8080'
-const instrumentId = process.env.SEED_INSTRUMENT_ID ?? 'CC'
-const instrumentName = process.env.SEED_INSTRUMENT_NAME ?? 'Canton Coin Forge'
-const symbol = process.env.SEED_SYMBOL ?? 'CC'
+// An exported-but-empty variable means "unset" for every override below except
+// SEED_FAUCET_MAX, where empty is the documented way to ask for no faucet.
+// Letting "" through would commit an instrument with an empty id or symbol,
+// which the ledger accepts and no later run can distinguish from a real one.
+const strEnv = (name, fallback) => {
+  const raw = process.env[name]
+  return raw === undefined || raw === '' ? fallback : raw
+}
+
+const base = strEnv('LEDGER_API_URL', 'http://localhost:7575')
+const token = strEnv('LEDGER_API_TOKEN', '')
+const registryBaseUrl = strEnv('REGISTRY_BASE_URL', 'http://localhost:8080')
+const instrumentId = strEnv('SEED_INSTRUMENT_ID', 'CC')
+const instrumentName = strEnv('SEED_INSTRUMENT_NAME', 'Canton Coin Forge')
+const symbol = strEnv('SEED_SYMBOL', 'CC')
 const decimals = Number(process.env.SEED_DECIMALS ?? '10')
 const faucetMax = process.env.SEED_FAUCET_MAX ?? '1000.0'
-const userId = process.env.LEDGER_USER_ID ?? 'participant_admin'
+const userId = strEnv('LEDGER_USER_ID', 'participant_admin')
 
 const headers = {
   'content-type': 'application/json',
