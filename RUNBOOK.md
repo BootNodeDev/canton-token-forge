@@ -59,7 +59,15 @@ faucet), `LEDGER_API_URL`, `LEDGER_API_TOKEN`, `LEDGER_USER_ID`.
 
 ## 3. Configure and start the registry service
 
-Copy the printed block into `registry/.env`, then:
+Copy the printed block into `registry/.env`, keeping the quoting as printed: the
+template ids are single-quoted because they start with `#`, which dotenv would
+otherwise read as the start of a comment.
+
+One line is a placeholder rather than a value. If you ran the seed with
+`LEDGER_API_TOKEN` set, the block says `<the LEDGER_API_TOKEN you passed in>`
+instead of echoing your credential into the terminal, so put the real token
+there yourself. Copied as printed it is accepted at boot and then sent as the
+bearer token on every call, which an authenticated participant rejects. Then:
 
 ```bash
 cd registry
@@ -71,11 +79,26 @@ npm start
 `registry/` is a separate package with its own dependencies: the root
 `npm install` vendors the Daml deps and does not populate `registry/node_modules`.
 
-`GET /healthz` and `GET /readyz` answer, and `GET /registry/metadata/v1/info`
-returns the operator party as `adminId` with the six supported APIs.
+`GET /healthz` and `GET /readyz` answer, `GET /registry/metadata/v1/info` returns
+the operator party as `adminId` with the six supported APIs, and
+`GET /registry/metadata/v1/instruments` and `/instruments/CC` return the seeded
+instrument.
 
-`GET /registry/metadata/v1/instruments` currently returns an empty list against a
-live sandbox even though the instrument exists. See "Known live-node gaps" below.
+Registering a second instrument through the service exercises both write paths:
+
+```bash
+curl -X POST http://localhost:8080/admin/instruments \
+  -H 'content-type: application/json' \
+  -d '{"admin":"<admin party>","instrumentId":"CC2","name":"Second Coin",
+       "symbol":"CC2","decimals":6,"faucet":null}'
+
+curl -X POST http://localhost:8080/admin/proposals/<proposal cid>/accept
+```
+
+The proposal contract id comes from an active-contracts query on
+`#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfigProposal` as the
+operator. After the accept, `CC2` appears in
+`GET /registry/metadata/v1/instruments`.
 
 ## 4. Tap the faucet
 
@@ -112,9 +135,11 @@ readable with an active-contracts query on
 
 ## 5. Transfer
 
-Not yet exercised end to end. The transfer path runs through the registry
-service's transfer-factory and choice-context routes, which are blocked by the
-gaps below. The end-to-end transfer test is separate work.
+Not yet exercised end to end. `POST /registry/transfer-instruction/v1/transfer-factory`
+answers against the live sandbox (returning `transferKind: "offer"` with the
+instrument config disclosed), but driving a transfer to completion also means
+submitting the returned choice and settling it. That is the end-to-end transfer
+test, which is separate work.
 
 ## JSON Ledger API conventions this sandbox enforces
 
@@ -137,29 +162,31 @@ reason the seed script looks the way it does.
   accepts `participant_admin`.
 - **`Int64` fields are JSON strings**, not numbers. Sending `decimals: 10`
   fails with "Expected ujson.Str (data: 10)"; send `"10"`.
+- **`Decimal` fields take either, but a JSON number is only safe below 1e7.**
+  A number is rendered from a double before it reaches the Numeric parser, and
+  that rendering is exponential from 1e7 up and below 1e-3, which the parser
+  rejects: `maxPerTap: 10000000` fails with "Could not read Numeric string
+  \"1.0E7\"" while `maxPerTap: 1000` succeeds. A decimal string is read
+  literally at any magnitude, so send `"10000000.0"`.
 - Disclosed contracts are `{templateId, contractId, createdEventBlob,
   synchronizerId}`, taken straight from an active-contracts row queried by a
-  party that can see the contract.
+  party that can see the contract. Those rows report the template id in
+  package-**id** form, and disclosing it that way is accepted. The package-name
+  rule above applies to the filter you send, not to the id that comes back.
 - The sandbox needs no bearer token. `LEDGER_API_TOKEN` is still required by the
   service config, so any placeholder value works locally.
 
-## Known live-node gaps
+## What the service configuration has to match
 
-The registry service was built and tested against an in-memory stub, so the
-conventions above are not all reflected in it yet.
-
-- **Active-contract queries run at offset 0** (`registry/src/ledger.ts`), so every
-  read returns empty against a live node. Confirmed by patching the built output
-  to read `/v2/state/ledger-end` first: with that single change,
-  `GET /registry/metadata/v1/instruments` and
-  `GET /registry/metadata/v1/instruments/CC` both return the seeded `CC`
-  instrument correctly.
-- **The command envelope in `submitAndWait` is flat and omits `userId`**, so every
-  write path fails against a live node.
-- **`TRANSFER_INSTRUCTION_INTERFACE_ID` and `ALLOCATION_INTERFACE_ID` are named
-  for interfaces but must hold concrete template ids**, in package-name form. The
-  filter type itself is correct: a `TemplateFilter` carrying a package-name id
-  matches, which is what the seeded `.env` block above uses.
+- All seven template ids are package-name form, and the service refuses to start
+  otherwise rather than serving empty results from a filter that matches nothing.
+  They are concrete template ids, never interface ids: the choice-context
+  handlers read payload fields that exist on the template create arguments and
+  not on the standard interface views.
+- `LEDGER_USER_ID` is set here because the sandbox runs without authentication
+  and cannot default the user from a token's claims. Against an authenticated
+  participant, leave it unset: the participant derives the user from the token
+  and rejects a submission that names a different one.
 
 ## Troubleshooting
 

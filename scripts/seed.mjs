@@ -338,21 +338,34 @@ async function main() {
     }\n`,
   )
 
+  // Template ids start with `#`, which dotenv reads as the start of a comment
+  // unless the value is quoted, so every id is emitted single-quoted.
+  const quoted = (key, id) => console.log(`${key}='${id}'`)
+
   console.log('registry/.env')
   console.log(`LEDGER_API_URL=${base}`)
   // The service requires this to be non-empty, and the sandbox authenticates
   // nothing. A caller-supplied token is referenced rather than reprinted, to
   // keep a real credential out of terminal scrollback and CI logs.
   console.log(`LEDGER_API_TOKEN=${token ? '<the LEDGER_API_TOKEN you passed in>' : 'placeholder'}`)
+  // Only an unauthenticated participant needs to be told the ledger user: it
+  // has no claims to default one from. Where a token was supplied the
+  // participant derives the user from it and rejects a submission naming a
+  // different one, so the line is emitted commented out.
+  if (token) {
+    console.log('# LEDGER_USER_ID is unset on purpose: the participant reads it from the token')
+  } else {
+    console.log(`LEDGER_USER_ID=${userId}`)
+  }
   console.log(`OPERATOR_PARTY=${operator}`)
   console.log(`REGISTRY_BASE_URL=${onLedgerBaseUrl}`)
-  console.log(`INSTRUMENT_CONFIG_TEMPLATE_ID=${INSTRUMENT_CONFIG}`)
-  console.log(`INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID=${INSTRUMENT_CONFIG_PROPOSAL}`)
-  console.log(`TOKEN_REGISTRY_TEMPLATE_ID=${TOKEN_REGISTRY}`)
-  console.log(`PREAPPROVAL_TEMPLATE_ID=${PREAPPROVAL}`)
-  console.log(`LOCKED_TOKEN_TEMPLATE_ID=${LOCKED_TOKEN}`)
-  console.log(`TRANSFER_INSTRUCTION_INTERFACE_ID=${TRANSFER_INSTRUCTION}`)
-  console.log(`ALLOCATION_INTERFACE_ID=${ALLOCATION}`)
+  quoted('INSTRUMENT_CONFIG_TEMPLATE_ID', INSTRUMENT_CONFIG)
+  quoted('INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID', INSTRUMENT_CONFIG_PROPOSAL)
+  quoted('TOKEN_REGISTRY_TEMPLATE_ID', TOKEN_REGISTRY)
+  quoted('PREAPPROVAL_TEMPLATE_ID', PREAPPROVAL)
+  quoted('LOCKED_TOKEN_TEMPLATE_ID', LOCKED_TOKEN)
+  quoted('TRANSFER_INSTRUCTION_TEMPLATE_ID', TRANSFER_INSTRUCTION)
+  quoted('ALLOCATION_TEMPLATE_ID', ALLOCATION)
   console.log(`PORT=8080`)
   console.log(`\nother template ids`)
   console.log(`  Token ${TOKEN}`)

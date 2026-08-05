@@ -30,7 +30,7 @@ function instructionEntry(
   overrides: Partial<TransferInstructionPayload> = {},
 ): ContractEntry<TransferInstructionPayload> {
   return {
-    templateId: config.transferInstructionInterfaceId,
+    templateId: config.transferInstructionTemplateId,
     contractId: 'instr1',
     createdEventBlob: 'BLOB-INSTR',
     synchronizerId: 's',
@@ -208,7 +208,7 @@ describe('transfer-instruction choice-contexts', () => {
   it('discloses the config and the escrow LockedToken for accept', async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
-      [config.transferInstructionInterfaceId]: [instructionEntry()],
+      [config.transferInstructionTemplateId]: [instructionEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const app = createServer({ ledger, config })
@@ -227,7 +227,7 @@ describe('transfer-instruction choice-contexts', () => {
   it('discloses the config and the escrow LockedToken for reject', async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
-      [config.transferInstructionInterfaceId]: [instructionEntry()],
+      [config.transferInstructionTemplateId]: [instructionEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const app = createServer({ ledger, config })
@@ -246,7 +246,7 @@ describe('transfer-instruction choice-contexts', () => {
   it('discloses the config and the escrow LockedToken for withdraw', async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
-      [config.transferInstructionInterfaceId]: [instructionEntry()],
+      [config.transferInstructionTemplateId]: [instructionEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const app = createServer({ ledger, config })
@@ -263,7 +263,7 @@ describe('transfer-instruction choice-contexts', () => {
   })
 
   it('404s when the transfer instruction is not found', async () => {
-    const ledger = ledgerFrom({ [config.transferInstructionInterfaceId]: [] })
+    const ledger = ledgerFrom({ [config.transferInstructionTemplateId]: [] })
     const app = createServer({ ledger, config })
     const res = await request(app)
       .post('/registry/transfer-instruction/v1/nope/choice-contexts/accept')
@@ -275,7 +275,7 @@ describe('transfer-instruction choice-contexts', () => {
   it("404s when no config matches the instruction's instrumentId", async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [],
-      [config.transferInstructionInterfaceId]: [instructionEntry()],
+      [config.transferInstructionTemplateId]: [instructionEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const app = createServer({ ledger, config })
@@ -291,7 +291,7 @@ describe('transfer-instruction choice-contexts', () => {
     dup.contractId = 'cfg2'
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry(), dup],
-      [config.transferInstructionInterfaceId]: [instructionEntry()],
+      [config.transferInstructionTemplateId]: [instructionEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const app = createServer({ ledger, config })
