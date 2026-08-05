@@ -21,14 +21,12 @@
 //   SEED_FAUCET_MAX       per-tap cap; set empty to register without a faucet (default 1000.0)
 //   LEDGER_USER_ID        ledger user id for submissions (default participant_admin)
 
-import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const dar = resolve(repoRoot, 'daml/canton-token-forge/.daml/dist/canton-token-forge-0.0.1.dar')
 
 // An exported-but-empty variable means "unset" for every override below except
 // SEED_FAUCET_MAX, where empty is the documented way to ask for no faucet.
@@ -49,6 +47,15 @@ function intEnv(name, fallback, min, max) {
   return n
 }
 
+// Read from daml.yaml rather than `dpm inspect-dar`, so the seed needs neither a
+// JVM nor a locally built DAR and can run against a remote participant.
+function packageNameFromDamlYaml() {
+  const path = resolve(repoRoot, 'daml/canton-token-forge/daml.yaml')
+  const match = readFileSync(path, 'utf8').match(/^name:\s*(\S+)/m)
+  if (!match) throw new Error(`could not read 'name' from ${path}`)
+  return match[1]
+}
+
 function loadConfig() {
   return {
     base: strEnv('LEDGER_API_URL', 'http://localhost:7575'),
@@ -60,6 +67,7 @@ function loadConfig() {
     decimals: intEnv('SEED_DECIMALS', 10, 0, 18),
     faucetMax: process.env.SEED_FAUCET_MAX ?? '1000.0',
     userId: strEnv('LEDGER_USER_ID', 'participant_admin'),
+    packageName: packageNameFromDamlYaml(),
   }
 }
 
@@ -84,23 +92,13 @@ const {
   decimals,
   faucetMax,
   userId,
+  packageName,
 } = settings
 
 const headers = {
   'content-type': 'application/json',
   ...(token ? { authorization: `Bearer ${token}` } : {}),
 }
-
-function inspectDar() {
-  if (!existsSync(dar)) {
-    throw new Error(`DAR not found at ${dar}; run 'npm run build:canton-token-forge' first`)
-  }
-  const out = JSON.parse(execFileSync('dpm', ['inspect-dar', dar, '--json'], { encoding: 'utf8' }))
-  const id = out.main_package_id
-  return { id, name: out.packages[id].name }
-}
-
-const { id: packageId, name: packageName } = inspectDar()
 
 // Active-contract filters resolve templates by package NAME, written
 // `#<name>:<module>:<entity>`. A package-id-qualified identifier is rejected
@@ -230,7 +228,7 @@ const forThisInstrument = (rows, admin) =>
 
 async function main() {
   console.log(`seeding ${base}`)
-  console.log(`package ${packageName} (${packageId})\n`)
+  console.log(`package ${packageName}\n`)
 
   const operator = await allocate('operator')
   const admin = await allocate('admin')
