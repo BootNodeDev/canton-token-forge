@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 //
 // seed.mjs - seed a running Canton sandbox with the contracts the registry
-// service needs: an operator party, an instrument admin, two demo users, a
-// TokenRegistry, and one InstrumentConfig created through the propose/accept
-// flow. Prints the resulting contract ids and a ready-to-paste registry/.env
-// block.
+// service needs: an instrument admin, two demo users, and one InstrumentConfig
+// created directly by the admin. Prints the resulting contract ids and a
+// ready-to-paste registry/.env block.
 //
 // Usage:
 //   bash scripts/sandbox.sh                    # in one shell
@@ -13,7 +12,6 @@
 // Env overrides:
 //   LEDGER_API_URL        JSON Ledger API base URL (default http://localhost:7575)
 //   LEDGER_API_TOKEN      bearer token; omitted entirely when unset (sandbox needs none)
-//   REGISTRY_BASE_URL     URL the registry advertises for its own routes (default http://localhost:8080)
 //   SEED_INSTRUMENT_ID    instrument id to register (default CC)
 //   SEED_INSTRUMENT_NAME  display name (default Canton Coin Forge)
 //   SEED_SYMBOL           ticker symbol (default CC)
@@ -60,7 +58,6 @@ function loadConfig() {
   return {
     base: strEnv('LEDGER_API_URL', 'http://localhost:7575'),
     token: strEnv('LEDGER_API_TOKEN', ''),
-    registryBaseUrl: strEnv('REGISTRY_BASE_URL', 'http://localhost:8080'),
     instrumentId: strEnv('SEED_INSTRUMENT_ID', 'CC'),
     instrumentName: strEnv('SEED_INSTRUMENT_NAME', 'Canton Coin Forge'),
     symbol: strEnv('SEED_SYMBOL', 'CC'),
@@ -85,7 +82,6 @@ try {
 const {
   base,
   token,
-  registryBaseUrl,
   instrumentId,
   instrumentName,
   symbol,
@@ -105,8 +101,6 @@ const headers = {
 // outright ("expected a package name"), so every id below uses the name form.
 const pkg = `#${packageName}`
 const tid = (entity) => `${pkg}:Canton.TokenForge.Registry:${entity}`
-const TOKEN_REGISTRY = tid('TokenRegistry')
-const INSTRUMENT_CONFIG_PROPOSAL = tid('InstrumentConfigProposal')
 const INSTRUMENT_CONFIG = tid('InstrumentConfig')
 const PREAPPROVAL = tid('TokenTransferPreapproval')
 const TOKEN = `${pkg}:Canton.TokenForge.Token:Token`
@@ -227,81 +221,35 @@ async function main() {
   console.log(`seeding ${base}`)
   console.log(`package ${packageName}\n`)
 
-  const operator = await allocate('operator')
   const admin = await allocate('admin')
   const user1 = await allocate('user1')
   const user2 = await allocate('user2')
 
   // Contract ids are read back from the active contract set rather than out of
   // the submission response, so the seed does not depend on where a given Canton
-  // version puts an exercise result in the transaction envelope.
-  let registryRows = await activeContracts(TOKEN_REGISTRY, operator)
-  if (registryRows.length === 0) {
-    await submit(
-      [operator],
-      [{ templateId: TOKEN_REGISTRY, createArguments: { operator, registryBaseUrl } }],
-    )
-    registryRows = await activeContracts(TOKEN_REGISTRY, operator)
-  }
-  const registry = expectOne(registryRows, 'TokenRegistry')
-
-  let configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, operator), admin)
+  // version puts a create result in the transaction envelope.
+  let configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin), admin)
   if (configRows.length === 0) {
-    let proposalRows = forThisInstrument(
-      await activeContracts(INSTRUMENT_CONFIG_PROPOSAL, admin),
-      admin,
-    )
-    if (proposalRows.length === 0) {
-      // The admin controls TokenRegistry_ProposeInstrument but is not a
-      // stakeholder of the operator-signed registry, so the registry is
-      // disclosed explicitly. Same disclosure the service's propose route makes.
-      await submit(
-        [admin],
-        [
-          {
-            templateId: TOKEN_REGISTRY,
-            contractId: registry.contractId,
-            choice: 'TokenRegistry_ProposeInstrument',
-            choiceArgument: {
-              admin,
-              instrumentId,
-              name: instrumentName,
-              symbol,
-              // Int64 is encoded as a JSON string; a bare number is rejected
-              // with "Expected ujson.Str".
-              decimals: String(decimals),
-              faucet: faucetMax ? { maxPerTap: faucetMax } : null,
-            },
-          },
-        ],
-        [
-          {
-            templateId: registry.templateId,
-            contractId: registry.contractId,
-            createdEventBlob: registry.createdEventBlob,
-            synchronizerId: registry.synchronizerId,
-          },
-        ],
-      )
-      proposalRows = forThisInstrument(
-        await activeContracts(INSTRUMENT_CONFIG_PROPOSAL, admin),
-        admin,
-      )
-    }
-    const proposal = expectOne(proposalRows, 'InstrumentConfigProposal')
-
     await submit(
-      [operator],
+      [admin],
       [
         {
-          templateId: INSTRUMENT_CONFIG_PROPOSAL,
-          contractId: proposal.contractId,
-          choice: 'InstrumentConfigProposal_Accept',
-          choiceArgument: {},
+          templateId: INSTRUMENT_CONFIG,
+          createArguments: {
+            admin,
+            instrumentId,
+            name: instrumentName,
+            symbol,
+            // Int64 is encoded as a JSON string; a bare number is rejected
+            // with "Expected ujson.Str".
+            decimals: String(decimals),
+            faucet: faucetMax ? { maxPerTap: faucetMax } : null,
+            meta: { values: {} },
+          },
         },
       ],
     )
-    configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, operator), admin)
+    configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin), admin)
   }
   const config = expectOne(configRows, 'InstrumentConfig')
 
@@ -310,24 +258,11 @@ async function main() {
   // existing contract wins, so echoing the env vars would misreport it.
   const instrument = config.payload
 
-  // Same reasoning for the registry: a reused one keeps whatever base URL it
-  // was created with, and that is the URL standard clients resolve from the
-  // ledger, so the generated .env has to agree with it rather than with the env.
-  const onLedgerBaseUrl = registry.payload.registryBaseUrl
-  if (onLedgerBaseUrl !== registryBaseUrl) {
-    console.warn(
-      `warning: reusing a TokenRegistry that advertises ${onLedgerBaseUrl}; ` +
-        `REGISTRY_BASE_URL=${registryBaseUrl} was ignored\n`,
-    )
-  }
-
   console.log('parties')
-  console.log(`  operator ${operator}`)
-  console.log(`  admin    ${admin}`)
-  console.log(`  user1    ${user1}`)
-  console.log(`  user2    ${user2}\n`)
+  console.log(`  admin ${admin}`)
+  console.log(`  user1 ${user1}`)
+  console.log(`  user2 ${user2}\n`)
   console.log('contracts')
-  console.log(`  TokenRegistry    ${registry.contractId}`)
   console.log(`  InstrumentConfig ${config.contractId}`)
   console.log(
     `  instrument       ${instrument.instrumentId} (${instrument.symbol}, ${instrument.decimals} decimals)`,
@@ -357,11 +292,8 @@ async function main() {
   } else {
     console.log(`LEDGER_USER_ID=${userId}`)
   }
-  console.log(`OPERATOR_PARTY=${operator}`)
-  console.log(`REGISTRY_BASE_URL=${onLedgerBaseUrl}`)
+  console.log(`ADMIN_PARTY=${admin}`)
   quoted('INSTRUMENT_CONFIG_TEMPLATE_ID', INSTRUMENT_CONFIG)
-  quoted('INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID', INSTRUMENT_CONFIG_PROPOSAL)
-  quoted('TOKEN_REGISTRY_TEMPLATE_ID', TOKEN_REGISTRY)
   quoted('PREAPPROVAL_TEMPLATE_ID', PREAPPROVAL)
   quoted('LOCKED_TOKEN_TEMPLATE_ID', LOCKED_TOKEN)
   quoted('TRANSFER_INSTRUCTION_TEMPLATE_ID', TRANSFER_INSTRUCTION)
