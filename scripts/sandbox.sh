@@ -30,7 +30,7 @@ LEDGER_API_PORT="${LEDGER_API_PORT:-6865}"
 CANTON_PORT_FILE="${CANTON_PORT_FILE:-$REPO_ROOT/.canton-ports.json}"
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
-  ( cd "$REPO_ROOT/daml/canton-token-forge" && dpm build )
+  npm run --prefix "$REPO_ROOT" build:canton-token-forge
 fi
 
 if [ ! -f "$DAR" ]; then
