@@ -4,7 +4,7 @@ import { loadConfig } from '../src/config'
 const baseEnv: Record<string, string> = {
   LEDGER_API_URL: 'http://ledger',
   LEDGER_API_TOKEN: 't',
-  OPERATOR_PARTY: 'op::1',
+  ADMIN_PARTY: 'admin::1',
   REGISTRY_BASE_URL: 'http://r',
   INSTRUMENT_CONFIG_TEMPLATE_ID: '#pkg:M:InstrumentConfig',
   INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID: '#pkg:M:InstrumentConfigProposal',

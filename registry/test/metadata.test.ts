@@ -9,7 +9,7 @@ import { validateAgainst } from './helpers/schema'
 function ledgerWith(payloads: InstrumentConfigPayload[]): LedgerClient {
   return ledgerFrom({
     [config.instrumentConfigTemplateId]: payloads.map((p, i) => {
-      const entry = cfgEntry(p, [p.admin, p.operator])
+      const entry = cfgEntry(p, [p.admin])
       entry.contractId = `c${i}`
       entry.createdEventBlob = 'b'
       return entry
@@ -19,7 +19,6 @@ function ledgerWith(payloads: InstrumentConfigPayload[]): LedgerClient {
 
 const cantonCoin: InstrumentConfigPayload = {
   admin: 'admin::1',
-  operator: 'op::1',
   instrumentId: 'CC',
   name: 'Canton Coin',
   symbol: 'CC',
@@ -59,7 +58,7 @@ describe('metadata', () => {
     const res = await request(app).get('/registry/metadata/v1/info')
     expect(res.status).toBe(200)
     validateAgainst('metadata#/components/schemas/GetRegistryInfoResponse', res.body)
-    expect(res.body.adminId).toBe('op::1')
+    expect(res.body.adminId).toBe('admin::1')
     expect(res.body.supportedApis).toBeDefined()
   })
 
@@ -87,7 +86,7 @@ describe('metadata', () => {
   })
 
   it('409s when (admin, instrumentId) is not unique', async () => {
-    const duplicate = { ...cantonCoin, admin: 'admin::2' }
+    const duplicate = { ...cantonCoin, name: 'Canton Coin (second create)' }
     const ledger = ledgerWith([cantonCoin, duplicate])
     const app = createServer({ ledger, config })
     const res = await request(app).get('/registry/metadata/v1/instruments/CC')

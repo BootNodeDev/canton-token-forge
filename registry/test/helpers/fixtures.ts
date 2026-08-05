@@ -17,7 +17,7 @@ import type {
 export const config: Config = {
   ledgerApiUrl: 'http://ledger',
   ledgerApiToken: 'secret',
-  operatorParty: 'op::1',
+  adminParty: 'admin::1',
   registryBaseUrl: 'http://r',
   instrumentConfigTemplateId: '#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfig',
   instrumentConfigProposalTemplateId:
@@ -34,10 +34,10 @@ export const config: Config = {
 
 export const instrumentId: InstrumentIdValue = { admin: 'admin::1', id: 'CC' }
 
-// InstrumentConfig is signatory admin, observer operator.
+// InstrumentConfig is signatory admin.
 export function cfgEntry(
   overrides: Partial<InstrumentConfigPayload> = {},
-  stakeholders: string[] = [instrumentId.admin, config.operatorParty],
+  stakeholders: string[] = [instrumentId.admin],
 ): StubEntry<InstrumentConfigPayload> {
   return {
     templateId: config.instrumentConfigTemplateId,
@@ -47,7 +47,6 @@ export function cfgEntry(
     stakeholders,
     payload: {
       admin: instrumentId.admin,
-      operator: 'op::1',
       instrumentId: instrumentId.id,
       name: 'Canton Coin',
       symbol: 'CC',

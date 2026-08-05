@@ -26,7 +26,7 @@ export function metadataRouter(deps: ServerDeps): Router {
 
   r.get('/registry/metadata/v1/info', (_req, res) => {
     res.json({
-      adminId: deps.config.operatorParty,
+      adminId: deps.config.adminParty,
       supportedApis: SUPPORTED_APIS,
     })
   })

@@ -44,7 +44,7 @@ export function allocationRouter(deps: ServerDeps): Router {
         const alloc = await findByContractId<AllocationPayload>(
           deps.ledger,
           deps.config.allocationTemplateId,
-          deps.config.operatorParty,
+          deps.config.adminParty,
           req.params.allocationId,
         )
         if (!alloc) return res.status(404).json({ error: 'allocation not found' })

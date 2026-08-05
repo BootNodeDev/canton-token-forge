@@ -31,7 +31,7 @@ interface InstrumentKeyedPayload {
 }
 
 // The InstrumentConfig contract payload uses the Daml record field names
-// (admin, operator, instrumentId, name, symbol, decimals, faucet), not the
+// (admin, instrumentId, name, symbol, decimals, faucet), not the
 // metadata standard's `id`. This maps the on-ledger payload to the
 // standard's Instrument shape.
 export function toInstrument(payload: InstrumentConfigPayload): Instrument {

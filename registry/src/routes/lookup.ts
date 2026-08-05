@@ -15,30 +15,29 @@ function activeContractsAs<P>(
   return ledger.activeContracts(templateId, party) as Promise<ContractEntry<P>[]>
 }
 
-// The InstrumentConfig active set for the operator, which the routes then run
-// through resolveConfig/resolveById and the readiness probe issues for its
-// side effect alone. Centralized so the "which template, which party
-// identifies the config set" choice has one home, alongside findByContractId
-// and escrowDisclosure below.
+// The InstrumentConfig active set for the admin, which the routes then run
+// through resolveConfig/resolveById. Centralized so the "which template, which
+// party identifies the config set" choice has one home, alongside
+// findByContractId and escrowDisclosure below.
 export function activeConfigs(
   ledger: LedgerClient,
-  config: Pick<Config, 'instrumentConfigTemplateId' | 'operatorParty'>,
+  config: Pick<Config, 'instrumentConfigTemplateId' | 'adminParty'>,
 ): Promise<ContractEntry<InstrumentConfigPayload>[]> {
   return activeContractsAs<InstrumentConfigPayload>(
     ledger,
     config.instrumentConfigTemplateId,
-    config.operatorParty,
+    config.adminParty,
   )
 }
 
 export function activePreapprovals(
   ledger: LedgerClient,
-  config: Pick<Config, 'preapprovalTemplateId' | 'operatorParty'>,
+  config: Pick<Config, 'preapprovalTemplateId' | 'adminParty'>,
 ): Promise<ContractEntry<PreapprovalPayload>[]> {
   return activeContractsAs<PreapprovalPayload>(
     ledger,
     config.preapprovalTemplateId,
-    config.operatorParty,
+    config.adminParty,
   )
 }
 
@@ -63,13 +62,13 @@ export async function findByContractId<P = unknown>(
 // both disclose it this way before the counterparty exercises its choice.
 export async function escrowDisclosure(
   ledger: LedgerClient,
-  config: Pick<Config, 'lockedTokenTemplateId' | 'operatorParty'>,
+  config: Pick<Config, 'lockedTokenTemplateId' | 'adminParty'>,
   lockedCid: string,
 ): Promise<DisclosedContract[]> {
   const escrow = await findByContractId(
     ledger,
     config.lockedTokenTemplateId,
-    config.operatorParty,
+    config.adminParty,
     lockedCid,
   )
   return escrow ? [toDisclosed(escrow)] : []

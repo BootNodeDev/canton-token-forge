@@ -33,7 +33,7 @@ describe('health', () => {
     }
     const res = await request(createServer({ ledger, config })).get('/readyz')
     expect(res.status).toBe(200)
-    expect(queries).toEqual([[config.instrumentConfigTemplateId, config.operatorParty]])
+    expect(queries).toEqual([[config.instrumentConfigTemplateId, config.adminParty]])
   })
 
   it('GET /readyz returns 503 and logs the error when the ledger is unreachable', async () => {

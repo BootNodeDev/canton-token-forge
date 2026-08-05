@@ -92,7 +92,7 @@ export function transferRouter(deps: ServerDeps): Router {
         const instr = await findByContractId<TransferInstructionPayload>(
           deps.ledger,
           deps.config.transferInstructionTemplateId,
-          deps.config.operatorParty,
+          deps.config.adminParty,
           req.params.transferInstructionId,
         )
         if (!instr) return res.status(404).json({ error: 'transfer instruction not found' })
