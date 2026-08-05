@@ -171,9 +171,11 @@ reason the seed script looks the way it does.
   They are concrete template ids, never interface ids: the choice-context
   handlers read payload fields that exist on the template create arguments and
   not on the standard interface views.
-- `LEDGER_USER_ID` is set here because the sandbox runs without authentication
-  and cannot default the user from a token's claims. Against an authenticated
-  participant, leave it unset: the participant derives the user from the token
+- `LEDGER_USER_ID` has no effect on the running service, which submits nothing.
+  It is carried in the same block because `scripts/seed.mjs` does submit: an
+  unauthenticated sandbox has no token claims to default the user from, so the
+  seed sends `participant_admin`, while against an authenticated participant the
+  variable is left unset because the participant derives the user from the token
   and rejects a submission that names a different one.
 
 ## Troubleshooting
