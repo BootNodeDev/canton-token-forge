@@ -295,6 +295,17 @@ async function main() {
   // existing contract wins, so echoing the env vars would misreport it.
   const instrument = config.payload
 
+  // Same reasoning for the registry: a reused one keeps whatever base URL it
+  // was created with, and that is the URL standard clients resolve from the
+  // ledger, so the generated .env has to agree with it rather than with the env.
+  const onLedgerBaseUrl = registry.payload.registryBaseUrl
+  if (onLedgerBaseUrl !== registryBaseUrl) {
+    console.warn(
+      `warning: reusing a TokenRegistry that advertises ${onLedgerBaseUrl}; ` +
+        `REGISTRY_BASE_URL=${registryBaseUrl} was ignored\n`,
+    )
+  }
+
   console.log('parties')
   console.log(`  operator ${operator}`)
   console.log(`  admin    ${admin}`)
@@ -319,7 +330,7 @@ async function main() {
   // keep a real credential out of terminal scrollback and CI logs.
   console.log(`LEDGER_API_TOKEN=${token ? '<the LEDGER_API_TOKEN you passed in>' : 'placeholder'}`)
   console.log(`OPERATOR_PARTY=${operator}`)
-  console.log(`REGISTRY_BASE_URL=${registryBaseUrl}`)
+  console.log(`REGISTRY_BASE_URL=${onLedgerBaseUrl}`)
   console.log(`INSTRUMENT_CONFIG_TEMPLATE_ID=${INSTRUMENT_CONFIG}`)
   console.log(`INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID=${INSTRUMENT_CONFIG_PROPOSAL}`)
   console.log(`TOKEN_REGISTRY_TEMPLATE_ID=${TOKEN_REGISTRY}`)
