@@ -185,9 +185,12 @@ reason the seed script looks the way it does.
   Stop it, or start this one on a different `JSON_API_PORT`.
 - **"Party already exists"**: expected on a re-run. `scripts/seed.mjs` reuses an
   existing party for a hint instead of allocating it again.
-- **"expected exactly one InstrumentConfig"**: more than one active config shares
-  this `(admin, instrumentId)`. LF 2.1 has no contract keys, so nothing on-ledger
-  prevents it. Archive the extra config, or seed a different `SEED_INSTRUMENT_ID`.
+- **More than one active `InstrumentConfig`**: `expectOneConfig` in
+  `scripts/seed.mjs` refuses to guess a winner and throws, naming the contract
+  count and instrument id, when more than one config shares this
+  `(admin, instrumentId)`. LF 2.1 has no contract keys, so nothing on-ledger
+  prevents it, and the registry would answer 409 for an ambiguous instrument.
+  Archive the extra config, or seed a different `SEED_INSTRUMENT_ID`.
 - **DAR not found**: run `npm run build:canton-token-forge`, or let
   `scripts/sandbox.sh` build it (do not pass `SKIP_BUILD=1`).
 - Canton logs to `log/canton.log` in the repo root, which is gitignored.

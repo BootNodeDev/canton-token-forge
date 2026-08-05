@@ -27,7 +27,7 @@ daml/                                    Container of dpm packages (mirrors upst
     daml/Canton/TokenForge/
       Registry.daml                      InstrumentConfig rules/factory + preapproval; TransferFactory/AllocationFactory/BurnMintFactory instances
       Token.daml                         Token holding template; HoldingV1.Holding interface instance
-      Locked.daml                        LockedToken escrow for pending transfers
+      Locked.daml                        LockedToken escrow shared by pending transfers and allocations
       Instruction.daml                   TokenTransferInstruction template + TransferInstruction interface instance
       Allocation.daml                    TokenAllocation template + Allocation interface instance
       Types.daml                         mkInstrumentId helper (admin + id -> InstrumentId)
