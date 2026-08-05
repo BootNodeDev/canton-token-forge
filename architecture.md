@@ -128,6 +128,11 @@ Registration and transfer move through the ledger as follows:
 | `SPLICE_TAG` | In `versions.env`. The single Splice release tag every vendored DAR version is derived from. Change it, run `npm run setup`. |
 | `LANG` | Must be `C.UTF-8` for `dpm`/`damlc` (otherwise data-dependency interface regeneration throws a UTF-8 decoding error). The npm scripts set it. |
 
+These two cover the Daml build only. The registry service and `scripts/seed.mjs`
+are configured entirely by environment: the service requires eight variables and
+refuses to start without them (`registry/.env.example`), and the seed reads its
+overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
+
 ## Scripts
 
 | Command | Purpose |
