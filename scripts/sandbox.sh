@@ -41,14 +41,44 @@ if [ -z "$DAR" ]; then
   exit 1
 fi
 
-# A stale ports file would make a readiness check pass before the nodes are up.
+# Refuse to touch a sandbox that is already serving: the ports file below is
+# removed on the way in, which would otherwise destroy the running one's
+# readiness signal when this launch loses the race for the port.
+if curl -sf "http://localhost:$JSON_API_PORT/v2/version" >/dev/null 2>&1; then
+  echo "a sandbox is already serving on port $JSON_API_PORT" >&2
+  exit 1
+fi
+
+# The ports file is this run's readiness signal, so it must not outlive the
+# process: a stale one makes a readiness check pass against a dead sandbox.
+SANDBOX_PID=""
+cleanup() {
+  if [ -n "$SANDBOX_PID" ]; then
+    # Signal the whole process group, not just dpm: dpm runs Canton as a child
+    # of its own and does not forward signals, so killing dpm alone would orphan
+    # a live JVM while the ports file below is removed.
+    kill -TERM -"$SANDBOX_PID" 2>/dev/null || true
+    wait "$SANDBOX_PID" 2>/dev/null || true
+  fi
+  rm -f "$CANTON_PORT_FILE"
+}
+trap cleanup EXIT INT TERM
+
 rm -f "$CANTON_PORT_FILE"
 
 echo "starting Canton sandbox: JSON Ledger API on http://localhost:$JSON_API_PORT"
 echo "ready when $CANTON_PORT_FILE appears; stop with Ctrl-C"
 
-exec dpm sandbox \
+# Backgrounded and waited on rather than run in the foreground: bash defers trap
+# handlers until a foreground child exits, which would leave the sandbox running
+# and the ports file behind on SIGTERM. Job control is enabled just long enough
+# to give the sandbox its own process group for cleanup() to signal.
+set -m
+dpm sandbox \
   --dar "$DAR" \
   --json-api-port "$JSON_API_PORT" \
   --ledger-api-port "$LEDGER_API_PORT" \
-  --canton-port-file "$CANTON_PORT_FILE"
+  --canton-port-file "$CANTON_PORT_FILE" &
+SANDBOX_PID=$!
+set +m
+wait "$SANDBOX_PID"
