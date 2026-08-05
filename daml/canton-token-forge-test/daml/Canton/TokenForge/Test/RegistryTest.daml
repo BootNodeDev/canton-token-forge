@@ -32,8 +32,7 @@ createRequiresAdminAuthority = do
     admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"
     decimals = 10; faucet = None; meta = emptyMetadata
 
--- Out-of-range decimals are rejected by the template's ensure, which is now the
--- only creation-time guard on an instrument.
+-- The template's `ensure` is the only creation-time guard on an instrument.
 createRejectsBadDecimals : Script ()
 createRejectsBadDecimals = do
   admin <- allocateParty "admin"
