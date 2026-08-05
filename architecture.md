@@ -25,21 +25,33 @@ daml/                                    Container of dpm packages (mirrors upst
   canton-token-forge/                    Production package (name: canton-token-forge)
     daml.yaml                            SDK/LF pins; data-deps on the 7 splice-api-token-* interface DARs
     daml/Canton/TokenForge/
-      Registry.daml                      TokenRegistry anchor + InstrumentConfig rules/factory; TransferFactory instance
+      Registry.daml                      InstrumentConfig rules/factory + preapproval; TransferFactory/AllocationFactory/BurnMintFactory instances
       Token.daml                         Token holding template; HoldingV1.Holding interface instance
-      Transfer.daml                      transferDirectImpl: input-holding consume/validate/split logic
+      Locked.daml                        LockedToken escrow for pending transfers
+      Instruction.daml                   TokenTransferInstruction template + TransferInstruction interface instance
+      Allocation.daml                    TokenAllocation template + Allocation interface instance
       Types.daml                         mkInstrumentId helper (admin + id -> InstrumentId)
       Version.daml                       package version marker
   canton-token-forge-test/               Integration-test package (name: canton-token-forge-test)
     daml.yaml                            data-deps on the compiled production DAR + the interface DARs
     daml/Canton/TokenForge/Test/
+      AllocationTest.daml                allocation flow tests
+      BurnMintTest.daml                  burn-mint factory tests
+      FaucetTest.daml                    faucet tap tests
+      LockTest.daml                      LockedToken escrow tests
+      MultiInstrumentTest.daml           multi-instrument isolation tests
+      OfferTest.daml                     pending-offer (2-step) transfer tests
+      RegistryTest.daml                  registry / instrument config tests
       Smoke.daml                         version-marker smoke script
-      RegistryTest.daml                  registry / instrument registration tests
       TokenTest.daml                     token minting / holding tests
-      TransferTest.daml                  transfer flow tests
+      TransferTest.daml                  direct transfer flow tests
+      Util.daml                          shared test/setup helpers
+registry/                                Read-only TypeScript HTTP service serving the CN Token Standard registry API
 scripts/
   fetch-dep.sh                           Vendor Splice sources, derive DAR versions, create stable-name symlinks
   build-harness.sh                       Build the Amulet test harness (unused by default; conformance only)
+  sandbox.sh                             Build the DAR and run a local Canton sandbox with the JSON Ledger API
+  seed.mjs                               Seed a running sandbox with an admin, demo users, and one InstrumentConfig
 deps/                                    Vendored Splice sources + built DARs (gitignored; never edit or commit)
 multi-package.yaml                       Wires the two packages into one workspace
 versions.env                             Single version knob: SPLICE_TAG
@@ -52,21 +64,20 @@ The package is a clean-room implementation of the CN Token Standard: it defines
 its own templates but exposes behavior only through the standard interfaces from
 the `splice-api-token-*` DARs. The core module hierarchy:
 
-- **`TokenRegistry`** (`Registry.daml`) - operator-signed anchor. Serves as the
-  `getRegistryInfo` identity and the creation entry point for instruments. Its
-  `TokenRegistry_RegisterInstrument` choice is co-authorized by `operator, admin`
-  so the admin-signed `InstrumentConfig` can be created.
 - **`InstrumentConfig`** (`Registry.daml`) - admin-signed per-instrument
-  rules/factory contract (the AmuletRules analog); the operator is an observer.
+  rules/factory contract (the AmuletRules analog), created directly by its admin.
   `ensure` constrains `decimals` to 0..18. `InstrumentConfig_Mint` is free,
-  admin-authorized minting (no economics). Implements the `TransferFactory`
-  interface, delegating to `transferDirectImpl`.
-- **`Token`** (`Token.daml`) - an unlocked holding. Signed by the instrument
-  admin (the DSO analog); the owner is an observer. `ensure amount > 0.0`.
-  Implements `HoldingV1.Holding`.
-- **`transferDirectImpl`** (`Transfer.daml`) - shared transfer logic, passed the
-  config's `admin` and `instrumentId` as explicit params to avoid a module import
-  cycle with `Registry`.
+  admin-and-recipient-authorized minting (no economics). Implements the
+  `TransferFactory`, `AllocationFactory`, and `BurnMintFactory` interfaces. One
+  admin creates one config per instrument and serves all of them through a single
+  registry API; the instrument identity is `(admin, instrumentId)`.
+- **`TokenTransferPreapproval`** (`Registry.daml`) - receiver opt-in enabling
+  one-step transfers, co-signed by `admin, receiver` with an Amulet-style
+  validity window.
+- **`Token`** (`Token.daml`) - an unlocked holding. Signed by `admin, owner`.
+  `ensure amount > 0.0`. Implements `HoldingV1.Holding`.
+- **`transferImpl`** (`Registry.daml`) - shared transfer logic, passed the
+  config's `admin` and `instrumentId` as explicit params.
 - **`mkInstrumentId`** (`Types.daml`) - builds the standard `HoldingV1.InstrumentId`
   from an admin party and an id string.
 
@@ -76,27 +87,28 @@ The production package data-depends ONLY on the seven `splice-api-token-*`
 interface DARs (holding, metadata, transfer-instruction, allocation,
 allocation-instruction, allocation-request, burn-mint) and NOT on `splice-amulet`.
 It integrates with the wider CN ecosystem purely by implementing those standard
-interfaces (`HoldingV1.Holding`, `TransferInstructionV1.TransferFactory`). There
-is no off-ledger I/O in the Daml code; all state lives on the ledger as contracts.
+interfaces: `HoldingV1.Holding`, `TransferInstructionV1.TransferFactory`,
+`TransferInstructionV1.TransferInstruction`, `AllocationInstructionV1.AllocationFactory`,
+`AllocationV1.Allocation`, and `BurnMintV1.BurnMintFactory`. There is no
+off-ledger I/O in the Daml code; all state lives on the ledger as contracts.
 
 ## Data Flow
 
 Registration and transfer move through the ledger as follows:
 
-1. **Register an instrument** - `TokenRegistry_RegisterInstrument` (controlled by
-   `operator, admin`) creates an `InstrumentConfig` for the instrument.
-2. **Mint** - `InstrumentConfig_Mint` (controlled by `admin`) creates a `Token`
-   holding for the recipient.
+1. **Register an instrument** - the admin creates an `InstrumentConfig`. There is
+   no counterparty: the admin is the sole signatory.
+2. **Mint** - `InstrumentConfig_Mint` (controlled by `admin, recipient`) creates a
+   `Token` holding for the recipient.
 3. **Transfer** - `TransferFactory_Transfer` on the `InstrumentConfig` runs
-   `transferDirectImpl`, which:
-   - asserts `expectedAdmin` matches the config admin, the transfer instrument
-     matches this config, and the amount is positive;
-   - fetches and archives each input `Token`, checking sender ownership and
-     instrument, and sums their amounts;
-   - asserts the input total covers the transfer amount;
-   - creates the receiver `Token`, plus a sender-change `Token` when the input
-     total exceeds the transfer amount;
-   - returns `TransferInstructionResult_Completed` with the resulting holding cids.
+   `transferImpl`, which spends the sender's inputs (fetches and archives each
+   input `Token`, checking sender ownership and instrument, and creates a
+   sender-change `Token` for any surplus) and then either:
+   - completes directly, creating the receiver `Token` and returning
+     `TransferInstructionResult_Completed`, when the transfer is a self-transfer
+     or the choice context supplies a matching `TokenTransferPreapproval`; or
+   - escrows the amount in a `LockedToken` and creates a pending
+     `TokenTransferInstruction`, returning `TransferInstructionResult_Pending`.
 
 ## Environment Variables
 
@@ -115,6 +127,8 @@ Registration and transfer move through the ledger as follows:
 | `npm test` | Build the production DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same as `npm test` with a template-focused coverage report. |
 | `npm run clean` | Remove both `.daml` build dirs. |
+| `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
+| `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
 | `bash scripts/build-harness.sh` | Build the Amulet test harness (unused by default; conformance only). |
 
 ---
@@ -131,18 +145,18 @@ transfer.
 
 ### Smart Contract Architecture
 
-- **Signatory / observer model:** `TokenRegistry` (signatory `operator`),
-  `InstrumentConfig` (signatory `admin`, observer `operator`), `Token` (signatory
-  `admin`, observer `owner`).
-- **Co-authorized registration:** `TokenRegistry_RegisterInstrument` is controlled
-  by both `operator` and `admin` so the operator-signed registry can create an
-  admin-signed `InstrumentConfig`.
+- **Signatory model:** `InstrumentConfig` (signatory `admin`), `Token`
+  (signatory `admin, owner`), `LockedToken` (signatory `admin, owner, holders`).
+  Holdings are co-signed by their owner, matching Amulet, so the admin cannot
+  archive and re-mint an owner's funds unilaterally.
+- **Single-party registry:** the instrument admin is also the registry identity
+  the metadata API reports as `adminId`, matching CIP-0056 and Amulet, where the
+  DSO party is both the instrument admin and the registry app.
 - **Rules/factory pattern:** `InstrumentConfig` is the per-instrument rules/factory
-  (AmuletRules analog); it implements `TransferFactory` and exposes minting as a
-  nonconsuming choice.
-- **Module boundary:** transfer logic lives in `Transfer.daml` and receives the
-  config's `admin`/`instrumentId` as params to avoid an import cycle with
-  `Registry.daml`.
+  (AmuletRules analog); it implements `TransferFactory`, `AllocationFactory`, and
+  `BurnMintFactory`, and exposes minting as a nonconsuming choice.
+- **Module boundary:** transfer logic (`transferImpl`) lives in `Registry.daml`
+  and receives the config's `admin`/`instrumentId` as explicit params.
 - **Clean-room, interface-only:** no dependency on `splice-amulet` and no
   economics (no decay, fees, mining rounds, rewards, or DSO governance); issuance
   is free/admin-authorized plus an optional per-instrument faucet policy.

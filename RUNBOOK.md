@@ -4,7 +4,7 @@ How to bring up a local Canton sandbox, seed it with a canton-token-forge
 instrument, and drive it from the registry HTTP service.
 
 Everything below was executed against Canton 3.5.6 (the version `dpm sandbox`
-resolves for SDK 3.4.11) on 2026-08-04. Steps that are known NOT to work yet are
+resolves for SDK 3.4.11) on 2026-08-05. Steps that are known NOT to work yet are
 marked as such rather than omitted.
 
 ## Prerequisites
@@ -35,7 +35,7 @@ against the DAR that is already built).
 Sandbox storage is in-process. Restarting it gives a clean ledger, including
 freshly allocated party ids.
 
-## 2. Seed an operator, an admin, and one instrument
+## 2. Seed an admin and one instrument
 
 In a second shell:
 
@@ -43,12 +43,9 @@ In a second shell:
 npm run seed           # or: node scripts/seed.mjs
 ```
 
-The script allocates the `operator`, `admin`, `user1`, and `user2` parties,
-creates a `TokenRegistry`, and registers a `CC` instrument through the
-propose/accept flow: the admin exercises `TokenRegistry_ProposeInstrument` (with
-the operator-signed registry disclosed to it), then the operator exercises
-`InstrumentConfigProposal_Accept`. It prints the resulting contract ids and a
-ready-to-paste `registry/.env` block.
+The script allocates the `admin`, `user1`, and `user2` parties and creates one
+`CC` `InstrumentConfig` signed by the admin. It prints the resulting contract id
+and a ready-to-paste `registry/.env` block.
 
 The script is find-or-create at every step, so re-running it against an
 already-seeded sandbox reports the same contracts instead of creating duplicates.
@@ -80,25 +77,16 @@ npm start
 `npm install` vendors the Daml deps and does not populate `registry/node_modules`.
 
 `GET /healthz` and `GET /readyz` answer, `GET /registry/metadata/v1/info` returns
-the operator party as `adminId` with the six supported APIs, and
+the admin party as `adminId` with the six supported APIs, and
 `GET /registry/metadata/v1/instruments` and `/instruments/CC` return the seeded
 instrument.
 
-Registering a second instrument through the service exercises both write paths:
-
-```bash
-curl -X POST http://localhost:8080/admin/instruments \
-  -H 'content-type: application/json' \
-  -d '{"admin":"<admin party>","instrumentId":"CC2","name":"Second Coin",
-       "symbol":"CC2","decimals":6,"faucet":null}'
-
-curl -X POST http://localhost:8080/admin/proposals/<proposal cid>/accept
-```
-
-The proposal contract id comes from an active-contracts query on
-`#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfigProposal` as the
-operator. After the accept, `CC2` appears in
-`GET /registry/metadata/v1/instruments`.
+The service is read-only: it serves instrument metadata, factory ids, and choice
+contexts, and submits nothing. Registering a second instrument is a `create` on
+the ledger as the admin, the same command `scripts/seed.mjs` issues. Set
+`SEED_INSTRUMENT_ID=CC2` (with `SEED_SYMBOL` and `SEED_DECIMALS` to match) and
+re-run the seed; `CC2` then appears in `GET /registry/metadata/v1/instruments`
+alongside `CC`, since one admin serves every instrument it has created.
 
 ## 4. Tap the faucet
 
@@ -178,7 +166,7 @@ reason the seed script looks the way it does.
 
 ## What the service configuration has to match
 
-- All seven template ids are package-name form, and the service refuses to start
+- All five template ids are package-name form, and the service refuses to start
   otherwise rather than serving empty results from a filter that matches nothing.
   They are concrete template ids, never interface ids: the choice-context
   handlers read payload fields that exist on the template create arguments and
@@ -197,8 +185,9 @@ reason the seed script looks the way it does.
   Stop it, or start this one on a different `JSON_API_PORT`.
 - **"Party already exists"**: expected on a re-run. `scripts/seed.mjs` reuses an
   existing party for a hint instead of allocating it again.
-- **"expected exactly one TokenRegistry"**: more than one registry was created,
-  usually by an interrupted earlier run. Restart the sandbox for a clean ledger.
+- **"expected exactly one InstrumentConfig"**: more than one active config shares
+  this `(admin, instrumentId)`. LF 2.1 has no contract keys, so nothing on-ledger
+  prevents it. Archive the extra config, or seed a different `SEED_INSTRUMENT_ID`.
 - **DAR not found**: run `npm run build:canton-token-forge`, or let
   `scripts/sandbox.sh` build it (do not pass `SKIP_BUILD=1`).
 - Canton logs to `log/canton.log` in the repo root, which is gitignored.
