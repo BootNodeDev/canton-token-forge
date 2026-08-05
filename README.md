@@ -22,6 +22,12 @@ script (`Canton.TokenForge.Test.Smoke:smoke`), proving the token interface deps
 are vendored and the toolchain works end-to-end. Real interface tests land in
 Plan 01+.
 
+## Running it locally
+
+[`RUNBOOK.md`](RUNBOOK.md) walks through bringing up a local Canton sandbox
+(`npm run sandbox`), seeding it with an instrument (`npm run seed`), and driving
+it from the registry HTTP service in `registry/`.
+
 ## What's inside
 
 - `daml/canton-token-forge/` - production package. It data-depends ONLY on the

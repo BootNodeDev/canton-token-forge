@@ -88,6 +88,11 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 | `npm run test:coverage` | Same, with a coverage report focused on your templates. |
 | `npm run clean` | Remove both `.daml` build dirs. |
 | `npm run setup` | Re-vendor deps + re-create the stable symlinks. |
+| `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
+| `npm run seed` | Seed a running sandbox with parties, a registry, and one instrument. |
+
+See [`RUNBOOK.md`](RUNBOOK.md) for the full local bring-up, including wiring the
+`registry/` HTTP service to the seeded sandbox.
 
 Build **each package in its own `dpm` invocation**; do **not** use
 `dpm build --all`, and never `dpm build` at the repo root (it is a

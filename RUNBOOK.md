@@ -16,7 +16,7 @@ marked as such rather than omitted.
 ## 1. Start the sandbox
 
 ```bash
-bash scripts/sandbox.sh
+npm run sandbox        # or: bash scripts/sandbox.sh
 ```
 
 This builds the production DAR, then runs `dpm sandbox` with the DAR uploaded and
@@ -40,7 +40,7 @@ freshly allocated party ids.
 In a second shell:
 
 ```bash
-node scripts/seed.mjs
+npm run seed           # or: node scripts/seed.mjs
 ```
 
 The script allocates the `operator`, `admin`, `user1`, and `user2` parties,
