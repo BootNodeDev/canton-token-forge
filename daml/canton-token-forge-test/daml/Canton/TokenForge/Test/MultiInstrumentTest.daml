@@ -9,6 +9,7 @@ import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs
 import Splice.Api.Token.BurnMintV1
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
+import Canton.TokenForge.Registry (InstrumentConfig(..))
 import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
 
 -- Two instruments under different admins. A holding minted under instrument A
@@ -62,6 +63,13 @@ oneAdminIssuesManyInstruments = do
 
   cfgCC <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
   cfgGB <- registerInstrument admin "GB" "Gold Bar" "GB" 2 None
+
+  -- A holding view carries no decimals, name or symbol, so the config contract
+  -- is the only place each instrument's own metadata can be observed.
+  Some ccCfg <- queryContractId admin cfgCC
+  (ccCfg.name, ccCfg.symbol, ccCfg.decimals) === ("Canton Coin", "CC", 10)
+  Some gbCfg <- queryContractId admin cfgGB
+  (gbCfg.name, gbCfg.symbol, gbCfg.decimals) === ("Gold Bar", "GB", 2)
 
   ccCid <- mintToken cfgCC admin alice 100.0
   gbCid <- mintToken cfgGB admin alice 5.0
