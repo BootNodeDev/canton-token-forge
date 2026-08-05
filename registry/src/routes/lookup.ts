@@ -18,10 +18,12 @@ function activeContractsAs<P>(
   return ledger.activeContracts(templateId, party) as Promise<ContractEntry<P>[]>
 }
 
-// The InstrumentConfig active set for the admin, which the routes then run
-// through resolveConfig/resolveById. Centralized so the "which template, which
-// party identifies the config set" choice has one home, alongside
-// findByContractId and escrowDisclosure below.
+// The InstrumentConfig active set for the admin. The metadata and factory
+// routes run it through resolveConfig/resolveById; the readiness probe issues
+// it for the round-trip alone and ignores the rows, so an empty set is not an
+// error there. Centralized so the "which template, which party identifies the
+// config set" choice has one home, alongside findByContractId and findEscrow
+// below.
 export function activeConfigs(
   ledger: LedgerClient,
   config: Pick<Config, 'instrumentConfigTemplateId' | 'adminParty'>,
