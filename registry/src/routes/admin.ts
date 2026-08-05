@@ -19,6 +19,38 @@ function isNonEmptyString(value: unknown): value is string {
 // stringified form of a fractional or huge number ("6.5", "1e+21") cannot be.
 const MAX_DECIMALS = 18
 
+// Daml Decimal is Numeric 10.
+const DECIMAL_SCALE = 10
+
+// A JSON number reaches the Numeric parser as text the participant rendered
+// from a double, and that rendering turns exponential from 1e7 upwards, which
+// the parser then refuses ("Could not read Numeric string \"1.0E7\"", verified
+// against Canton 3.5.6). A decimal string is taken literally at any magnitude,
+// so numbers are rendered here in plain notation instead of being forwarded.
+// Returns null for a value no Decimal can carry, including one that underflows
+// the scale, which would otherwise be silently rounded to zero.
+function plainDecimal(value: number): string | null {
+  if (!Number.isFinite(value)) return null
+  if (Number.isInteger(value)) return BigInt(value).toString()
+  const text = value.toFixed(DECIMAL_SCALE).replace(/0+$/, '').replace(/\.$/, '')
+  return Number(text) === 0 ? null : text
+}
+
+function decimalText(value: unknown): string | null {
+  if (typeof value === 'number') return plainDecimal(value)
+  if (typeof value !== 'string') return null
+  return /^-?\d+(\.\d+)?$/.test(value) ? value : null
+}
+
+// A faucet is optional, so absent and null both mean "no faucet". Anything
+// else must carry a maxPerTap the ledger's Decimal parser accepts.
+function faucetArgument(value: unknown): { maxPerTap: string } | null | undefined {
+  if (value === null || value === undefined) return null
+  if (typeof value !== 'object') return undefined
+  const maxPerTap = decimalText((value as Record<string, unknown>).maxPerTap)
+  return maxPerTap === null ? undefined : { maxPerTap }
+}
+
 // canton-token-forge admin endpoints that drive the Plan 04 propose-accept
 // instrument-registration workflow. These sit outside the four standard
 // registry API groups, so there is no vendored OpenAPI spec to validate
@@ -36,7 +68,6 @@ export function adminRouter(deps: ServerDeps): Router {
     asyncHandler(async (req, res) => {
       const body = (req.body ?? {}) as Record<string, unknown>
       const { admin, instrumentId, name, symbol, decimals } = body
-      const faucet = body.faucet ?? null
       if (
         !isNonEmptyString(admin) ||
         !isNonEmptyString(instrumentId) ||
@@ -50,6 +81,10 @@ export function adminRouter(deps: ServerDeps): Router {
         return res
           .status(400)
           .json({ error: `decimals must be an integer between 0 and ${MAX_DECIMALS}` })
+      }
+      const faucet = faucetArgument(body.faucet)
+      if (faucet === undefined) {
+        return res.status(400).json({ error: 'faucet must be null or carry a decimal maxPerTap' })
       }
 
       // The operator creates exactly one TokenRegistry, so its active set is a
@@ -68,8 +103,8 @@ export function adminRouter(deps: ServerDeps): Router {
             contractId: reg.contractId,
             choice: 'TokenRegistry_ProposeInstrument',
             // Daml Int64 is encoded as a JSON string on the wire, so the
-            // numeric `decimals` of the request body is stringified here
-            // rather than at the API boundary.
+            // numeric `decimals` of the request body is stringified here.
+            // `faucet` carries a Decimal, normalized to text the same way above.
             choiceArgument: {
               admin,
               instrumentId,

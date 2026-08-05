@@ -106,6 +106,58 @@ describe('POST /admin/instruments', () => {
     expect(cmd.choiceArgument.faucet).toBeNull()
   })
 
+  // A JSON number reaches the participant's Numeric parser as text rendered
+  // from a double, which goes exponential from 1e7 up and is then rejected.
+  // Plain decimal text is taken literally at any magnitude.
+  it.each([
+    ['a small number', 1000, '1000'],
+    ['a number the participant would render exponentially', 1e7, '10000000'],
+    ['a fractional number', 0.5, '0.5'],
+    ['a fraction below double rendering', 1e-7, '0.0000001'],
+    ['a decimal string', '1000.0', '1000.0'],
+  ])('sends a faucet maxPerTap given as %s as plain decimal text', async (_, given, wire) => {
+    const { ledger, calls } = recordingLedger({
+      [config.tokenRegistryTemplateId]: [registryEntry()],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/admin/instruments')
+      .send({
+        admin: 'admin::1',
+        instrumentId: 'CC',
+        name: 'Canton Coin',
+        symbol: 'CC',
+        decimals: 10,
+        faucet: { maxPerTap: given },
+      })
+    expect(res.status).toBe(202)
+    const cmd = calls[0].commands[0] as ExerciseCommand
+    expect(cmd.choiceArgument.faucet).toEqual({ maxPerTap: wire })
+  })
+
+  it.each([
+    ['an empty faucet object', {}],
+    ['a non-numeric maxPerTap', { maxPerTap: 'lots' }],
+    ['a maxPerTap that underflows the Decimal scale', { maxPerTap: 1.5e-11 }],
+    ['a non-object faucet', 'yes'],
+  ])('400s on %s rather than submitting a faucet the ledger cannot read', async (_, faucet) => {
+    const { ledger, calls } = recordingLedger({
+      [config.tokenRegistryTemplateId]: [registryEntry()],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app).post('/admin/instruments').send({
+      admin: 'admin::1',
+      instrumentId: 'CC',
+      name: 'Canton Coin',
+      symbol: 'CC',
+      decimals: 10,
+      faucet,
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBeTruthy()
+    expect(calls).toHaveLength(0)
+  })
+
   it('400s when a required field is missing', async () => {
     const { ledger } = recordingLedger({ [config.tokenRegistryTemplateId]: [registryEntry()] })
     const app = createServer({ ledger, config })
