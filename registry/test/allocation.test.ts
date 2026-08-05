@@ -99,7 +99,7 @@ describe('allocation choice-contexts', () => {
     expect(ids).toEqual(['locked1'])
   })
 
-  it('execute-transfer sends no signal', async () => {
+  it('execute-transfer discloses the escrow LockedToken but sends no signal', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
@@ -111,6 +111,10 @@ describe('allocation choice-contexts', () => {
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
     expect(res.body.choiceContextData).toEqual({})
+    const ids = (res.body.disclosedContracts as { contractId: string }[])
+      .map((d) => d.contractId)
+      .sort()
+    expect(ids).toEqual(['locked1'])
   })
 
   it('404s instead of returning an empty context when the escrow LockedToken is gone', async () => {
