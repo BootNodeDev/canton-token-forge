@@ -159,4 +159,5 @@ transfer.
   and receives the config's `admin`/`instrumentId` as explicit params.
 - **Clean-room, interface-only:** no dependency on `splice-amulet` and no
   economics (no decay, fees, mining rounds, rewards, or DSO governance); issuance
-  is free/admin-authorized plus an optional per-instrument faucet policy.
+  is free, authorized jointly by the admin and the recipient, plus an optional
+  per-instrument faucet policy.
