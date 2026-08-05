@@ -13,6 +13,12 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+// The ledger bound on decimals, mirrored from the InstrumentConfigProposal
+// `ensure`. Checking it here is what makes a bad value a 400 instead of a 500:
+// the on-ledger guard is only reached by values Int64 can decode, and the
+// stringified form of a fractional or huge number ("6.5", "1e+21") cannot be.
+const MAX_DECIMALS = 18
+
 // canton-token-forge admin endpoints that drive the Plan 04 propose-accept
 // instrument-registration workflow. These sit outside the four standard
 // registry API groups, so there is no vendored OpenAPI spec to validate
@@ -39,6 +45,11 @@ export function adminRouter(deps: ServerDeps): Router {
         typeof decimals !== 'number'
       ) {
         return res.status(400).json({ error: 'missing proposal fields' })
+      }
+      if (!Number.isInteger(decimals) || decimals < 0 || decimals > MAX_DECIMALS) {
+        return res
+          .status(400)
+          .json({ error: `decimals must be an integer between 0 and ${MAX_DECIMALS}` })
       }
 
       // The operator creates exactly one TokenRegistry, so its active set is a

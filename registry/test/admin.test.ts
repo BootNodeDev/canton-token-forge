@@ -153,6 +153,48 @@ describe('POST /admin/instruments', () => {
     expect(calls).toHaveLength(0)
   })
 
+  it.each([
+    ['fractional', 6.5],
+    ['negative', -1],
+    ['above the ledger bound', 19],
+    ['large enough to stringify in exponential form', 1e21],
+    ['NaN', Number.NaN],
+  ])('400s on a %s decimals rather than submitting a value Int64 cannot decode', async (_, dec) => {
+    const { ledger, calls } = recordingLedger({
+      [config.tokenRegistryTemplateId]: [registryEntry()],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app).post('/admin/instruments').send({
+      admin: 'admin::1',
+      instrumentId: 'CC',
+      name: 'Canton Coin',
+      symbol: 'CC',
+      decimals: dec,
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBeTruthy()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('accepts the ledger bounds themselves', async () => {
+    for (const decimals of [0, 18]) {
+      const { ledger, calls } = recordingLedger({
+        [config.tokenRegistryTemplateId]: [registryEntry()],
+      })
+      const app = createServer({ ledger, config })
+      const res = await request(app).post('/admin/instruments').send({
+        admin: 'admin::1',
+        instrumentId: 'CC',
+        name: 'Canton Coin',
+        symbol: 'CC',
+        decimals,
+      })
+      expect(res.status).toBe(202)
+      const cmd = calls[0].commands[0] as ExerciseCommand
+      expect(cmd.choiceArgument.decimals).toBe(String(decimals))
+    }
+  })
+
   it('503s when no registry is active', async () => {
     const { ledger } = recordingLedger({ [config.tokenRegistryTemplateId]: [] })
     const app = createServer({ ledger, config })
