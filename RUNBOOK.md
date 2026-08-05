@@ -16,7 +16,7 @@ marked as such rather than omitted.
 ## 1. Start the sandbox
 
 ```bash
-bash scripts/sandbox.sh
+npm run sandbox        # or: bash scripts/sandbox.sh
 ```
 
 This builds the production DAR, then runs `dpm sandbox` with the DAR uploaded and
@@ -40,7 +40,7 @@ freshly allocated party ids.
 In a second shell:
 
 ```bash
-node scripts/seed.mjs
+npm run seed           # or: node scripts/seed.mjs
 ```
 
 The script allocates the `operator`, `admin`, `user1`, and `user2` parties,
@@ -59,16 +59,19 @@ faucet), `LEDGER_API_URL`, `LEDGER_API_TOKEN`, `LEDGER_USER_ID`.
 
 ## 3. Configure and start the registry service
 
-Copy the printed block into `registry/.env`, then:
+Copy the printed block into `registry/.env` verbatim: the template ids are
+single-quoted because they start with `#`, which dotenv would otherwise read as
+the start of a comment. Then:
 
 ```bash
 cd registry
+npm install
 npm run build
 npm start
 ```
 
-Paste the block verbatim. The template ids are single-quoted because they start
-with `#`, which dotenv would otherwise read as the start of a comment.
+`registry/` is a separate package with its own dependencies: the root
+`npm install` vendors the Daml deps and does not populate `registry/node_modules`.
 
 `GET /healthz` and `GET /readyz` answer, `GET /registry/metadata/v1/info` returns
 the operator party as `adminId` with the six supported APIs, and
@@ -176,8 +179,10 @@ reason the seed script looks the way it does.
 ## Troubleshooting
 
 - **`.canton-ports.json` never appears**: check the sandbox shell output. The
-  script removes a stale ports file at startup so its presence always means the
-  current run is up.
+  script removes the ports file both at startup and on exit, so its presence
+  always means a sandbox is up.
+- **"a sandbox is already serving on port 7575"**: another sandbox is running.
+  Stop it, or start this one on a different `JSON_API_PORT`.
 - **"Party already exists"**: expected on a re-run. `scripts/seed.mjs` reuses an
   existing party for a hint instead of allocating it again.
 - **"expected exactly one TokenRegistry"**: more than one registry was created,

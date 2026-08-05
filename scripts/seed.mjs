@@ -21,39 +21,84 @@
 //   SEED_FAUCET_MAX       per-tap cap; set empty to register without a faucet (default 1000.0)
 //   LEDGER_USER_ID        ledger user id for submissions (default participant_admin)
 
-import { execFileSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const dar = resolve(repoRoot, 'daml/canton-token-forge/.daml/dist/canton-token-forge-0.0.1.dar')
 
-const base = process.env.LEDGER_API_URL ?? 'http://localhost:7575'
-const token = process.env.LEDGER_API_TOKEN ?? ''
-const registryBaseUrl = process.env.REGISTRY_BASE_URL ?? 'http://localhost:8080'
-const instrumentId = process.env.SEED_INSTRUMENT_ID ?? 'CC'
-const instrumentName = process.env.SEED_INSTRUMENT_NAME ?? 'Canton Coin Forge'
-const symbol = process.env.SEED_SYMBOL ?? 'CC'
-const decimals = Number(process.env.SEED_DECIMALS ?? '10')
-const faucetMax = process.env.SEED_FAUCET_MAX ?? '1000.0'
-const userId = process.env.LEDGER_USER_ID ?? 'participant_admin'
+// An exported-but-empty variable means "unset" for every override below except
+// SEED_FAUCET_MAX, where empty is the documented way to ask for no faucet.
+// Letting "" through would commit an instrument with an empty id or symbol,
+// which the ledger accepts and no later run can distinguish from a real one.
+const strEnv = (name, fallback) => {
+  const raw = process.env[name]
+  return raw === undefined || raw === '' ? fallback : raw
+}
+
+function intEnv(name, fallback, min, max) {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new Error(`${name} must be an integer ${min}..${max}, got ${JSON.stringify(raw)}`)
+  }
+  return n
+}
+
+// Read from daml.yaml rather than `dpm inspect-dar`, so the seed needs neither a
+// JVM nor a locally built DAR and can run against a remote participant.
+function packageNameFromDamlYaml() {
+  const path = resolve(repoRoot, 'daml/canton-token-forge/daml.yaml')
+  const match = readFileSync(path, 'utf8').match(/^name:\s*(\S+)/m)
+  if (!match) throw new Error(`could not read 'name' from ${path}`)
+  return match[1]
+}
+
+function loadConfig() {
+  return {
+    base: strEnv('LEDGER_API_URL', 'http://localhost:7575'),
+    token: strEnv('LEDGER_API_TOKEN', ''),
+    registryBaseUrl: strEnv('REGISTRY_BASE_URL', 'http://localhost:8080'),
+    instrumentId: strEnv('SEED_INSTRUMENT_ID', 'CC'),
+    instrumentName: strEnv('SEED_INSTRUMENT_NAME', 'Canton Coin Forge'),
+    symbol: strEnv('SEED_SYMBOL', 'CC'),
+    decimals: intEnv('SEED_DECIMALS', 10, 0, 18),
+    faucetMax: process.env.SEED_FAUCET_MAX ?? '1000.0',
+    userId: strEnv('LEDGER_USER_ID', 'participant_admin'),
+    packageName: packageNameFromDamlYaml(),
+  }
+}
+
+// Configuration is resolved before anything else runs, so a bad override has to
+// be caught here: a throw at module scope would escape main()'s handler and
+// print a stack trace instead of the one-line reason.
+let settings
+try {
+  settings = loadConfig()
+} catch (err) {
+  console.error(err.message)
+  process.exit(1)
+}
+
+const {
+  base,
+  token,
+  registryBaseUrl,
+  instrumentId,
+  instrumentName,
+  symbol,
+  decimals,
+  faucetMax,
+  userId,
+  packageName,
+} = settings
 
 const headers = {
   'content-type': 'application/json',
   ...(token ? { authorization: `Bearer ${token}` } : {}),
 }
-
-function inspectDar() {
-  if (!existsSync(dar)) {
-    throw new Error(`DAR not found at ${dar}; run 'npm run build:canton-token-forge' first`)
-  }
-  const out = JSON.parse(execFileSync('dpm', ['inspect-dar', dar, '--json'], { encoding: 'utf8' }))
-  const id = out.main_package_id
-  return { id, name: out.packages[id].name }
-}
-
-const { id: packageId, name: packageName } = inspectDar()
 
 // Active-contract filters resolve templates by package NAME, written
 // `#<name>:<module>:<entity>`. A package-id-qualified identifier is rejected
@@ -80,15 +125,32 @@ async function call(path, body) {
   return text ? JSON.parse(text) : {}
 }
 
+// The party list is paginated. A hint that exists but falls outside the first
+// page would look unallocated, and re-allocating an existing hint is rejected
+// outright, so the whole list is read once and cached for every lookup.
+let knownParties
+async function allParties() {
+  if (knownParties) return knownParties
+  knownParties = []
+  let pageToken = ''
+  do {
+    const query = pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ''
+    const res = await fetch(`${base}/v2/parties${query}`, { headers })
+    if (!res.ok) throw new Error(`GET /v2/parties failed: ${res.status}`)
+    const body = await res.json()
+    knownParties.push(...(body.partyDetails ?? []))
+    pageToken = body.nextPageToken ?? ''
+  } while (pageToken)
+  return knownParties
+}
+
 // Re-running the seed against an already-seeded sandbox must not fail, so every
-// step below is find-or-create. Party ids are `<hint>::<namespace>`, and
-// re-allocating an existing hint is rejected outright.
+// step below is find-or-create. Party ids are `<hint>::<namespace>`.
 async function allocate(hint) {
-  const res = await fetch(`${base}/v2/parties`, { headers })
-  if (!res.ok) throw new Error(`GET /v2/parties failed: ${res.status}`)
-  const existing = (await res.json()).partyDetails.find((p) => p.party.startsWith(`${hint}::`))
+  const existing = (await allParties()).find((p) => p.party.startsWith(`${hint}::`))
   if (existing) return existing.party
   const created = await call('/v2/parties', { partyIdHint: hint })
+  knownParties.push(created.partyDetails)
   return created.partyDetails.party
 }
 
@@ -145,15 +207,12 @@ async function submit(actAs, commands, disclosedContracts = []) {
       ),
       actAs,
       userId,
-      commandId: `seed-${crypto.randomUUID()}`,
+      commandId: `seed-${randomUUID()}`,
       disclosedContracts,
     },
   })
 }
 
-// Contract ids are read back from the active contract set rather than out of
-// the submission response, so the seed does not depend on where a given Canton
-// version puts an exercise result in the transaction envelope.
 function expectOne(rows, what) {
   if (rows.length !== 1) throw new Error(`expected exactly one ${what}, found ${rows.length}`)
   return rows[0]
@@ -166,13 +225,16 @@ const forThisInstrument = (rows, admin) =>
 
 async function main() {
   console.log(`seeding ${base}`)
-  console.log(`package ${packageName} (${packageId})\n`)
+  console.log(`package ${packageName}\n`)
 
   const operator = await allocate('operator')
   const admin = await allocate('admin')
   const user1 = await allocate('user1')
   const user2 = await allocate('user2')
 
+  // Contract ids are read back from the active contract set rather than out of
+  // the submission response, so the seed does not depend on where a given Canton
+  // version puts an exercise result in the transaction envelope.
   let registryRows = await activeContracts(TOKEN_REGISTRY, operator)
   if (registryRows.length === 0) {
     await submit(
@@ -243,6 +305,22 @@ async function main() {
   }
   const config = expectOne(configRows, 'InstrumentConfig')
 
+  // Report the contract that is actually on the ledger, not the requested
+  // values: on a re-run the find-or-create branches are skipped and the
+  // existing contract wins, so echoing the env vars would misreport it.
+  const instrument = config.payload
+
+  // Same reasoning for the registry: a reused one keeps whatever base URL it
+  // was created with, and that is the URL standard clients resolve from the
+  // ledger, so the generated .env has to agree with it rather than with the env.
+  const onLedgerBaseUrl = registry.payload.registryBaseUrl
+  if (onLedgerBaseUrl !== registryBaseUrl) {
+    console.warn(
+      `warning: reusing a TokenRegistry that advertises ${onLedgerBaseUrl}; ` +
+        `REGISTRY_BASE_URL=${registryBaseUrl} was ignored\n`,
+    )
+  }
+
   console.log('parties')
   console.log(`  operator ${operator}`)
   console.log(`  admin    ${admin}`)
@@ -251,8 +329,14 @@ async function main() {
   console.log('contracts')
   console.log(`  TokenRegistry    ${registry.contractId}`)
   console.log(`  InstrumentConfig ${config.contractId}`)
-  console.log(`  instrument       ${instrumentId} (${symbol}, ${decimals} decimals)`)
-  console.log(`  faucet           ${faucetMax ? `enabled, max ${faucetMax} per tap` : 'disabled'}\n`)
+  console.log(
+    `  instrument       ${instrument.instrumentId} (${instrument.symbol}, ${instrument.decimals} decimals)`,
+  )
+  console.log(
+    `  faucet           ${
+      instrument.faucet ? `enabled, max ${instrument.faucet.maxPerTap} per tap` : 'disabled'
+    }\n`,
+  )
 
   // Template ids start with `#`, which dotenv reads as the start of a comment
   // unless the value is quoted, so every id is emitted single-quoted.
@@ -260,12 +344,13 @@ async function main() {
 
   console.log('registry/.env')
   console.log(`LEDGER_API_URL=${base}`)
-  // The sandbox runs without authentication and ignores the header, but the
-  // service requires the variable, so an unset token still needs a value.
-  console.log(`LEDGER_API_TOKEN=${token || 'sandbox'}`)
+  // The service requires this to be non-empty, and the sandbox authenticates
+  // nothing. A caller-supplied token is referenced rather than reprinted, to
+  // keep a real credential out of terminal scrollback and CI logs.
+  console.log(`LEDGER_API_TOKEN=${token ? '<the LEDGER_API_TOKEN you passed in>' : 'placeholder'}`)
   console.log(`LEDGER_USER_ID=${userId}`)
   console.log(`OPERATOR_PARTY=${operator}`)
-  console.log(`REGISTRY_BASE_URL=${registryBaseUrl}`)
+  console.log(`REGISTRY_BASE_URL=${onLedgerBaseUrl}`)
   quoted('INSTRUMENT_CONFIG_TEMPLATE_ID', INSTRUMENT_CONFIG)
   quoted('INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID', INSTRUMENT_CONFIG_PROPOSAL)
   quoted('TOKEN_REGISTRY_TEMPLATE_ID', TOKEN_REGISTRY)

@@ -10,6 +10,8 @@
     "clean": "rm -rf daml/canton-token-forge/.daml daml/canton-token-forge-test/.daml",
     "build": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build && cd ../canton-token-forge-test && LANG=C.UTF-8 dpm build",
     "build:canton-token-forge": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build",
+    "sandbox": "bash scripts/sandbox.sh",
+    "seed": "node scripts/seed.mjs",
     "test": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test",
     "test:coverage": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test --all --show-coverage --coverage-ignore-choice '^splice' --coverage-ignore-choice ':Archive$'"
   }

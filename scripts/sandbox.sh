@@ -2,8 +2,7 @@
 #
 # sandbox.sh - build the production DAR and run a local Canton sandbox with the
 # JSON Ledger API enabled, so the registry service and the seed script have a
-# live participant to talk to. This is the Canton sandbox, unrelated to
-# docs/bootstrap-sandbox.sh (which provisions a Claude Code container).
+# live participant to talk to.
 #
 # Usage:
 #   bash scripts/sandbox.sh              # build the DAR, then start the sandbox
@@ -25,28 +24,65 @@ set -euo pipefail
 export LANG=C.UTF-8
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DAR="$REPO_ROOT/daml/canton-token-forge/.daml/dist/canton-token-forge-0.0.1.dar"
+DIST="$REPO_ROOT/daml/canton-token-forge/.daml/dist"
 JSON_API_PORT="${JSON_API_PORT:-7575}"
 LEDGER_API_PORT="${LEDGER_API_PORT:-6865}"
 CANTON_PORT_FILE="${CANTON_PORT_FILE:-$REPO_ROOT/.canton-ports.json}"
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
-  ( cd "$REPO_ROOT/daml/canton-token-forge" && dpm build )
+  npm run --prefix "$REPO_ROOT" build:canton-token-forge
 fi
 
-if [ ! -f "$DAR" ]; then
-  echo "DAR not found at $DAR - run 'npm run build:canton-token-forge' first" >&2
+# Globbed rather than named: the version comes from daml.yaml, and hardcoding it
+# here would report "DAR not found" after a build that just succeeded.
+DAR="$(ls -1 "$DIST"/canton-token-forge-*.dar 2>/dev/null | head -n 1)"
+if [ -z "$DAR" ]; then
+  echo "no DAR in $DIST - run 'npm run build:canton-token-forge' first" >&2
   exit 1
 fi
 
-# A stale ports file would make a readiness check pass before the nodes are up.
+# Refuse to touch a sandbox that is already serving: the ports file below is
+# removed on the way in, which would otherwise destroy the running one's
+# readiness signal when this launch loses the race for the port.
+if curl -sf "http://localhost:$JSON_API_PORT/v2/version" >/dev/null 2>&1; then
+  echo "a sandbox is already serving on port $JSON_API_PORT" >&2
+  exit 1
+fi
+
+# The ports file is this run's readiness signal, so it must not outlive the
+# process: a stale one makes a readiness check pass against a dead sandbox.
+SANDBOX_PID=""
+cleanup() {
+  if [ -n "$SANDBOX_PID" ]; then
+    # Signal the whole process group, not just dpm: dpm runs Canton as a child
+    # of its own and does not forward signals, so killing dpm alone would orphan
+    # a live JVM while the ports file below is removed.
+    kill -TERM -"$SANDBOX_PID" 2>/dev/null || true
+    wait "$SANDBOX_PID" 2>/dev/null || true
+  fi
+  rm -f "$CANTON_PORT_FILE"
+}
+trap cleanup EXIT INT TERM
+
 rm -f "$CANTON_PORT_FILE"
 
 echo "starting Canton sandbox: JSON Ledger API on http://localhost:$JSON_API_PORT"
 echo "ready when $CANTON_PORT_FILE appears; stop with Ctrl-C"
 
-exec dpm sandbox \
+# Canton writes its log directory relative to the working directory, which
+# .gitignore only covers at the repo root.
+cd "$REPO_ROOT"
+
+# Backgrounded and waited on rather than run in the foreground: bash defers trap
+# handlers until a foreground child exits, which would leave the sandbox running
+# and the ports file behind on SIGTERM. Job control is enabled just long enough
+# to give the sandbox its own process group for cleanup() to signal.
+set -m
+dpm sandbox \
   --dar "$DAR" \
   --json-api-port "$JSON_API_PORT" \
   --ledger-api-port "$LEDGER_API_PORT" \
-  --canton-port-file "$CANTON_PORT_FILE"
+  --canton-port-file "$CANTON_PORT_FILE" &
+SANDBOX_PID=$!
+set +m
+wait "$SANDBOX_PID"
