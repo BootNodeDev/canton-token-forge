@@ -86,8 +86,9 @@ the `splice-api-token-*` DARs. The core module hierarchy:
 - **`TokenAllocation`** (`Allocation.daml`) - an escrowed leg of a DvP
   settlement, signed by `admin, allocation.transferLeg.sender` with the executor
   and receiver as observers. Implements `AllocationV1.Allocation`.
-- **`transferImpl`** (`Registry.daml`) - shared transfer logic, passed the
-  config's `admin` and `instrumentId` as explicit params.
+- **`transferImpl`** (`Registry.daml`) - the `TransferFactory` instance body,
+  lifted out of the interface instance and passed the config's `admin` and
+  `instrumentId` as explicit params. Its only caller is that instance.
 - **`mkInstrumentId`** (`Types.daml`) - builds the standard `HoldingV1.InstrumentId`
   from an admin party and an id string.
 
