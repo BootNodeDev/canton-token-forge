@@ -7,10 +7,7 @@ const baseEnv: Record<string, string> = {
   // Deliberately unlike every other value here, so a binding that reads the
   // wrong variable cannot pass by coincidence.
   ADMIN_PARTY: 'admin-party::1',
-  REGISTRY_BASE_URL: 'http://r',
   INSTRUMENT_CONFIG_TEMPLATE_ID: '#pkg:M:InstrumentConfig',
-  INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID: '#pkg:M:InstrumentConfigProposal',
-  TOKEN_REGISTRY_TEMPLATE_ID: '#pkg:M:TokenRegistry',
   TRANSFER_INSTRUCTION_TEMPLATE_ID: '#pkg:M:TokenTransferInstruction',
   PREAPPROVAL_TEMPLATE_ID: '#pkg:M:TokenTransferPreapproval',
   LOCKED_TOKEN_TEMPLATE_ID: '#pkg:M:LockedToken',
@@ -26,8 +23,8 @@ describe('loadConfig template ids', () => {
 
   it('throws when a template id is package-id qualified instead of package-name form', () => {
     expect(() =>
-      loadConfig({ ...baseEnv, TOKEN_REGISTRY_TEMPLATE_ID: 'deadbeef:M:TokenRegistry' }),
-    ).toThrow(/invalid TOKEN_REGISTRY_TEMPLATE_ID/)
+      loadConfig({ ...baseEnv, ALLOCATION_TEMPLATE_ID: 'deadbeef:M:TokenAllocation' }),
+    ).toThrow(/invalid ALLOCATION_TEMPLATE_ID/)
   })
 
   it('throws when a template id is missing its module or entity', () => {

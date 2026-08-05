@@ -18,11 +18,7 @@ export const config: Config = {
   ledgerApiUrl: 'http://ledger',
   ledgerApiToken: 'secret',
   adminParty: 'admin::1',
-  registryBaseUrl: 'http://r',
   instrumentConfigTemplateId: '#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfig',
-  instrumentConfigProposalTemplateId:
-    '#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfigProposal',
-  tokenRegistryTemplateId: '#canton-token-forge:Canton.TokenForge.Registry:TokenRegistry',
   transferInstructionTemplateId:
     '#canton-token-forge:Canton.TokenForge.Instruction:TokenTransferInstruction',
   preapprovalTemplateId: '#canton-token-forge:Canton.TokenForge.Registry:TokenTransferPreapproval',
