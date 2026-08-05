@@ -1,7 +1,9 @@
 # Sandbox runbook
 
 How to bring up a local Canton sandbox, seed it with a canton-token-forge
-instrument, and drive it from the registry HTTP service.
+instrument, and serve it through the read-only registry HTTP service. Anything
+that changes ledger state is submitted directly to the participant, as
+`scripts/seed.mjs` does.
 
 Everything below was executed against Canton 3.5.6 (the version `dpm sandbox`
 resolves for SDK 3.4.11) on 2026-08-05. Steps that are known NOT to work yet are
