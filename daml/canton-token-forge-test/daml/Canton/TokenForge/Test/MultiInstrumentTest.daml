@@ -2,9 +2,12 @@ module Canton.TokenForge.Test.MultiInstrumentTest where
 
 import Daml.Script
 import DA.Assert ((===))
+import DA.Time (time)
+import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
 import Splice.Api.Token.BurnMintV1
+import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
 
@@ -48,9 +51,10 @@ multiInstrumentIsolationHolds = do
       extraActors = [adminA, alice]
       extraArgs = xargs
 
--- One admin issuing several instruments. Each config is its own factory, so a
--- holding minted under one carries that instrument's id and the configs do not
--- interfere.
+-- One admin issuing several instruments. Each InstrumentConfig is its own
+-- factory, so a second instrument under the same admin needs no shared registry
+-- contract, and the holding minted under each config carries that config's own
+-- instrument id.
 oneAdminIssuesManyInstruments : Script ()
 oneAdminIssuesManyInstruments = do
   admin <- allocateParty "admin"
@@ -69,3 +73,53 @@ oneAdminIssuesManyInstruments = do
   Some gbView <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding gbCid)
   gbView.amount === 5.0
   gbView.instrumentId === mkInstrumentId admin "GB"
+
+-- Two instruments under ONE admin, the case the two-admin script above cannot
+-- reach: there `token.admin == admin` already rejects a foreign input, so the
+-- instrument half of the guard never decides anything. With one admin on both
+-- instruments, `token.instrumentId == instrumentId` is the only thing keeping a
+-- CC holding out of a GB spend. Both entry points that consume holdings are
+-- covered, and every other field is a valid GB request so that the earlier
+-- "instrumentId must match this config" assertions cannot be what rejects.
+sameAdminInstrumentsDoNotCrossSpend : Script ()
+sameAdminInstrumentsDoNotCrossSpend = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+
+  cfgCC <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
+  cfgGB <- registerInstrument admin "GB" "Gold Bar" "GB" 2 None
+
+  ccCid <- mintToken cfgCC admin alice 100.0
+  let ccHcid = toInterfaceContractId @HoldingV1.Holding ccCid
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+
+  -- admin and alice co-act so the CC holding can be fetched and archived, which
+  -- isolates the rejection to the instrument guard rather than a missing
+  -- authorization that would reject the transaction for the wrong reason.
+  submitMustFail (actAs [admin, alice]) $
+    exerciseCmd (toInterfaceContractId @BurnMintFactory cfgGB) BurnMintFactory_BurnMint with
+      expectedAdmin = admin
+      instrumentId = mkInstrumentId admin "GB"
+      inputHoldingCids = [ccHcid]
+      outputs = [BurnMintOutput with owner = alice; amount = 100.0; context = emptyChoiceContext]
+      extraActors = [alice]
+      extraArgs = xargs
+
+  -- The transfer path is the attempt a holder can make alone, since the choice
+  -- controller is the sender. Inputs are spent before the direct/offer decision,
+  -- so the guard is reached without a preapproval or a choice context.
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 2) 0 0 0
+  setTime now
+  Some cfgGBDisclosure <- queryDisclosure admin cfgGB
+  submitMustFail (actAs alice <> disclose cfgGBDisclosure) $
+    exerciseCmd (toInterfaceContractId @TransferFactory cfgGB) TransferFactory_Transfer with
+      expectedAdmin = admin
+      transfer = Transfer with
+        sender = alice; receiver = bob; amount = 30.0
+        instrumentId = mkInstrumentId admin "GB"
+        requestedAt = now; executeBefore = later
+        inputHoldingCids = [ccHcid]
+        meta = emptyMetadata
+      extraArgs = xargs
