@@ -26,9 +26,12 @@ const cantonCoin: InstrumentConfigPayload = {
   faucet: null,
 }
 
+// instrumentId and symbol deliberately differ, so an assertion on one cannot be
+// satisfied by the other. cantonCoin cannot serve that purpose: the standard's
+// `id` and `symbol` happen to coincide there.
 const goldBar: InstrumentConfigPayload = {
   admin: 'admin::1',
-  instrumentId: 'GB',
+  instrumentId: 'GOLD-BAR',
   name: 'Gold Bar',
   symbol: 'GB',
   decimals: 2,
@@ -111,7 +114,10 @@ describe('metadata', () => {
     const res = await request(app).get('/registry/metadata/v1/instruments')
     expect(res.status).toBe(200)
     validateAgainst('metadata#/components/schemas/ListInstrumentsResponse', res.body)
-    expect((res.body.instruments as { id: string }[]).map((i) => i.id).sort()).toEqual(['CC', 'GB'])
+    expect((res.body.instruments as { id: string }[]).map((i) => i.id).sort()).toEqual([
+      'CC',
+      'GOLD-BAR',
+    ])
   })
 
   it('resolves each of the admin instruments by its own id', async () => {
@@ -121,9 +127,9 @@ describe('metadata', () => {
     expect(cc.status).toBe(200)
     validateAgainst('metadata#/components/schemas/Instrument', cc.body)
     expect(cc.body).toMatchObject({ id: 'CC', symbol: 'CC', decimals: 10 })
-    const gb = await request(app).get('/registry/metadata/v1/instruments/GB')
+    const gb = await request(app).get('/registry/metadata/v1/instruments/GOLD-BAR')
     expect(gb.status).toBe(200)
     validateAgainst('metadata#/components/schemas/Instrument', gb.body)
-    expect(gb.body).toMatchObject({ id: 'GB', symbol: 'GB', decimals: 2 })
+    expect(gb.body).toMatchObject({ id: 'GOLD-BAR', symbol: 'GB', decimals: 2 })
   })
 })

@@ -62,7 +62,7 @@ oneAdminIssuesManyInstruments = do
   alice <- allocateParty "alice"
 
   cfgCC <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
-  cfgGB <- registerInstrument admin "GB" "Gold Bar" "GB" 2 None
+  cfgGB <- registerInstrument admin "GOLD-BAR" "Gold Bar" "GB" 2 None
 
   -- A holding view carries no decimals, name or symbol, so the config contract
   -- is the only place each instrument's own metadata can be observed.
@@ -80,7 +80,7 @@ oneAdminIssuesManyInstruments = do
 
   Some gbView <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding gbCid)
   gbView.amount === 5.0
-  gbView.instrumentId === mkInstrumentId admin "GB"
+  gbView.instrumentId === mkInstrumentId admin "GOLD-BAR"
 
 -- Two instruments under ONE admin, the case the two-admin script above cannot
 -- reach: there `token.admin == admin` already rejects a foreign input, so the
@@ -96,7 +96,7 @@ sameAdminInstrumentsDoNotCrossSpend = do
   bob <- allocateParty "bob"
 
   cfgCC <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
-  cfgGB <- registerInstrument admin "GB" "Gold Bar" "GB" 2 None
+  cfgGB <- registerInstrument admin "GOLD-BAR" "Gold Bar" "GB" 2 None
 
   ccCid <- mintToken cfgCC admin alice 100.0
   let ccHcid = toInterfaceContractId @HoldingV1.Holding ccCid
@@ -108,7 +108,7 @@ sameAdminInstrumentsDoNotCrossSpend = do
   submitMustFail (actAs [admin, alice]) $
     exerciseCmd (toInterfaceContractId @BurnMintFactory cfgGB) BurnMintFactory_BurnMint with
       expectedAdmin = admin
-      instrumentId = mkInstrumentId admin "GB"
+      instrumentId = mkInstrumentId admin "GOLD-BAR"
       inputHoldingCids = [ccHcid]
       outputs = [BurnMintOutput with owner = alice; amount = 100.0; context = emptyChoiceContext]
       extraActors = [alice]
@@ -126,7 +126,7 @@ sameAdminInstrumentsDoNotCrossSpend = do
       expectedAdmin = admin
       transfer = Transfer with
         sender = alice; receiver = bob; amount = 30.0
-        instrumentId = mkInstrumentId admin "GB"
+        instrumentId = mkInstrumentId admin "GOLD-BAR"
         requestedAt = now; executeBefore = later
         inputHoldingCids = [ccHcid]
         meta = emptyMetadata
