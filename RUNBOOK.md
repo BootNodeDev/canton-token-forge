@@ -59,9 +59,15 @@ faucet), `LEDGER_API_URL`, `LEDGER_API_TOKEN`, `LEDGER_USER_ID`.
 
 ## 3. Configure and start the registry service
 
-Copy the printed block into `registry/.env` verbatim: the template ids are
-single-quoted because they start with `#`, which dotenv would otherwise read as
-the start of a comment. Then:
+Copy the printed block into `registry/.env`, keeping the quoting as printed: the
+template ids are single-quoted because they start with `#`, which dotenv would
+otherwise read as the start of a comment.
+
+One line is a placeholder rather than a value. If you ran the seed with
+`LEDGER_API_TOKEN` set, the block says `<the LEDGER_API_TOKEN you passed in>`
+instead of echoing your credential into the terminal, so put the real token
+there yourself. Copied as printed it is accepted at boot and then sent as the
+bearer token on every call, which an authenticated participant rejects. Then:
 
 ```bash
 cd registry
