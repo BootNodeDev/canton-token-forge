@@ -127,15 +127,32 @@ async function call(path, body) {
   return text ? JSON.parse(text) : {}
 }
 
+// The party list is paginated. A hint that exists but falls outside the first
+// page would look unallocated, and re-allocating an existing hint is rejected
+// outright, so the whole list is read once and cached for every lookup.
+let knownParties
+async function allParties() {
+  if (knownParties) return knownParties
+  knownParties = []
+  let pageToken = ''
+  do {
+    const query = pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ''
+    const res = await fetch(`${base}/v2/parties${query}`, { headers })
+    if (!res.ok) throw new Error(`GET /v2/parties failed: ${res.status}`)
+    const body = await res.json()
+    knownParties.push(...(body.partyDetails ?? []))
+    pageToken = body.nextPageToken ?? ''
+  } while (pageToken)
+  return knownParties
+}
+
 // Re-running the seed against an already-seeded sandbox must not fail, so every
-// step below is find-or-create. Party ids are `<hint>::<namespace>`, and
-// re-allocating an existing hint is rejected outright.
+// step below is find-or-create. Party ids are `<hint>::<namespace>`.
 async function allocate(hint) {
-  const res = await fetch(`${base}/v2/parties`, { headers })
-  if (!res.ok) throw new Error(`GET /v2/parties failed: ${res.status}`)
-  const existing = (await res.json()).partyDetails.find((p) => p.party.startsWith(`${hint}::`))
+  const existing = (await allParties()).find((p) => p.party.startsWith(`${hint}::`))
   if (existing) return existing.party
   const created = await call('/v2/parties', { partyIdHint: hint })
+  knownParties.push(created.partyDetails)
   return created.partyDetails.party
 }
 
