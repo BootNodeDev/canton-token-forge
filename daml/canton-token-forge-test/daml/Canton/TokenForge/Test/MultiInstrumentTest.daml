@@ -47,3 +47,25 @@ multiInstrumentIsolationHolds = do
       outputs = [BurnMintOutput with owner = bob; amount = 100.0; context = emptyChoiceContext]
       extraActors = [adminA, alice]
       extraArgs = xargs
+
+-- One admin issuing several instruments. Each config is its own factory, so a
+-- holding minted under one carries that instrument's id and the configs do not
+-- interfere.
+oneAdminIssuesManyInstruments : Script ()
+oneAdminIssuesManyInstruments = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+
+  cfgCC <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
+  cfgGB <- registerInstrument admin "GB" "Gold Bar" "GB" 2 None
+
+  ccCid <- mintToken cfgCC admin alice 100.0
+  gbCid <- mintToken cfgGB admin alice 5.0
+
+  Some ccView <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding ccCid)
+  ccView.amount === 100.0
+  ccView.instrumentId === mkInstrumentId admin "CC"
+
+  Some gbView <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding gbCid)
+  gbView.amount === 5.0
+  gbView.instrumentId === mkInstrumentId admin "GB"
