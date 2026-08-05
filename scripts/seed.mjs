@@ -17,7 +17,8 @@
 //   SEED_SYMBOL           ticker symbol (default CC)
 //   SEED_DECIMALS         decimals, 0..18 (default 10)
 //   SEED_FAUCET_MAX       per-tap cap; set empty to register without a faucet (default 1000.0)
-//   LEDGER_USER_ID        ledger user id for submissions (default participant_admin)
+//   LEDGER_USER_ID        ledger user id for submissions (default participant_admin
+//                         without a token, omitted with one; set empty to force omission)
 
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -27,9 +28,10 @@ import { fileURLToPath } from 'node:url'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 // An exported-but-empty variable means "unset" for every override below except
-// SEED_FAUCET_MAX, where empty is the documented way to ask for no faucet.
-// Letting "" through would commit an instrument with an empty id or symbol,
-// which the ledger accepts and no later run can distinguish from a real one.
+// SEED_FAUCET_MAX and LEDGER_USER_ID, where empty is the documented way to ask
+// for no faucet and no user id. Letting "" through elsewhere would commit an
+// instrument with an empty id or symbol, which the ledger accepts and no later
+// run can distinguish from a real one.
 const strEnv = (name, fallback) => {
   const raw = process.env[name]
   return raw === undefined || raw === '' ? fallback : raw
@@ -55,15 +57,20 @@ function packageNameFromDamlYaml() {
 }
 
 function loadConfig() {
+  const token = strEnv('LEDGER_API_TOKEN', '')
   return {
     base: strEnv('LEDGER_API_URL', 'http://localhost:7575'),
-    token: strEnv('LEDGER_API_TOKEN', ''),
+    token,
     instrumentId: strEnv('SEED_INSTRUMENT_ID', 'CC'),
     instrumentName: strEnv('SEED_INSTRUMENT_NAME', 'Canton Coin Forge'),
     symbol: strEnv('SEED_SYMBOL', 'CC'),
     decimals: intEnv('SEED_DECIMALS', 10, 0, 18),
     faucetMax: process.env.SEED_FAUCET_MAX ?? '1000.0',
-    userId: strEnv('LEDGER_USER_ID', 'participant_admin'),
+    // A token already names the ledger user, and the participant rejects a
+    // submission naming a different one, so the default is to omit it there.
+    // Without authentication there are no claims to read it from and the
+    // participant rejects a submission that leaves it out.
+    userId: process.env.LEDGER_USER_ID ?? (token ? '' : 'participant_admin'),
     packageName: packageNameFromDamlYaml(),
   }
 }
@@ -191,8 +198,7 @@ async function activeContracts(templateId, party) {
 
 // The submission envelope nests the command list inside a `commands` object;
 // a flat body is rejected with "Missing required field at 'commands.commands'".
-// `userId` must be sent explicitly: with authentication off there are no claims
-// to default it from, and the participant rejects the submission without it.
+// `userId` is sent only when resolved, matching the service's own ledger client.
 async function submit(actAs, commands, disclosedContracts = []) {
   return call('/v2/commands/submit-and-wait-for-transaction', {
     commands: {
@@ -200,7 +206,7 @@ async function submit(actAs, commands, disclosedContracts = []) {
         'contractId' in command ? { ExerciseCommand: command } : { CreateCommand: command },
       ),
       actAs,
-      userId,
+      ...(userId ? { userId } : {}),
       commandId: `seed-${randomUUID()}`,
       disclosedContracts,
     },
@@ -298,10 +304,10 @@ async function main() {
   // has no claims to default one from. Where a token was supplied the
   // participant derives the user from it and rejects a submission naming a
   // different one, so the line is emitted commented out.
-  if (token) {
-    console.log('# LEDGER_USER_ID is unset on purpose: the participant reads it from the token')
-  } else {
+  if (userId) {
     console.log(`LEDGER_USER_ID=${userId}`)
+  } else {
+    console.log('# LEDGER_USER_ID is unset on purpose: the participant reads it from the token')
   }
   console.log(`ADMIN_PARTY=${admin}`)
   quoted('INSTRUMENT_CONFIG_TEMPLATE_ID', INSTRUMENT_CONFIG)
