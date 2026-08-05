@@ -290,6 +290,11 @@ async function main() {
   }
   const config = expectOne(configRows, 'InstrumentConfig')
 
+  // Report the contract that is actually on the ledger, not the requested
+  // values: on a re-run the find-or-create branches are skipped and the
+  // existing contract wins, so echoing the env vars would misreport it.
+  const instrument = config.payload
+
   console.log('parties')
   console.log(`  operator ${operator}`)
   console.log(`  admin    ${admin}`)
@@ -298,8 +303,14 @@ async function main() {
   console.log('contracts')
   console.log(`  TokenRegistry    ${registry.contractId}`)
   console.log(`  InstrumentConfig ${config.contractId}`)
-  console.log(`  instrument       ${instrumentId} (${symbol}, ${decimals} decimals)`)
-  console.log(`  faucet           ${faucetMax ? `enabled, max ${faucetMax} per tap` : 'disabled'}\n`)
+  console.log(
+    `  instrument       ${instrument.instrumentId} (${instrument.symbol}, ${instrument.decimals} decimals)`,
+  )
+  console.log(
+    `  faucet           ${
+      instrument.faucet ? `enabled, max ${instrument.faucet.maxPerTap} per tap` : 'disabled'
+    }\n`,
+  )
 
   console.log('registry/.env')
   console.log(`LEDGER_API_URL=${base}`)
