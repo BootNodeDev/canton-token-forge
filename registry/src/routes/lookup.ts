@@ -16,9 +16,10 @@ function activeContractsAs<P>(
 }
 
 // The InstrumentConfig active set for the operator, which the routes then run
-// through resolveConfig/resolveById. Centralized so the "which template, which
-// party identifies the config set" choice has one home, alongside
-// findByContractId and escrowDisclosure below.
+// through resolveConfig/resolveById and the readiness probe issues for its
+// side effect alone. Centralized so the "which template, which party
+// identifies the config set" choice has one home, alongside findByContractId
+// and escrowDisclosure below.
 export function activeConfigs(
   ledger: LedgerClient,
   config: Pick<Config, 'instrumentConfigTemplateId' | 'operatorParty'>,
