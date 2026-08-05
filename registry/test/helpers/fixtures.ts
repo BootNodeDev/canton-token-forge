@@ -1,10 +1,9 @@
 // Shared test fixtures for the registry route suites. The config is a full
 // Config so suites cannot drift from the real shape; the entry builders and
 // ledger stubs are the ones duplicated verbatim across the transfer,
-// allocation, admin, and metadata suites.
+// allocation, and metadata suites.
 import type { Config } from '../../src/config'
-import type { DisclosedContract } from '../../src/disclose'
-import type { ContractEntry, CreateCommand, ExerciseCommand, LedgerClient } from '../../src/ledger'
+import type { ContractEntry, LedgerClient } from '../../src/ledger'
 import type { Logger } from '../../src/logger'
 import type {
   AllocationPayload,
@@ -97,12 +96,6 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
   }
 }
 
-export interface RecordedCall {
-  actAs: string[]
-  commands: (CreateCommand | ExerciseCommand)[]
-  disclosedContracts: DisclosedContract[]
-}
-
 // A ledger stub whose every call rejects, for exercising the failure paths:
 // the terminal 5xx error handler and the readiness probe's unavailable branch.
 export const rejectingLedger: LedgerClient = {
@@ -121,23 +114,6 @@ export function recordingLogger(): { logger: Logger; entries: object[] } {
     },
   }
   return { logger, entries }
-}
-
-// A ledger stub that also records submitAndWait calls for the admin suite,
-// which asserts the actAs / commands / disclosedContracts it submits.
-export function recordingLedger(byTemplate: Record<string, ContractEntry[]>): {
-  ledger: LedgerClient
-  calls: RecordedCall[]
-} {
-  const calls: RecordedCall[] = []
-  const ledger: LedgerClient = {
-    activeContracts: (templateId: string) => Promise.resolve(byTemplate[templateId] ?? []),
-    submitAndWait: (actAs, commands, disclosedContracts = []) => {
-      calls.push({ actAs, commands, disclosedContracts })
-      return Promise.resolve({ transactionId: 'tx-1' })
-    },
-  }
-  return { ledger, calls }
 }
 
 // TokenTransferPreapproval is signatory admin, receiver.

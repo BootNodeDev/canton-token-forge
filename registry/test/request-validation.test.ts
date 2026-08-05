@@ -42,11 +42,11 @@ describe('runtime request validation', () => {
     expect(res.body).toEqual({ instruments: [] })
   })
 
-  it('leaves the undocumented admin endpoints unvalidated by the specs', async () => {
-    const ledger = ledgerFrom({ [config.instrumentConfigProposalTemplateId]: [] })
+  it('leaves the undocumented health endpoints unvalidated by the specs', async () => {
+    const ledger = ledgerFrom({})
     const app = createServer({ ledger, config })
-    const res = await request(app).post('/admin/proposals/nope/reject').send({})
-    expect(res.status).toBe(404)
-    expect(res.body).toEqual({ error: 'proposal not found' })
+    const res = await request(app).get('/healthz')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ status: 'ok' })
   })
 })

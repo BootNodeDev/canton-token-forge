@@ -1,11 +1,7 @@
 import type { Config } from '../config.js'
 import { type DisclosedContract, toDisclosed } from '../disclose.js'
 import type { ContractEntry, LedgerClient } from '../ledger.js'
-import type {
-  InstrumentConfigPayload,
-  PreapprovalPayload,
-  TokenRegistryPayload,
-} from '../payloads.js'
+import type { InstrumentConfigPayload, PreapprovalPayload } from '../payloads.js'
 
 // The ledger client returns payloads as unknown; the wrappers below pair one
 // template id with its payload shape. The cast that gives the routes their
@@ -41,17 +37,6 @@ export function activePreapprovals(
   return activeContractsAs<PreapprovalPayload>(
     ledger,
     config.preapprovalTemplateId,
-    config.operatorParty,
-  )
-}
-
-export function activeRegistries(
-  ledger: LedgerClient,
-  config: Pick<Config, 'tokenRegistryTemplateId' | 'operatorParty'>,
-): Promise<ContractEntry<TokenRegistryPayload>[]> {
-  return activeContractsAs<TokenRegistryPayload>(
-    ledger,
-    config.tokenRegistryTemplateId,
     config.operatorParty,
   )
 }

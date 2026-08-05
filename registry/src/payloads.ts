@@ -23,13 +23,6 @@ export interface InstrumentConfigPayload {
   faucet: unknown
 }
 
-export type InstrumentConfigProposalPayload = InstrumentConfigPayload
-
-export interface TokenRegistryPayload {
-  operator: string
-  registryBaseUrl: string
-}
-
 export interface PreapprovalPayload {
   admin: string
   instrumentId: string
