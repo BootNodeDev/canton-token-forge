@@ -164,8 +164,10 @@ conventions above are not all reflected in it yet.
 ## Troubleshooting
 
 - **`.canton-ports.json` never appears**: check the sandbox shell output. The
-  script removes a stale ports file at startup so its presence always means the
-  current run is up.
+  script removes the ports file both at startup and on exit, so its presence
+  always means a sandbox is up.
+- **"a sandbox is already serving on port 7575"**: another sandbox is running.
+  Stop it, or start this one on a different `JSON_API_PORT`.
 - **"Party already exists"**: expected on a re-run. `scripts/seed.mjs` reuses an
   existing party for a hint instead of allocating it again.
 - **"expected exactly one TokenRegistry"**: more than one registry was created,
