@@ -26,6 +26,15 @@ const cantonCoin: InstrumentConfigPayload = {
   faucet: null,
 }
 
+const goldBar: InstrumentConfigPayload = {
+  admin: 'admin::1',
+  instrumentId: 'GB',
+  name: 'Gold Bar',
+  symbol: 'GB',
+  decimals: 2,
+  faucet: null,
+}
+
 describe('metadata', () => {
   it('lists instruments', async () => {
     const ledger = ledgerWith([cantonCoin])
@@ -94,5 +103,25 @@ describe('metadata', () => {
     validateAgainst('metadata#/components/schemas/ErrorResponse', res.body)
     expect(res.body.error).toBe('instrument id not unique')
     expect(res.body.contractIds).toEqual(['c0', 'c1'])
+  })
+
+  it('lists every instrument the admin has registered', async () => {
+    const ledger = ledgerWith([cantonCoin, goldBar])
+    const app = createServer({ ledger, config })
+    const res = await request(app).get('/registry/metadata/v1/instruments')
+    expect(res.status).toBe(200)
+    validateAgainst('metadata#/components/schemas/ListInstrumentsResponse', res.body)
+    expect((res.body.instruments as { id: string }[]).map((i) => i.id).sort()).toEqual(['CC', 'GB'])
+  })
+
+  it('resolves each of the admin instruments by its own id', async () => {
+    const ledger = ledgerWith([cantonCoin, goldBar])
+    const app = createServer({ ledger, config })
+    const cc = await request(app).get('/registry/metadata/v1/instruments/CC')
+    expect(cc.status).toBe(200)
+    expect(cc.body).toMatchObject({ id: 'CC', symbol: 'CC', decimals: 10 })
+    const gb = await request(app).get('/registry/metadata/v1/instruments/GB')
+    expect(gb.status).toBe(200)
+    expect(gb.body).toMatchObject({ id: 'GB', symbol: 'GB', decimals: 2 })
   })
 })
