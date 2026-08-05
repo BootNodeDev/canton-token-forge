@@ -43,7 +43,7 @@ export function allocationRouter(deps: ServerDeps): Router {
       asyncHandler(async (req, res) => {
         const alloc = await findByContractId<AllocationPayload>(
           deps.ledger,
-          deps.config.allocationInterfaceId,
+          deps.config.allocationTemplateId,
           deps.config.operatorParty,
           req.params.allocationId,
         )

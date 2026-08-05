@@ -91,7 +91,7 @@ export function transferRouter(deps: ServerDeps): Router {
       asyncHandler(async (req, res) => {
         const instr = await findByContractId<TransferInstructionPayload>(
           deps.ledger,
-          deps.config.transferInstructionInterfaceId,
+          deps.config.transferInstructionTemplateId,
           deps.config.operatorParty,
           req.params.transferInstructionId,
         )

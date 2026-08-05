@@ -17,13 +17,15 @@ export const config: Config = {
   ledgerApiToken: 'secret',
   operatorParty: 'op::1',
   registryBaseUrl: 'http://r',
-  instrumentConfigTemplateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
-  instrumentConfigProposalTemplateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfigProposal',
-  tokenRegistryTemplateId: 'pkg:Canton.TokenForge.Registry:TokenRegistry',
-  transferInstructionInterfaceId: 'pkg:Splice.Api.Token.TransferInstructionV1:TransferInstruction',
-  preapprovalTemplateId: 'pkg:Canton.TokenForge.Registry:TokenTransferPreapproval',
-  lockedTokenTemplateId: 'pkg:Canton.TokenForge.Registry:LockedToken',
-  allocationInterfaceId: 'pkg:Splice.Api.Token.AllocationV1:Allocation',
+  instrumentConfigTemplateId: '#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfig',
+  instrumentConfigProposalTemplateId:
+    '#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfigProposal',
+  tokenRegistryTemplateId: '#canton-token-forge:Canton.TokenForge.Registry:TokenRegistry',
+  transferInstructionTemplateId:
+    '#canton-token-forge:Canton.TokenForge.Instruction:TokenTransferInstruction',
+  preapprovalTemplateId: '#canton-token-forge:Canton.TokenForge.Registry:TokenTransferPreapproval',
+  lockedTokenTemplateId: '#canton-token-forge:Canton.TokenForge.Locked:LockedToken',
+  allocationTemplateId: '#canton-token-forge:Canton.TokenForge.Allocation:TokenAllocation',
   port: 0,
   shutdownTimeoutMs: 8_000,
 }
@@ -70,8 +72,7 @@ export function lockedTokenEntry(
 // driven by it never submit; a submission is therefore a test failure.
 export function ledgerFrom(byTemplate: Record<string, ContractEntry[]>): LedgerClient {
   return {
-    activeContracts: (templateOrInterfaceId: string) =>
-      Promise.resolve(byTemplate[templateOrInterfaceId] ?? []),
+    activeContracts: (templateId: string) => Promise.resolve(byTemplate[templateId] ?? []),
     submitAndWait: () => Promise.reject(new Error('submitAndWait not expected in this test')),
   }
 }
@@ -110,8 +111,7 @@ export function recordingLedger(byTemplate: Record<string, ContractEntry[]>): {
 } {
   const calls: RecordedCall[] = []
   const ledger: LedgerClient = {
-    activeContracts: (templateOrInterfaceId: string) =>
-      Promise.resolve(byTemplate[templateOrInterfaceId] ?? []),
+    activeContracts: (templateId: string) => Promise.resolve(byTemplate[templateId] ?? []),
     submitAndWait: (actAs, commands, disclosedContracts = []) => {
       calls.push({ actAs, commands, disclosedContracts })
       return Promise.resolve({ transactionId: 'tx-1' })

@@ -6,14 +6,50 @@ const baseEnv: Record<string, string> = {
   LEDGER_API_TOKEN: 't',
   OPERATOR_PARTY: 'op::1',
   REGISTRY_BASE_URL: 'http://r',
-  INSTRUMENT_CONFIG_TEMPLATE_ID: 'pkg:M:InstrumentConfig',
-  INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID: 'pkg:M:InstrumentConfigProposal',
-  TOKEN_REGISTRY_TEMPLATE_ID: 'pkg:M:TokenRegistry',
-  TRANSFER_INSTRUCTION_INTERFACE_ID: 'pkg:I:TransferInstruction',
-  PREAPPROVAL_TEMPLATE_ID: 'pkg:M:TokenTransferPreapproval',
-  LOCKED_TOKEN_TEMPLATE_ID: 'pkg:M:LockedToken',
-  ALLOCATION_INTERFACE_ID: 'pkg:I:Allocation',
+  INSTRUMENT_CONFIG_TEMPLATE_ID: '#pkg:M:InstrumentConfig',
+  INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID: '#pkg:M:InstrumentConfigProposal',
+  TOKEN_REGISTRY_TEMPLATE_ID: '#pkg:M:TokenRegistry',
+  TRANSFER_INSTRUCTION_TEMPLATE_ID: '#pkg:M:TokenTransferInstruction',
+  PREAPPROVAL_TEMPLATE_ID: '#pkg:M:TokenTransferPreapproval',
+  LOCKED_TOKEN_TEMPLATE_ID: '#pkg:M:LockedToken',
+  ALLOCATION_TEMPLATE_ID: '#pkg:M:TokenAllocation',
 }
+
+describe('loadConfig template ids', () => {
+  it('reads the transfer instruction and allocation ids as template ids', () => {
+    const config = loadConfig({ ...baseEnv })
+    expect(config.transferInstructionTemplateId).toBe('#pkg:M:TokenTransferInstruction')
+    expect(config.allocationTemplateId).toBe('#pkg:M:TokenAllocation')
+  })
+
+  it('throws when a template id is package-id qualified instead of package-name form', () => {
+    expect(() =>
+      loadConfig({ ...baseEnv, TOKEN_REGISTRY_TEMPLATE_ID: 'deadbeef:M:TokenRegistry' }),
+    ).toThrow(/invalid TOKEN_REGISTRY_TEMPLATE_ID/)
+  })
+
+  it('throws when a template id is missing its module or entity', () => {
+    expect(() => loadConfig({ ...baseEnv, LOCKED_TOKEN_TEMPLATE_ID: '#pkg:LockedToken' })).toThrow(
+      /invalid LOCKED_TOKEN_TEMPLATE_ID/,
+    )
+  })
+})
+
+describe('loadConfig ledger user id', () => {
+  it('reads LEDGER_USER_ID when it is set', () => {
+    expect(loadConfig({ ...baseEnv, LEDGER_USER_ID: 'participant_admin' }).ledgerUserId).toBe(
+      'participant_admin',
+    )
+  })
+
+  it('leaves the ledger user id unset when LEDGER_USER_ID is absent', () => {
+    expect(loadConfig({ ...baseEnv })).not.toHaveProperty('ledgerUserId')
+  })
+
+  it('leaves the ledger user id unset when LEDGER_USER_ID is an empty string', () => {
+    expect(loadConfig({ ...baseEnv, LEDGER_USER_ID: '' })).not.toHaveProperty('ledgerUserId')
+  })
+})
 
 describe('loadConfig port parsing', () => {
   it('defaults to 8080 when PORT is unset', () => {
