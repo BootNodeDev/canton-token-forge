@@ -22,15 +22,22 @@ createInstrumentMints = do
   hv.amount === 42.0
   hv.instrumentId === HoldingV1.InstrumentId with admin; id = "CC"
 
+ccConfig : Party -> Text -> Int -> InstrumentConfig
+ccConfig admin instrumentId decimals = InstrumentConfig with
+  admin; instrumentId; name = "Canton Coin"; symbol = "CC"
+  decimals; faucet = None; meta = emptyMetadata
+
 -- The config is admin-signed, so no other party can bring one into existence
--- naming that admin.
+-- naming that admin. Matched on the error rather than submitMustFail, which
+-- would also accept a rejection that has nothing to do with authorization.
 createRequiresAdminAuthority : Script ()
 createRequiresAdminAuthority = do
   admin <- allocateParty "admin"
   stranger <- allocateParty "stranger"
-  submitMustFail stranger $ createCmd InstrumentConfig with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"
-    decimals = 10; faucet = None; meta = emptyMetadata
+  res <- trySubmit stranger $ createCmd (ccConfig admin "CC" 10)
+  case res of
+    Left (AuthorizationError _) -> pure ()
+    _ -> abort ("expected an authorization failure, got: " <> show res)
 
 -- The template's `ensure` is the only creation-time guard on an instrument.
 createRejectsBadDecimals : Script ()
