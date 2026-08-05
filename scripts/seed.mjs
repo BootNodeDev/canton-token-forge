@@ -213,9 +213,6 @@ async function submit(actAs, commands, disclosedContracts = []) {
   })
 }
 
-// Contract ids are read back from the active contract set rather than out of
-// the submission response, so the seed does not depend on where a given Canton
-// version puts an exercise result in the transaction envelope.
 function expectOne(rows, what) {
   if (rows.length !== 1) throw new Error(`expected exactly one ${what}, found ${rows.length}`)
   return rows[0]
@@ -235,6 +232,9 @@ async function main() {
   const user1 = await allocate('user1')
   const user2 = await allocate('user2')
 
+  // Contract ids are read back from the active contract set rather than out of
+  // the submission response, so the seed does not depend on where a given Canton
+  // version puts an exercise result in the transaction envelope.
   let registryRows = await activeContracts(TOKEN_REGISTRY, operator)
   if (registryRows.length === 0) {
     await submit(
