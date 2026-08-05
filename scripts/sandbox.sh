@@ -24,7 +24,7 @@ set -euo pipefail
 export LANG=C.UTF-8
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DAR="$REPO_ROOT/daml/canton-token-forge/.daml/dist/canton-token-forge-0.0.1.dar"
+DIST="$REPO_ROOT/daml/canton-token-forge/.daml/dist"
 JSON_API_PORT="${JSON_API_PORT:-7575}"
 LEDGER_API_PORT="${LEDGER_API_PORT:-6865}"
 CANTON_PORT_FILE="${CANTON_PORT_FILE:-$REPO_ROOT/.canton-ports.json}"
@@ -33,8 +33,11 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
   npm run --prefix "$REPO_ROOT" build:canton-token-forge
 fi
 
-if [ ! -f "$DAR" ]; then
-  echo "DAR not found at $DAR - run 'npm run build:canton-token-forge' first" >&2
+# Globbed rather than named: the version comes from daml.yaml, and hardcoding it
+# here would report "DAR not found" after a build that just succeeded.
+DAR="$(ls -1 "$DIST"/canton-token-forge-*.dar 2>/dev/null | head -n 1)"
+if [ -z "$DAR" ]; then
+  echo "no DAR in $DIST - run 'npm run build:canton-token-forge' first" >&2
   exit 1
 fi
 
