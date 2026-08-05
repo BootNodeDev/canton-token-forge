@@ -95,6 +95,29 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
   }
 }
 
+// ledgerFrom answers every query the same way, so a route that read as the
+// wrong party or off the wrong template id is invisible to it. This wrapper
+// records what was asked as well as answering it, which is the only way to
+// pin the read party now that the configured admin and the instrument admin
+// in the request body are necessarily the same value.
+export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
+  ledger: LedgerClient
+  queries: [string, string][]
+} {
+  const queries: [string, string][] = []
+  const inner = ledgerFrom(byTemplate)
+  return {
+    queries,
+    ledger: {
+      activeContracts: (templateId, party) => {
+        queries.push([templateId, party])
+        return inner.activeContracts(templateId, party)
+      },
+      submitAndWait: inner.submitAndWait,
+    },
+  }
+}
+
 // A ledger stub whose every call rejects, for exercising the failure paths:
 // the terminal 5xx error handler and the readiness probe's unavailable branch.
 export const rejectingLedger: LedgerClient = {

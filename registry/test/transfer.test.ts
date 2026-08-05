@@ -10,6 +10,7 @@ import {
   ledgerFrom,
   lockedTokenEntry,
   preapprovalEntry,
+  recordingLedgerFrom,
 } from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
 
@@ -178,6 +179,36 @@ describe('transfer factory', () => {
     expect(res.status).toBe(200)
     expect(res.body.transferKind).toBe('offer')
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
+  // Every InstrumentConfig this service can read is one it administers, so the
+  // admin comparison in resolveConfig looks redundant from inside the suite.
+  // It is not: it is the only thing stopping the registry from answering for an
+  // instrument someone else administers. Pinning the read party at the same
+  // time keeps a refactor from sourcing it off the request body.
+  it('404s a factory request for an instrument administered by someone else, reading as the configured admin', async () => {
+    const { ledger, queries } = recordingLedgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [preapprovalEntry()],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: {
+            instrumentId: { admin: 'other-registry::1', id: instrumentId.id },
+            sender: 'sender::1',
+            receiver: 'receiver::1',
+          },
+        },
+      })
+    expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+    expect(queries).toEqual([
+      [config.instrumentConfigTemplateId, config.adminParty],
+      [config.preapprovalTemplateId, config.adminParty],
+    ])
   })
 
   it('400s when choiceArguments.transfer.instrumentId is missing', async () => {
