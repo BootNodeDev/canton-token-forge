@@ -63,9 +63,13 @@ Copy the printed block into `registry/.env`, then:
 
 ```bash
 cd registry
+npm install
 npm run build
 npm start
 ```
+
+`registry/` is a separate package with its own dependencies: the root
+`npm install` vendors the Daml deps and does not populate `registry/node_modules`.
 
 `GET /healthz` and `GET /readyz` answer, and `GET /registry/metadata/v1/info`
 returns the operator party as `adminId` with the six supported APIs.
