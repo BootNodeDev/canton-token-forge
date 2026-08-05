@@ -4,7 +4,7 @@ import { resolveConfig } from '../mapping.js'
 import type { AllocationPayload, InstrumentIdValue } from '../payloads.js'
 import type { ServerDeps } from '../server.js'
 import { asyncHandler } from './async-handler.js'
-import { activeConfigs, escrowDisclosure, findByContractId } from './lookup.js'
+import { activeConfigs, findByContractId, findEscrow } from './lookup.js'
 import { resolveOrRespond } from './respond.js'
 
 interface AllocationFactoryBody {
@@ -49,14 +49,12 @@ export function allocationRouter(deps: ServerDeps): Router {
         )
         if (!alloc) return res.status(404).json({ error: 'allocation not found' })
 
-        const disclosedContracts = await escrowDisclosure(
-          deps.ledger,
-          deps.config,
-          alloc.payload.lockedCid,
-        )
+        const escrow = await findEscrow(deps.ledger, deps.config, alloc.payload.lockedCid)
+        if (!escrow) return res.status(404).json({ error: 'escrow not found' })
+
         const choiceContextData =
           choice === 'cancel' ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {}
-        res.json({ choiceContextData, disclosedContracts })
+        res.json({ choiceContextData, disclosedContracts: [toDisclosed(escrow)] })
       }),
     )
   }

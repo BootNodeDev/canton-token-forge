@@ -1,7 +1,10 @@
 import type { Config } from '../config.js'
-import { type DisclosedContract, toDisclosed } from '../disclose.js'
 import type { ContractEntry, LedgerClient } from '../ledger.js'
-import type { InstrumentConfigPayload, PreapprovalPayload } from '../payloads.js'
+import type {
+  InstrumentConfigPayload,
+  LockedTokenPayload,
+  PreapprovalPayload,
+} from '../payloads.js'
 
 // The ledger client returns payloads as unknown; the wrappers below pair one
 // template id with its payload shape. The cast that gives the routes their
@@ -56,20 +59,22 @@ export async function findByContractId<P = unknown>(
   return rows.find((row) => row.contractId === contractId)
 }
 
-// Resolve the escrow LockedToken behind a lockedCid and return it as a
-// disclosure list (empty if it is not in the active set). The receiver is not
-// a stakeholder of the escrow, so the transfer and allocation choice-contexts
-// both disclose it this way before the counterparty exercises its choice.
-export async function escrowDisclosure(
+// Resolve the escrow LockedToken behind a lockedCid. The receiver is not a
+// stakeholder of the escrow, so the transfer and allocation choice-contexts
+// both disclose it before the counterparty exercises its choice. An absent
+// escrow is returned as undefined rather than an empty disclosure list: an
+// active instruction or allocation always points at a live escrow, so a
+// missing one means the caller holds a stale contract id, and a context that
+// silently omits it would only fail later inside the choice.
+export async function findEscrow(
   ledger: LedgerClient,
   config: Pick<Config, 'lockedTokenTemplateId' | 'adminParty'>,
   lockedCid: string,
-): Promise<DisclosedContract[]> {
-  const escrow = await findByContractId(
+): Promise<ContractEntry<LockedTokenPayload> | undefined> {
+  return findByContractId<LockedTokenPayload>(
     ledger,
     config.lockedTokenTemplateId,
     config.adminParty,
     lockedCid,
   )
-  return escrow ? [toDisclosed(escrow)] : []
 }

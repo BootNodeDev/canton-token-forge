@@ -250,6 +250,23 @@ describe('transfer-instruction choice-contexts', () => {
     validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
+  it('404s instead of returning a context that omits the escrow when the LockedToken is gone', async () => {
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+    // The instruction and its config both resolve on this path, so only the
+    // message separates a stale escrow from the route's two other 404s.
+    expect(res.body.error).toBe('escrow not found')
+  })
+
   it('409s instead of returning a context that omits the config when (admin, instrumentId) is not unique', async () => {
     const dup = cfgEntry()
     dup.contractId = 'cfg2'

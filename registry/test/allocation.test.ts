@@ -113,6 +113,22 @@ describe('allocation choice-contexts', () => {
     expect(res.body.choiceContextData).toEqual({})
   })
 
+  it('404s instead of returning an empty context when the escrow LockedToken is gone', async () => {
+    const ledger = ledgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/allocations/v1/alloc1/choice-contexts/cancel')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
+    // The allocation itself resolves here, so only the message separates a
+    // stale escrow from the not-found allocation below.
+    expect(res.body.error).toBe('escrow not found')
+  })
+
   it('404s when the allocation is not found', async () => {
     const ledger = ledgerFrom({ [config.allocationTemplateId]: [] })
     const app = createServer({ ledger, config })
