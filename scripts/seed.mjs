@@ -170,9 +170,7 @@ async function activeContracts(templateId, party) {
         [party]: {
           cumulative: [
             {
-              identifierFilter: {
-                TemplateFilter: { value: { templateId, includeCreatedEventBlob: true } },
-              },
+              identifierFilter: { TemplateFilter: { value: { templateId } } },
             },
           ],
         },
@@ -184,15 +182,7 @@ async function activeContracts(templateId, party) {
   return rows.flatMap((row) => {
     const ac = row?.contractEntry?.JsActiveContract
     if (!ac) return []
-    return [
-      {
-        templateId: ac.createdEvent.templateId,
-        contractId: ac.createdEvent.contractId,
-        createdEventBlob: ac.createdEvent.createdEventBlob,
-        synchronizerId: ac.synchronizerId,
-        payload: ac.createdEvent.createArgument,
-      },
-    ]
+    return [{ contractId: ac.createdEvent.contractId, payload: ac.createdEvent.createArgument }]
   })
 }
 
