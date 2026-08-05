@@ -1,7 +1,7 @@
-// Shared test fixtures for the registry route suites. The config is a full
-// Config so suites cannot drift from the real shape; the entry builders and
-// ledger stubs are the ones duplicated verbatim across the transfer,
-// allocation, and metadata suites.
+// Shared test fixtures for the registry suites. The config is a full Config so
+// suites cannot drift from the real shape; the entry builders and ledger stubs
+// live here rather than in any one suite because changing either affects every
+// suite that imports them.
 import type { Config } from '../../src/config'
 import type { ContractEntry, LedgerClient } from '../../src/ledger'
 import type { Logger } from '../../src/logger'
