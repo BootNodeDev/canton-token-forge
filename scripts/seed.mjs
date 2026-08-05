@@ -207,9 +207,20 @@ async function submit(actAs, commands, disclosedContracts = []) {
   })
 }
 
-function expectOne(rows, what) {
-  if (rows.length !== 1) throw new Error(`expected exactly one ${what}, found ${rows.length}`)
-  return rows[0]
+// LF 2.1 has no contract keys, so nothing on the ledger stops two overlapping
+// seed runs from both creating a config for the same (admin, instrumentId).
+// There is no useful winner to pick: the registry answers 409 for an ambiguous
+// instrument, so a seed that chose one would hand out an env block for an
+// instrument the service cannot serve.
+function expectOneConfig(rows) {
+  if (rows.length === 1) return rows[0]
+  if (rows.length === 0) {
+    throw new Error(`no InstrumentConfig for ${instrumentId} after creating one`)
+  }
+  throw new Error(
+    `found ${rows.length} InstrumentConfig contracts for ${instrumentId}: archive all but one, ` +
+      'or restart the sandbox for a clean ledger, and seed again',
+  )
 }
 
 // The instrument identity is (admin, instrumentId); the payload spells the id
@@ -251,7 +262,7 @@ async function main() {
     )
     configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin), admin)
   }
-  const config = expectOne(configRows, 'InstrumentConfig')
+  const config = expectOneConfig(configRows)
 
   // Report the contract that is actually on the ledger, not the requested
   // values: on a re-run the find-or-create branches are skipped and the
