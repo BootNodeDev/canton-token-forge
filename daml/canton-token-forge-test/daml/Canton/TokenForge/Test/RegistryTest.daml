@@ -2,6 +2,7 @@ module Canton.TokenForge.Test.RegistryTest where
 
 import Daml.Script
 import DA.Assert ((===))
+import DA.Text qualified as T
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
 import Canton.TokenForge.Registry (InstrumentConfig(..))
@@ -39,10 +40,15 @@ createRequiresAdminAuthority = do
     Left (AuthorizationError _) -> pure ()
     _ -> abort ("expected an authorization failure, got: " <> show res)
 
--- The template's `ensure` is the only creation-time guard on an instrument.
-createRejectsBadDecimals : Script ()
-createRejectsBadDecimals = do
+-- The template's `ensure` is the only creation-time guard on an instrument, so
+-- both ends of the accepted range and the rejection itself are pinned here.
+createEnforcesDecimalRange : Script ()
+createEnforcesDecimalRange = do
   admin <- allocateParty "admin"
-  submitMustFail admin $ createCmd InstrumentConfig with
-    admin; instrumentId = "CC"; name = "Canton Coin"; symbol = "CC"
-    decimals = 19; faucet = None; meta = emptyMetadata
+  _ <- submit admin $ createCmd (ccConfig admin "CC0" 0)
+  _ <- submit admin $ createCmd (ccConfig admin "CC18" 18)
+
+  res <- trySubmit admin $ createCmd (ccConfig admin "CC19" 19)
+  case res of
+    Left (FailureStatusError fs) | "PreconditionFailed" `T.isInfixOf` fs.errorId -> pure ()
+    _ -> abort ("expected the decimals precondition to reject the create, got: " <> show res)
