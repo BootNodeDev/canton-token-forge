@@ -162,6 +162,12 @@ reason the seed script looks the way it does.
   accepts `participant_admin`.
 - **`Int64` fields are JSON strings**, not numbers. Sending `decimals: 10`
   fails with "Expected ujson.Str (data: 10)"; send `"10"`.
+- **`Decimal` fields take either, but a JSON number is only safe below 1e7.**
+  A number is rendered from a double before it reaches the Numeric parser, and
+  that rendering is exponential from 1e7 up and below 1e-3, which the parser
+  rejects: `maxPerTap: 10000000` fails with "Could not read Numeric string
+  \"1.0E7\"" while `maxPerTap: 1000` succeeds. A decimal string is read
+  literally at any magnitude, so send `"10000000.0"`.
 - Disclosed contracts are `{templateId, contractId, createdEventBlob,
   synchronizerId}`, taken straight from an active-contracts row queried by a
   party that can see the contract. Those rows report the template id in
