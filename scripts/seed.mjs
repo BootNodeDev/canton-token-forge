@@ -216,10 +216,12 @@ function expectOneConfig(rows) {
   )
 }
 
-// The instrument identity is (admin, instrumentId); the payload spells the id
-// field `instrumentId`, unlike the standard InstrumentId value type's `id`.
-const forThisInstrument = (rows, admin) =>
-  rows.filter((r) => r.payload.admin === admin && r.payload.instrumentId === instrumentId)
+// The instrument identity is (admin, instrumentId), but admin is
+// InstrumentConfig's only signatory and these rows come from the admin's own
+// active contract set, so only the id half is left to filter on. The payload
+// spells that field `instrumentId`, unlike the standard InstrumentId value
+// type's `id`.
+const forThisInstrument = (rows) => rows.filter((r) => r.payload.instrumentId === instrumentId)
 
 async function main() {
   console.log(`seeding ${base}`)
@@ -232,7 +234,7 @@ async function main() {
   // Contract ids are read back from the active contract set rather than out of
   // the submission response, so the seed does not depend on where a given Canton
   // version puts a create result in the transaction envelope.
-  let configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin), admin)
+  let configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin))
   if (configRows.length === 0) {
     await create([admin], {
       templateId: INSTRUMENT_CONFIG,
@@ -248,7 +250,7 @@ async function main() {
         meta: { values: {} },
       },
     })
-    configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin), admin)
+    configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin))
   }
   const config = expectOneConfig(configRows)
 
