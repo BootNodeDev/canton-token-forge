@@ -86,7 +86,9 @@ instrument.
 The service is read-only: it serves instrument metadata, factory ids, and choice
 contexts, and submits nothing. Registering a second instrument is a `create` on
 the ledger as the admin, the same command `scripts/seed.mjs` issues. Set
-`SEED_INSTRUMENT_ID=CC2` (with `SEED_SYMBOL` and `SEED_DECIMALS` to match) and
+`SEED_INSTRUMENT_ID=CC2` (with `SEED_INSTRUMENT_NAME`, `SEED_SYMBOL` and
+`SEED_DECIMALS` to match, or the new instrument inherits the defaults of the
+first one) and
 re-run the seed; `CC2` then appears in `GET /registry/metadata/v1/instruments`
 alongside `CC`, since one admin serves every instrument it has created.
 
