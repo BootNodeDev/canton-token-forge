@@ -4,7 +4,9 @@ import { loadConfig } from '../src/config'
 const baseEnv: Record<string, string> = {
   LEDGER_API_URL: 'http://ledger',
   LEDGER_API_TOKEN: 't',
-  ADMIN_PARTY: 'admin::1',
+  // Deliberately unlike every other value here, so a binding that reads the
+  // wrong variable cannot pass by coincidence.
+  ADMIN_PARTY: 'admin-party::1',
   REGISTRY_BASE_URL: 'http://r',
   INSTRUMENT_CONFIG_TEMPLATE_ID: '#pkg:M:InstrumentConfig',
   INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID: '#pkg:M:InstrumentConfigProposal',
@@ -32,6 +34,17 @@ describe('loadConfig template ids', () => {
     expect(() => loadConfig({ ...baseEnv, LOCKED_TOKEN_TEMPLATE_ID: '#pkg:LockedToken' })).toThrow(
       /invalid LOCKED_TOKEN_TEMPLATE_ID/,
     )
+  })
+})
+
+describe('loadConfig admin party', () => {
+  it('reads ADMIN_PARTY as the party every ledger read runs under', () => {
+    expect(loadConfig({ ...baseEnv }).adminParty).toBe('admin-party::1')
+  })
+
+  it('throws when ADMIN_PARTY is absent', () => {
+    const { ADMIN_PARTY, ...withoutAdminParty } = baseEnv
+    expect(() => loadConfig(withoutAdminParty)).toThrow(/missing required env var ADMIN_PARTY/)
   })
 })
 
