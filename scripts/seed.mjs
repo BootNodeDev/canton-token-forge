@@ -189,16 +189,13 @@ async function activeContracts(templateId, party) {
 // The submission envelope nests the command list inside a `commands` object;
 // a flat body is rejected with "Missing required field at 'commands.commands'".
 // `userId` is sent only when resolved, matching the service's own ledger client.
-async function submit(actAs, commands, disclosedContracts = []) {
+async function create(actAs, createCommand) {
   return call('/v2/commands/submit-and-wait-for-transaction', {
     commands: {
-      commands: commands.map((command) =>
-        'contractId' in command ? { ExerciseCommand: command } : { CreateCommand: command },
-      ),
+      commands: [{ CreateCommand: createCommand }],
       actAs,
       ...(userId ? { userId } : {}),
       commandId: `seed-${randomUUID()}`,
-      disclosedContracts,
     },
   })
 }
@@ -237,25 +234,20 @@ async function main() {
   // version puts a create result in the transaction envelope.
   let configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin), admin)
   if (configRows.length === 0) {
-    await submit(
-      [admin],
-      [
-        {
-          templateId: INSTRUMENT_CONFIG,
-          createArguments: {
-            admin,
-            instrumentId,
-            name: instrumentName,
-            symbol,
-            // Int64 is encoded as a JSON string; a bare number is rejected
-            // with "Expected ujson.Str".
-            decimals: String(decimals),
-            faucet: faucetMax ? { maxPerTap: faucetMax } : null,
-            meta: { values: {} },
-          },
-        },
-      ],
-    )
+    await create([admin], {
+      templateId: INSTRUMENT_CONFIG,
+      createArguments: {
+        admin,
+        instrumentId,
+        name: instrumentName,
+        symbol,
+        // Int64 is encoded as a JSON string; a bare number is rejected
+        // with "Expected ujson.Str".
+        decimals: String(decimals),
+        faucet: faucetMax ? { maxPerTap: faucetMax } : null,
+        meta: { values: {} },
+      },
+    })
     configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin), admin)
   }
   const config = expectOneConfig(configRows)
