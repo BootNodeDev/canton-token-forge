@@ -190,7 +190,10 @@ reason the seed script looks the way it does.
   count and instrument id, when more than one config shares this
   `(admin, instrumentId)`. LF 2.1 has no contract keys, so nothing on-ledger
   prevents it, and the registry would answer 409 for an ambiguous instrument.
-  Archive the extra config, or seed a different `SEED_INSTRUMENT_ID`.
+  Restart the sandbox for a clean ledger, or archive all but one config by
+  exercising `Archive` on the extras as the admin, then seed again. Seeding a
+  different `SEED_INSTRUMENT_ID` does not clear it: the duplicates stay active
+  and the original id keeps answering 409.
 - **DAR not found**: run `npm run build:canton-token-forge`, or let
   `scripts/sandbox.sh` build it (do not pass `SKIP_BUILD=1`).
 - Canton logs to `log/canton.log` in the repo root, which is gitignored.
