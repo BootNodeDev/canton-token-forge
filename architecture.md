@@ -76,6 +76,16 @@ the `splice-api-token-*` DARs. The core module hierarchy:
   validity window.
 - **`Token`** (`Token.daml`) - an unlocked holding. Signed by `admin, owner`.
   `ensure amount > 0.0`. Implements `HoldingV1.Holding`.
+- **`LockedToken`** (`Locked.daml`) - the escrow holding behind a pending
+  transfer or an allocation. Signed by `admin, owner, holders`, with `expiresAt`
+  set from the transfer's `executeBefore` or the allocation's `settleBefore`.
+  `abortEscrow` is the one reject/withdraw/cancel path back to the owner.
+- **`TokenTransferInstruction`** (`Instruction.daml`) - a pending two-step
+  transfer, signed by `admin, transfer.sender` with the receiver as observer.
+  Implements `TransferInstructionV1.TransferInstruction`.
+- **`TokenAllocation`** (`Allocation.daml`) - an escrowed leg of a DvP
+  settlement, signed by `admin, allocation.transferLeg.sender` with the executor
+  and receiver as observers. Implements `AllocationV1.Allocation`.
 - **`transferImpl`** (`Registry.daml`) - shared transfer logic, passed the
   config's `admin` and `instrumentId` as explicit params.
 - **`mkInstrumentId`** (`Types.daml`) - builds the standard `HoldingV1.InstrumentId`
@@ -145,8 +155,12 @@ transfer.
 
 ### Smart Contract Architecture
 
-- **Signatory model:** `InstrumentConfig` (signatory `admin`), `Token`
-  (signatory `admin, owner`), `LockedToken` (signatory `admin, owner, holders`).
+- **Signatory model:** the admin signs all six templates and co-signs each with
+  the party whose position it encumbers: `InstrumentConfig` (`admin` alone),
+  `TokenTransferPreapproval` (`admin, receiver`), `Token` (`admin, owner`),
+  `LockedToken` (`admin, owner, holders`), `TokenTransferInstruction`
+  (`admin, transfer.sender`, receiver observing), `TokenAllocation`
+  (`admin, allocation.transferLeg.sender`, executor and receiver observing).
   Holdings are co-signed by their owner, matching Amulet, so the admin cannot
   archive and re-mint an owner's funds unilaterally.
 - **Single-party registry:** the instrument admin is also the registry identity
