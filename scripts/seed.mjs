@@ -39,15 +39,52 @@ const strEnv = (name, fallback) => {
   return raw === undefined || raw === '' ? fallback : raw
 }
 
-const base = strEnv('LEDGER_API_URL', 'http://localhost:7575')
-const token = strEnv('LEDGER_API_TOKEN', '')
-const registryBaseUrl = strEnv('REGISTRY_BASE_URL', 'http://localhost:8080')
-const instrumentId = strEnv('SEED_INSTRUMENT_ID', 'CC')
-const instrumentName = strEnv('SEED_INSTRUMENT_NAME', 'Canton Coin Forge')
-const symbol = strEnv('SEED_SYMBOL', 'CC')
-const decimals = Number(process.env.SEED_DECIMALS ?? '10')
-const faucetMax = process.env.SEED_FAUCET_MAX ?? '1000.0'
-const userId = strEnv('LEDGER_USER_ID', 'participant_admin')
+function intEnv(name, fallback, min, max) {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new Error(`${name} must be an integer ${min}..${max}, got ${JSON.stringify(raw)}`)
+  }
+  return n
+}
+
+function loadConfig() {
+  return {
+    base: strEnv('LEDGER_API_URL', 'http://localhost:7575'),
+    token: strEnv('LEDGER_API_TOKEN', ''),
+    registryBaseUrl: strEnv('REGISTRY_BASE_URL', 'http://localhost:8080'),
+    instrumentId: strEnv('SEED_INSTRUMENT_ID', 'CC'),
+    instrumentName: strEnv('SEED_INSTRUMENT_NAME', 'Canton Coin Forge'),
+    symbol: strEnv('SEED_SYMBOL', 'CC'),
+    decimals: intEnv('SEED_DECIMALS', 10, 0, 18),
+    faucetMax: process.env.SEED_FAUCET_MAX ?? '1000.0',
+    userId: strEnv('LEDGER_USER_ID', 'participant_admin'),
+  }
+}
+
+// Configuration is resolved before anything else runs, so a bad override has to
+// be caught here: a throw at module scope would escape main()'s handler and
+// print a stack trace instead of the one-line reason.
+let settings
+try {
+  settings = loadConfig()
+} catch (err) {
+  console.error(err.message)
+  process.exit(1)
+}
+
+const {
+  base,
+  token,
+  registryBaseUrl,
+  instrumentId,
+  instrumentName,
+  symbol,
+  decimals,
+  faucetMax,
+  userId,
+} = settings
 
 const headers = {
   'content-type': 'application/json',
