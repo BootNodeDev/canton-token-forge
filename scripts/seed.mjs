@@ -257,7 +257,10 @@ async function main() {
 
   console.log('registry/.env')
   console.log(`LEDGER_API_URL=${base}`)
-  console.log(`LEDGER_API_TOKEN=${token}`)
+  // The service requires this to be non-empty, and the sandbox authenticates
+  // nothing. A caller-supplied token is referenced rather than reprinted, to
+  // keep a real credential out of terminal scrollback and CI logs.
+  console.log(`LEDGER_API_TOKEN=${token ? '<the LEDGER_API_TOKEN you passed in>' : 'placeholder'}`)
   console.log(`OPERATOR_PARTY=${operator}`)
   console.log(`REGISTRY_BASE_URL=${registryBaseUrl}`)
   console.log(`INSTRUMENT_CONFIG_TEMPLATE_ID=${INSTRUMENT_CONFIG}`)
