@@ -9,6 +9,8 @@ import {
   instrumentId,
   ledgerFrom,
   lockedTokenEntry,
+  otherCfgEntry,
+  otherInstrumentId,
 } from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
 
@@ -25,6 +27,29 @@ describe('allocation factory', () => {
     expect(res.body.choiceContext.choiceContextData).toEqual({})
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
     expect(res.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
+  })
+
+  it('selects the config of the requested instrument when the admin serves several', async () => {
+    // The other config comes first, so answering with the first readable row
+    // rather than the matching one is a failure, not a coincidence.
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [otherCfgEntry(), cfgEntry()],
+    })
+    const app = createServer({ ledger, config })
+    const factoryFor = async (id: typeof instrumentId) =>
+      await request(app)
+        .post('/registry/allocation-instruction/v1/allocation-factory')
+        .send({ choiceArguments: { allocation: { instrumentId: id } } })
+
+    const cc = await factoryFor(instrumentId)
+    expect(cc.status).toBe(200)
+    expect(cc.body.factoryId).toBe('cfg1')
+    expect(cc.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
+
+    const other = await factoryFor(otherInstrumentId)
+    expect(other.status).toBe(200)
+    expect(other.body.factoryId).toBe('cfg2')
+    expect(other.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg2' })
   })
 
   it('400s when choiceArguments.allocation.instrumentId is missing', async () => {
