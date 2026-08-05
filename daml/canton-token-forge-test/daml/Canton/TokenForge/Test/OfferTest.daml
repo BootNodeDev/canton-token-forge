@@ -18,9 +18,9 @@ noContextArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadat
 
 -- Shared setup: mint 100 to alice, build a 40.0 transfer alice -> bob with no
 -- preapproval, and start the offer. Returns the pending instruction cid.
-startOffer : Party -> Party -> Party -> Party -> Script (ContractId TransferInstruction)
-startOffer operator admin alice bob = do
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+startOffer : Party -> Party -> Party -> Script (ContractId TransferInstruction)
+startOffer admin alice bob = do
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 2) 0 0 0
@@ -52,11 +52,10 @@ escrowDisclosure admin instrCid = do
 
 offerAcceptedCompletes : Script ()
 offerAcceptedCompletes = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
-  instrCid <- startOffer operator admin alice bob
+  instrCid <- startOffer admin alice bob
   lockedDisclosure <- escrowDisclosure admin instrCid
   acc <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
   case acc.output of
@@ -70,11 +69,10 @@ offerAcceptedCompletes = do
 -- with no early-release signal; the escrow returns to the sender.
 offerRejectedRefunds : Script ()
 offerRejectedRefunds = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
-  instrCid <- startOffer operator admin alice bob
+  instrCid <- startOffer admin alice bob
   lockedDisclosure <- escrowDisclosure admin instrCid
   rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
   [refundCid] <- pure rej.senderChangeCids
@@ -86,11 +84,10 @@ offerRejectedRefunds = do
 -- unaccepted offer and reclaim the escrow.
 offerWithdrawnRefunds : Script ()
 offerWithdrawnRefunds = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
-  instrCid <- startOffer operator admin alice bob
+  instrCid <- startOffer admin alice bob
   setTime (time (date 2026 Jan 3) 0 0 0)
   wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
   [refundCid] <- pure wd.senderChangeCids
@@ -104,10 +101,9 @@ offerWithdrawnRefunds = do
 -- funds mid-offer.
 offerWithdrawBeforeExpiryFails : Script ()
 offerWithdrawBeforeExpiryFails = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
-  instrCid <- startOffer operator admin alice bob
+  instrCid <- startOffer admin alice bob
   submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
   submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = expireLockArgs
