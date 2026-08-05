@@ -22,6 +22,7 @@
 //   LEDGER_USER_ID        ledger user id for submissions (default participant_admin)
 
 import { execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -145,7 +146,7 @@ async function submit(actAs, commands, disclosedContracts = []) {
       ),
       actAs,
       userId,
-      commandId: `seed-${crypto.randomUUID()}`,
+      commandId: `seed-${randomUUID()}`,
       disclosedContracts,
     },
   })
