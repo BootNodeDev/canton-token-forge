@@ -69,6 +69,10 @@ rm -f "$CANTON_PORT_FILE"
 echo "starting Canton sandbox: JSON Ledger API on http://localhost:$JSON_API_PORT"
 echo "ready when $CANTON_PORT_FILE appears; stop with Ctrl-C"
 
+# Canton writes its log directory relative to the working directory, which
+# .gitignore only covers at the repo root.
+cd "$REPO_ROOT"
+
 # Backgrounded and waited on rather than run in the foreground: bash defers trap
 # handlers until a foreground child exits, which would leave the sandbox running
 # and the ports file behind on SIGTERM. Job control is enabled just long enough
