@@ -1,6 +1,7 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import type { LedgerClient } from '../src/ledger'
+import type { Instrument } from '../src/mapping'
 import type { InstrumentConfigPayload } from '../src/payloads'
 import { createServer } from '../src/server'
 import { cfgEntry, config, ledgerFrom } from './helpers/fixtures'
@@ -114,10 +115,13 @@ describe('metadata', () => {
     const res = await request(app).get('/registry/metadata/v1/instruments')
     expect(res.status).toBe(200)
     validateAgainst('metadata#/components/schemas/ListInstrumentsResponse', res.body)
-    expect((res.body.instruments as { id: string }[]).map((i) => i.id).sort()).toEqual([
-      'CC',
-      'GOLD-BAR',
-    ])
+    // Keyed by id rather than by position, so each row's own name, symbol and
+    // decimals have to travel with its id: a list that renders every row from
+    // one payload cannot satisfy this.
+    const byId = new Map((res.body.instruments as Instrument[]).map((i) => [i.id, i]))
+    expect([...byId.keys()].sort()).toEqual(['CC', 'GOLD-BAR'])
+    expect(byId.get('CC')).toMatchObject({ name: 'Canton Coin', symbol: 'CC', decimals: 10 })
+    expect(byId.get('GOLD-BAR')).toMatchObject({ name: 'Gold Bar', symbol: 'GB', decimals: 2 })
   })
 
   it('resolves each of the admin instruments by its own id', async () => {
