@@ -21,6 +21,11 @@ describe('async route errors', () => {
       .set('content-type', 'application/json')
       .send('{"choiceArguments":')
     expect(res.status).toBe(400)
+    // The target endpoint is spec-validated, so the status alone does not
+    // identify who rejected the request: with the body parser removed the
+    // OpenAPI validator answers 400 too, on a missing body. The parser's own
+    // message is what distinguishes the two.
+    expect(res.body.error).toMatch(/Unexpected end of JSON input/)
     expect(entries).toHaveLength(0)
   })
 
