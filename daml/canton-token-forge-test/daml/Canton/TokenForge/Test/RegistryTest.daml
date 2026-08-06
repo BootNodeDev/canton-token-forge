@@ -40,15 +40,22 @@ createRequiresAdminAuthority = do
     Left (AuthorizationError _) -> pure ()
     _ -> abort ("expected an authorization failure, got: " <> show res)
 
--- The template's `ensure` is the only creation-time guard on an instrument, so
--- both ends of the accepted range and the rejection itself are pinned here.
+expectDecimalsRejected : Party -> InstrumentConfig -> Script ()
+expectDecimalsRejected admin cfg = do
+  res <- trySubmit admin $ createCmd cfg
+  case res of
+    Left (FailureStatusError fs) | "PreconditionFailed" `T.isInfixOf` fs.errorId -> pure ()
+    _ -> abort ("expected the decimals precondition to reject the create, got: " <> show res)
+
+-- The template's `ensure` is the only creation-time guard on an instrument, and
+-- it is a conjunction, so each bound needs a case where it alone can reject:
+-- without the -1 case, dropping `decimals >= 0` leaves the whole suite green and
+-- a negative scale reaches the metadata API verbatim.
 createEnforcesDecimalRange : Script ()
 createEnforcesDecimalRange = do
   admin <- allocateParty "admin"
   _ <- submit admin $ createCmd (ccConfig admin "CC0" 0)
   _ <- submit admin $ createCmd (ccConfig admin "CC18" 18)
 
-  res <- trySubmit admin $ createCmd (ccConfig admin "CC19" 19)
-  case res of
-    Left (FailureStatusError fs) | "PreconditionFailed" `T.isInfixOf` fs.errorId -> pure ()
-    _ -> abort ("expected the decimals precondition to reject the create, got: " <> show res)
+  expectDecimalsRejected admin (ccConfig admin "CCneg" (-1))
+  expectDecimalsRejected admin (ccConfig admin "CC19" 19)
