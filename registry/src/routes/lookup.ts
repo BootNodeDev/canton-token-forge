@@ -1,11 +1,7 @@
 import type { Config } from '../config.js'
 import { type DisclosedContract, toDisclosed } from '../disclose.js'
 import type { ContractEntry, LedgerClient } from '../ledger.js'
-import type {
-  InstrumentConfigPayload,
-  PreapprovalPayload,
-  TokenRegistryPayload,
-} from '../payloads.js'
+import type { InstrumentConfigPayload, PreapprovalPayload } from '../payloads.js'
 
 // The ledger client returns payloads as unknown; the wrappers below pair one
 // template id with its payload shape. The cast that gives the routes their
@@ -20,9 +16,10 @@ function activeContractsAs<P>(
 }
 
 // The InstrumentConfig active set for the operator, which the routes then run
-// through resolveConfig/resolveById. Centralized so the "which template, which
-// party identifies the config set" choice has one home, alongside
-// findByContractId and escrowDisclosure below.
+// through resolveConfig/resolveById and the readiness probe issues for its
+// side effect alone. Centralized so the "which template, which party
+// identifies the config set" choice has one home, alongside findByContractId
+// and escrowDisclosure below.
 export function activeConfigs(
   ledger: LedgerClient,
   config: Pick<Config, 'instrumentConfigTemplateId' | 'operatorParty'>,
@@ -45,20 +42,9 @@ export function activePreapprovals(
   )
 }
 
-export function activeRegistries(
-  ledger: LedgerClient,
-  config: Pick<Config, 'tokenRegistryTemplateId' | 'operatorParty'>,
-): Promise<ContractEntry<TokenRegistryPayload>[]> {
-  return activeContractsAs<TokenRegistryPayload>(
-    ledger,
-    config.tokenRegistryTemplateId,
-    config.operatorParty,
-  )
-}
-
 // Locate a single active contract by its id within a template's active set.
-// Several handlers resolve a path parameter (a proposal, an allocation, a
-// transfer instruction) this way before acting on it, so the query lives in
+// Several handlers resolve a path parameter (an allocation, a transfer
+// instruction) this way before acting on it, so the query lives in
 // one place; live-node work that changes how a contract is located by id
 // then has a single call site to update.
 export async function findByContractId<P = unknown>(

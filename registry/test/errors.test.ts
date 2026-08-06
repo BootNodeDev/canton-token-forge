@@ -17,10 +17,15 @@ describe('async route errors', () => {
     const { logger, entries } = recordingLogger()
     const app = createServer({ ledger, config, logger })
     const res = await request(app)
-      .post('/admin/instruments')
+      .post('/registry/transfer-instruction/v1/transfer-factory')
       .set('content-type', 'application/json')
-      .send('{"admin":')
+      .send('{"choiceArguments":')
     expect(res.status).toBe(400)
+    // The target endpoint is spec-validated, so the status alone does not
+    // identify who rejected the request: with the body parser removed the
+    // OpenAPI validator answers 400 too, on a missing body. The parser's own
+    // message is what distinguishes the two.
+    expect(res.body.error).toMatch(/Unexpected end of JSON input/)
     expect(entries).toHaveLength(0)
   })
 

@@ -5,10 +5,9 @@ import type { Config } from './config.js'
 import type { LedgerClient } from './ledger.js'
 import { createLogger, type Logger } from './logger.js'
 import { openapiDir, specFiles } from './openapi.js'
-import { adminRouter } from './routes/admin.js'
 import { allocationRouter } from './routes/allocation.js'
 import { asyncHandler } from './routes/async-handler.js'
-import { activeRegistries } from './routes/lookup.js'
+import { activeConfigs } from './routes/lookup.js'
 import { metadataRouter } from './routes/metadata.js'
 import { transferRouter } from './routes/transfer.js'
 
@@ -35,8 +34,8 @@ export function createServer(deps: ServerDeps): Express {
 
   // One validator per vendored standard spec, requests only. Paths a given
   // spec does not document are ignored so the other specs' routes and the
-  // service-specific /admin and health endpoints pass through; responses
-  // stay schema-checked in the test suite instead of per-request.
+  // health endpoints pass through; responses stay schema-checked in the test
+  // suite instead of per-request.
   // Splice/CN integer-width format hints that the schemas' type: integer
   // already covers, so we register them permissively only to keep ajv quiet.
   const customFormats = {
@@ -68,7 +67,7 @@ export function createServer(deps: ServerDeps): Express {
     '/readyz',
     asyncHandler(async (_req, res) => {
       try {
-        await activeRegistries(deps.ledger, deps.config)
+        await activeConfigs(deps.ledger, deps.config)
       } catch (err) {
         // Surface why readiness is failing: the 503 is returned to the
         // orchestrator, but without this the ledger outage behind it is
@@ -83,7 +82,6 @@ export function createServer(deps: ServerDeps): Express {
   app.use(metadataRouter(deps))
   app.use(transferRouter(deps))
   app.use(allocationRouter(deps))
-  app.use(adminRouter(deps))
 
   // Terminal error handler: catches rejections funneled through
   // asyncHandler (e.g. a ledger query or submission failure) so a request
