@@ -62,7 +62,11 @@ template InstrumentConfig
     meta : Metadata
   where
     signatory admin
-    ensure decimals >= 0 && decimals <= 18
+    -- 10 is the ledger's own ceiling: Daml `Decimal` is `Numeric 10`, so a
+    -- holding amount can never carry more places than that. The token standard
+    -- caps the metadata API's `decimals` at 10 for the same reason. The value is
+    -- display guidance for clients, not a scale enforced on amounts.
+    ensure decimals >= 0 && decimals <= 10
 
     -- Free minting (no economics), co-authorized by the recipient so a holding
     -- is never created for a party that did not consent (Amulet AmuletRules_Mint,

@@ -15,7 +15,7 @@
 //   SEED_INSTRUMENT_ID    instrument id to register (default CC)
 //   SEED_INSTRUMENT_NAME  display name (default Canton Coin Forge)
 //   SEED_SYMBOL           ticker symbol (default CC)
-//   SEED_DECIMALS         decimals, 0..18 (default 10)
+//   SEED_DECIMALS         decimals, 0..10 (default 10)
 //   SEED_FAUCET_MAX       per-tap cap; set empty to register without a faucet (default 1000.0)
 //   LEDGER_USER_ID        ledger user id for submissions (default participant_admin
 //                         without a token, omitted with one; set empty to force omission)
@@ -64,7 +64,7 @@ function loadConfig() {
     instrumentId: strEnv('SEED_INSTRUMENT_ID', 'CC'),
     instrumentName: strEnv('SEED_INSTRUMENT_NAME', 'Canton Coin Forge'),
     symbol: strEnv('SEED_SYMBOL', 'CC'),
-    decimals: intEnv('SEED_DECIMALS', 10, 0, 18),
+    decimals: intEnv('SEED_DECIMALS', 10, 0, 10),
     faucetMax: process.env.SEED_FAUCET_MAX ?? '1000.0',
     // A token already names the ledger user, and the participant rejects a
     // submission naming a different one, so the default is to omit it there.

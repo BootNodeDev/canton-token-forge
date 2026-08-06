@@ -50,12 +50,14 @@ expectDecimalsRejected admin cfg = do
 -- The template's `ensure` is the only creation-time guard on an instrument, and
 -- it is a conjunction, so each bound needs a case where it alone can reject:
 -- without the -1 case, dropping `decimals >= 0` leaves the whole suite green and
--- a negative scale reaches the metadata API verbatim.
+-- a negative scale reaches the metadata API verbatim. The cap is 10 because
+-- Daml's `Decimal` is `Numeric 10`: a larger value would advertise a precision
+-- no holding amount can carry.
 createEnforcesDecimalRange : Script ()
 createEnforcesDecimalRange = do
   admin <- allocateParty "admin"
   _ <- submit admin $ createCmd (ccConfig admin "CC0" 0)
-  _ <- submit admin $ createCmd (ccConfig admin "CC18" 18)
+  _ <- submit admin $ createCmd (ccConfig admin "CC10" 10)
 
   expectDecimalsRejected admin (ccConfig admin "CCneg" (-1))
-  expectDecimalsRejected admin (ccConfig admin "CC19" 19)
+  expectDecimalsRejected admin (ccConfig admin "CC11" 11)
