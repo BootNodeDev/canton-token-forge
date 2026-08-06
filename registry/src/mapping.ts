@@ -23,8 +23,8 @@ export interface Instrument {
   supportedApis: Record<string, number>
 }
 
-// The two payload fields that identify an instrument on-ledger. Config,
-// proposal, and preapproval payloads all carry them.
+// The two payload fields that identify an instrument on-ledger. Both the
+// config and the preapproval payloads carry them.
 interface InstrumentKeyedPayload {
   admin: string
   instrumentId: string
@@ -44,8 +44,8 @@ export function toInstrument(payload: InstrumentConfigPayload): Instrument {
   }
 }
 
-// An on-ledger payload (InstrumentConfig, proposal, preapproval) identifies its
-// instrument by the Daml record fields (admin, instrumentId), while the
+// An on-ledger payload (InstrumentConfig, TokenTransferPreapproval) identifies
+// its instrument by the Daml record fields (admin, instrumentId), while the
 // standard API carries the same identity as InstrumentId { admin, id }. These
 // two helpers are the single place that bridges the two field namings, so the
 // admin-and-id equality rule the whole service depends on is defined once.
