@@ -161,8 +161,9 @@ transfer.
 
 ### Smart Contract Architecture
 
-- **Signatory model:** the admin signs all six templates and co-signs each with
-  the party whose position it encumbers: `InstrumentConfig` (`admin` alone),
+- **Signatory model:** the admin signs all six templates, and wherever a template
+  encumbers another party's position that party co-signs: `InstrumentConfig`
+  (`admin` alone, it encumbers nobody),
   `TokenTransferPreapproval` (`admin, receiver`), `Token` (`admin, owner`),
   `LockedToken` (`admin, owner, holders`), `TokenTransferInstruction`
   (`admin, transfer.sender`, receiver observing), `TokenAllocation`
