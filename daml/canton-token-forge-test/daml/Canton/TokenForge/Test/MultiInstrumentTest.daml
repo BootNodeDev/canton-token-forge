@@ -86,9 +86,11 @@ oneAdminIssuesManyInstruments = do
 -- reach: there `token.admin == admin` already rejects a foreign input, so the
 -- instrument half of the guard never decides anything. With one admin on both
 -- instruments, `token.instrumentId == instrumentId` is the only thing keeping a
--- CC holding out of a GB spend. Both entry points that consume holdings are
--- covered, and every other field is a valid GB request so that the earlier
--- "instrumentId must match this config" assertions cannot be what rejects.
+-- CC holding out of a GB spend. What is pinned is the shared input guard in
+-- `fetchInputs`, reached from three entry points: burn-mint and transfer are
+-- exercised below, and allocation reaches the same helper through `spendInputs`.
+-- Every other field is a valid GB request so that the earlier "instrumentId must
+-- match this config" assertions cannot be what rejects.
 sameAdminInstrumentsDoNotCrossSpend : Script ()
 sameAdminInstrumentsDoNotCrossSpend = do
   admin <- allocateParty "admin"
