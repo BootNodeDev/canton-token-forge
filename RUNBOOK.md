@@ -96,7 +96,10 @@ alongside `CC`, since one admin serves every instrument it has created.
 
 The faucet is exercised on the ledger, not through the registry service. The
 `InstrumentConfig` must be disclosed to the tapping party, which is not a
-stakeholder of it:
+stakeholder of it. A disclosure needs the contract's `createdEventBlob`, and an
+active-contracts query only returns one when the filter asks for it, so add
+`"includeCreatedEventBlob": true` next to the `templateId` in the `TemplateFilter`
+value. `scripts/seed.mjs` omits that flag because it discloses nothing.
 
 ```
 POST /v2/commands/submit-and-wait-for-transaction
