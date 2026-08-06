@@ -176,11 +176,15 @@ reason the seed script looks the way it does.
   handlers read payload fields that exist on the template create arguments and
   not on the standard interface views.
 - `LEDGER_USER_ID` has no effect on the running service, which submits nothing.
-  It is carried in the same block because `scripts/seed.mjs` does submit: an
-  unauthenticated sandbox has no token claims to default the user from, so the
-  seed sends `participant_admin`, while against an authenticated participant the
-  variable is left unset because the participant derives the user from the token
-  and rejects a submission that names a different one.
+  The seed prints it as a record of the user it submitted under, not as an input
+  the service reads back. Setting it in `registry/.env` changes nothing at all:
+  only the service loads that file, and `scripts/seed.mjs` reads the process
+  environment directly. To change what the seed sends, pass it on the command
+  line: `LEDGER_USER_ID=myuser npm run seed`. An unauthenticated sandbox has no
+  token claims to default the user from and needs `participant_admin`, which the
+  seed supplies by default; against an authenticated participant leave it unset,
+  because the participant derives the user from the token and rejects a
+  submission that names a different one.
 
 ## Troubleshooting
 
