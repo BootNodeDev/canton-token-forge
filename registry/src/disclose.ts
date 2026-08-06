@@ -28,9 +28,9 @@ export function anyValueContractId(cid: string): unknown {
   return { tag: 'AV_ContractId', value: cid }
 }
 
-// The allocation cancel path supplies the early-release signal as an
-// AV_Bool; declared here so disclose.ts stays the single AnyValue encoding
-// site even though the transfer routes in this file do not use it.
+// The allocation cancel path supplies the early-release signal as an AV_Bool.
+// It is the only caller, but the encoder is declared alongside the contract-id
+// one so this file stays the single AnyValue encoding site.
 export function anyValueBool(b: boolean): unknown {
   return { tag: 'AV_Bool', value: b }
 }
