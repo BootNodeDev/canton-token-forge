@@ -168,6 +168,16 @@ reason the seed script looks the way it does.
   party that can see the contract. Those rows report the template id in
   package-**id** form, and disclosing it that way is accepted. The package-name
   rule above applies to the filter you send, not to the id that comes back.
+- **A choice declared on an interface is exercised under the INTERFACE id**, not
+  under the id of the template implementing it: `ExerciseCommand.templateId` for
+  `TransferFactory_Transfer` on an `InstrumentConfig` contract is
+  `#splice-api-token-transfer-instruction-v1:Splice.Api.Token.TransferInstructionV1:TransferFactory`.
+  Naming the template instead is rejected with "Invalid
+  template:...:Canton.TokenForge.Registry:InstrumentConfig or
+  choice:TransferFactory_PublicFetch", which reads as a plain resolution failure
+  and does not point at the interface. Consuming and nonconsuming choices behave
+  the same, and both the package-name and the (deprecated) package-id form of the
+  interface id are accepted.
 - The sandbox needs no bearer token. `LEDGER_API_TOKEN` is still required by the
   service config, so any placeholder value works locally.
 
