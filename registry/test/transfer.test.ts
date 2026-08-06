@@ -294,62 +294,26 @@ describe('transfer factory', () => {
 })
 
 describe('transfer-instruction choice-contexts', () => {
-  it('discloses the config and the escrow LockedToken for accept', async () => {
-    const ledger = ledgerFrom({
-      [config.instrumentConfigTemplateId]: [cfgEntry()],
-      [config.transferInstructionTemplateId]: [instructionEntry()],
-      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+  // No InstrumentConfig is put on the ledger for these three: none of the
+  // choice bodies fetches one, so the route must answer without ever looking.
+  // Restoring the config lookup turns every one of them into a 404.
+  for (const choice of ['accept', 'reject', 'withdraw']) {
+    it(`discloses only the escrow LockedToken for ${choice}`, async () => {
+      const ledger = ledgerFrom({
+        [config.transferInstructionTemplateId]: [instructionEntry()],
+        [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+      })
+      const app = createServer({ ledger, config })
+      const res = await request(app)
+        .post(`/registry/transfer-instruction/v1/instr1/choice-contexts/${choice}`)
+        .send({ meta: {} })
+      expect(res.status).toBe(200)
+      validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
+      expect(res.body.choiceContextData).toEqual({})
+      const ids = (res.body.disclosedContracts as { contractId: string }[]).map((d) => d.contractId)
+      expect(ids).toEqual(['locked1'])
     })
-    const app = createServer({ ledger, config })
-    const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
-      .send({ meta: {} })
-    expect(res.status).toBe(200)
-    validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
-    expect(res.body.choiceContextData).toEqual({})
-    const ids = (res.body.disclosedContracts as { contractId: string }[])
-      .map((d) => d.contractId)
-      .sort()
-    expect(ids).toEqual(['cfg1', 'locked1'])
-  })
-
-  it('discloses the config and the escrow LockedToken for reject', async () => {
-    const ledger = ledgerFrom({
-      [config.instrumentConfigTemplateId]: [cfgEntry()],
-      [config.transferInstructionTemplateId]: [instructionEntry()],
-      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
-    })
-    const app = createServer({ ledger, config })
-    const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/reject')
-      .send({ meta: {} })
-    expect(res.status).toBe(200)
-    validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
-    expect(res.body.choiceContextData).toEqual({})
-    const ids = (res.body.disclosedContracts as { contractId: string }[])
-      .map((d) => d.contractId)
-      .sort()
-    expect(ids).toEqual(['cfg1', 'locked1'])
-  })
-
-  it('discloses the config and the escrow LockedToken for withdraw', async () => {
-    const ledger = ledgerFrom({
-      [config.instrumentConfigTemplateId]: [cfgEntry()],
-      [config.transferInstructionTemplateId]: [instructionEntry()],
-      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
-    })
-    const app = createServer({ ledger, config })
-    const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/withdraw')
-      .send({ meta: {} })
-    expect(res.status).toBe(200)
-    validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
-    expect(res.body.choiceContextData).toEqual({})
-    const ids = (res.body.disclosedContracts as { contractId: string }[])
-      .map((d) => d.contractId)
-      .sort()
-    expect(ids).toEqual(['cfg1', 'locked1'])
-  })
+  }
 
   it('404s when the transfer instruction is not found', async () => {
     const ledger = ledgerFrom({ [config.transferInstructionTemplateId]: [] })
@@ -361,23 +325,8 @@ describe('transfer-instruction choice-contexts', () => {
     validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
-  it("404s when no config matches the instruction's instrumentId", async () => {
-    const ledger = ledgerFrom({
-      [config.instrumentConfigTemplateId]: [],
-      [config.transferInstructionTemplateId]: [instructionEntry()],
-      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
-    })
-    const app = createServer({ ledger, config })
-    const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
-      .send({ meta: {} })
-    expect(res.status).toBe(404)
-    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
-  })
-
   it('404s instead of returning a context that omits the escrow when the LockedToken is gone', async () => {
     const ledger = ledgerFrom({
-      [config.instrumentConfigTemplateId]: [cfgEntry()],
       [config.transferInstructionTemplateId]: [instructionEntry()],
       [config.lockedTokenTemplateId]: [],
     })
@@ -387,12 +336,12 @@ describe('transfer-instruction choice-contexts', () => {
       .send({ meta: {} })
     expect(res.status).toBe(404)
     validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
-    // The instruction and its config both resolve on this path, so only the
-    // message separates a stale escrow from the route's two other 404s.
+    // The instruction resolves on this path, so only the message separates a
+    // stale escrow from the route's other 404.
     expect(res.body.error).toBe('escrow not found')
   })
 
-  it('409s instead of returning a context that omits the config when (admin, instrumentId) is not unique', async () => {
+  it('serves a context for an instrument whose config is duplicated', async () => {
     const dup = cfgEntry()
     dup.contractId = 'cfg2'
     const ledger = ledgerFrom({
@@ -404,9 +353,11 @@ describe('transfer-instruction choice-contexts', () => {
     const res = await request(app)
       .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
       .send({ meta: {} })
-    expect(res.status).toBe(409)
-    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
-    expect(res.body.error).toBe('instrument id not unique')
-    expect(res.body.contractIds.sort()).toEqual(['cfg1', 'cfg2'])
+    // A duplicate config 409s the factory route, which has to name one config
+    // as the factory. These three choices never read one, so an accept that is
+    // otherwise valid must not be blocked by an ambiguity it does not depend on.
+    expect(res.status).toBe(200)
+    const ids = (res.body.disclosedContracts as { contractId: string }[]).map((d) => d.contractId)
+    expect(ids).toEqual(['locked1'])
   })
 })

@@ -81,9 +81,10 @@ export function transferRouter(deps: ServerDeps): Router {
     }),
   )
 
-  // accept / reject / withdraw all disclose the InstrumentConfig and the
-  // escrow LockedToken; none of the three read the expire-lock signal on
-  // the transfer path (reject unlocks unconditionally, withdraw is
+  // accept / reject / withdraw disclose the escrow LockedToken and nothing
+  // else: none of the three choice bodies fetches an InstrumentConfig, so
+  // disclosing one would only add a lookup that can fail. None of them reads
+  // the expire-lock signal either (reject unlocks unconditionally, withdraw is
   // deadline-gated on-ledger), so choiceContextData is always empty here.
   for (const choice of ['accept', 'reject', 'withdraw']) {
     r.post(
@@ -97,22 +98,10 @@ export function transferRouter(deps: ServerDeps): Router {
         )
         if (!instr) return res.status(404).json({ error: 'transfer instruction not found' })
 
-        const instrumentId = instr.payload.transfer.instrumentId
-        // The config query and the escrow disclosure are independent once the
-        // instruction is resolved, so run them concurrently.
-        const [cfgRows, escrow] = await Promise.all([
-          activeConfigs(deps.ledger, deps.config),
-          findEscrow(deps.ledger, deps.config, instr.payload.lockedCid),
-        ])
-        const cfg = resolveOrRespond(
-          res,
-          resolveConfig(cfgRows, instrumentId.admin, instrumentId.id),
-        )
-        if (!cfg) return
+        const escrow = await findEscrow(deps.ledger, deps.config, instr.payload.lockedCid)
         if (!escrow) return res.status(404).json({ error: 'escrow not found' })
 
-        const disclosedContracts = [toDisclosed(cfg), toDisclosed(escrow)]
-        res.json({ choiceContextData: {}, disclosedContracts })
+        res.json({ choiceContextData: {}, disclosedContracts: [toDisclosed(escrow)] })
       }),
     )
   }
