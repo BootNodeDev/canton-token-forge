@@ -72,6 +72,9 @@ export function resolveUnique<P>(matches: ContractEntry<P>[]): ResolveResult<P> 
   return { kind: 'ok', entry: matches[0] }
 }
 
+// Keeps its admin comparison even though every readable row is administered by
+// the configured party: here the admin arrives in the request body, and without
+// the check the service would answer for an instrument it does not administer.
 export function resolveConfig(
   rows: ContractEntry<InstrumentConfigPayload>[],
   admin: string,
@@ -83,10 +86,7 @@ export function resolveConfig(
 
 // The metadata standard's get-by-id path (/instruments/:instrumentId) only
 // carries the instrumentId, not the admin, so it cannot use resolveConfig
-// directly; it resolves uniqueness by instrumentId alone. resolveConfig keeps
-// its admin comparison even though every readable row is administered by the
-// configured party: there the admin arrives in the request body, and without
-// the check the service would answer for an instrument it does not administer.
+// directly; it resolves uniqueness by instrumentId alone.
 export function resolveById(
   rows: ContractEntry<InstrumentConfigPayload>[],
   id: string,
