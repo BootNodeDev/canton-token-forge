@@ -64,10 +64,12 @@ export async function findByContractId<P = unknown>(
 // Resolve the escrow LockedToken behind a lockedCid. The receiver is not a
 // stakeholder of the escrow, so the transfer and allocation choice-contexts
 // both disclose it before the counterparty exercises its choice. An absent
-// escrow is returned as undefined rather than an empty disclosure list: an
-// active instruction or allocation always points at a live escrow, so a
-// missing one means the caller holds a stale contract id, and a context that
-// silently omits it would only fail later inside the choice.
+// escrow is returned as undefined rather than an empty disclosure list, because
+// a context that silently omits it would only fail later inside the choice.
+// Note the caller need not hold a stale id for this to happen: after expiry the
+// sender can reclaim the escrow through LockedToken_ExpireLock, which archives
+// it and leaves the instruction active but inert, so the cid the service itself
+// just read out of a live instruction can already be gone.
 export async function findEscrow(
   ledger: LedgerClient,
   config: Pick<Config, 'lockedTokenTemplateId' | 'adminParty'>,
