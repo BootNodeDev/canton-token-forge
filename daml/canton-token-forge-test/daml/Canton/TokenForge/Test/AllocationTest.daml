@@ -15,12 +15,11 @@ import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArg
 -- for a 25.0 leg alice -> bob executed by venue.
 allocateThenExecute : Script ()
 allocateThenExecute = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -57,12 +56,11 @@ allocateThenExecute = do
 -- allocation and get their escrowed funds back.
 allocationWithdrawRefunds : Script ()
 allocationWithdrawRefunds = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -95,12 +93,11 @@ allocationWithdrawRefunds = do
 -- rejected before any funds are touched.
 allocationRejectsExpectedAdminMismatch : Script ()
 allocationRejectsExpectedAdminMismatch = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -121,12 +118,11 @@ allocationRejectsExpectedAdminMismatch = do
 -- silently double-spent.
 allocationRejectsDuplicateInputs : Script ()
 allocationRejectsDuplicateInputs = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -151,12 +147,11 @@ allocationRejectsDuplicateInputs = do
 -- executor can no longer settle the leg even with full authorization.
 allocationExecuteAfterSettleBeforeFails : Script ()
 allocationExecuteAfterSettleBeforeFails = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -183,12 +178,11 @@ allocationExecuteAfterSettleBeforeFails = do
 -- up front: its escrow could never be settled, only reclaimed.
 allocationRejectsUnreachableSettleBefore : Script ()
 allocationRejectsUnreachableSettleBefore = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -212,12 +206,11 @@ allocationRejectsUnreachableSettleBefore = do
 -- unilateral withdraw cannot break an in-flight settlement.
 allocationWithdrawBeforeSettleFails : Script ()
 allocationWithdrawBeforeSettleFails = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -243,12 +236,11 @@ allocationWithdrawBeforeSettleFails = do
 -- the sender before settleBefore.
 allocationCancelWithSignalReleasesEarly : Script ()
 allocationCancelWithSignalReleasesEarly = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -279,12 +271,11 @@ allocationCancelWithSignalReleasesEarly = do
 -- premature cancel cannot break an in-flight settlement.
 allocationCancelBeforeSettleWithoutSignalFails : Script ()
 allocationCancelBeforeSettleWithoutSignalFails = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   venue <- allocateParty "venue"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0

@@ -6,28 +6,24 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
 import Splice.Api.Token.BurnMintV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Test.Util (createRegistry, registerInstrumentOn, mintToken)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
 
--- Two instruments under different admins share one operator/registry. A
--- holding minted under instrument A must not be spendable through instrument
--- B's factory. adminA and alice (the token's actual signatory and owner) are
--- included as co-actors so the transaction has enough authorization to fetch
--- and archive the A-token; that isolates the rejection to the burn-mint
--- instrument guard itself, rather than a visibility or missing-authorization
--- failure that would reject the transaction for the wrong reason.
+-- Two instruments under different admins. A holding minted under instrument A
+-- must not be spendable through instrument B's factory. adminA and alice (the
+-- token's actual signatory and owner) are included as co-actors so the
+-- transaction has enough authorization to fetch and archive the A-token; that
+-- isolates the rejection to the burn-mint instrument guard itself, rather than a
+-- visibility or missing-authorization failure that would reject the transaction
+-- for the wrong reason.
 multiInstrumentIsolationHolds : Script ()
 multiInstrumentIsolationHolds = do
-  operator <- allocateParty "operator"
   adminA <- allocateParty "adminA"
   adminB <- allocateParty "adminB"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  reg <- createRegistry operator
-  let registerUnder instrumentAdmin instrumentId =
-        registerInstrumentOn reg operator instrumentAdmin instrumentId instrumentId instrumentId 10 None
-  cfgA <- registerUnder adminA "AA"
-  cfgB <- registerUnder adminB "BB"
+  cfgA <- registerInstrument adminA "AA" "AA" "AA" 10 None
+  cfgB <- registerInstrument adminB "BB" "BB" "BB" 10 None
 
   tokA <- mintToken cfgA adminA alice 100.0
   tokB <- mintToken cfgB adminB bob 50.0
