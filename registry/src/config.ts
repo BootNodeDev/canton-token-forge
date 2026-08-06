@@ -1,7 +1,9 @@
 export interface Config {
   ledgerApiUrl: string
   ledgerApiToken: string
-  // Optional on purpose: see the userId note in ledger.ts submitAndWait.
+  // Read by the submission path only, which no route reaches; see the note on
+  // LedgerClient.submitAndWait for why that path is kept. Optional on purpose:
+  // see the userId note on the implementation.
   ledgerUserId?: string
   adminParty: string
   instrumentConfigTemplateId: string
