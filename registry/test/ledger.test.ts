@@ -128,13 +128,13 @@ describe('HttpLedgerClient.submitAndWait', () => {
       [
         {
           templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
-          createArguments: { id: 'CC' },
+          createArguments: { instrumentId: 'CC' },
         },
         {
           templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
           contractId: '00abc',
-          choice: 'InstrumentConfig_Archive',
-          choiceArgument: {},
+          choice: 'InstrumentConfig_Mint',
+          choiceArgument: { recipient: 'alice::1', amount: '42.0' },
         },
       ],
     )
@@ -153,15 +153,15 @@ describe('HttpLedgerClient.submitAndWait', () => {
       {
         CreateCommand: {
           templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
-          createArguments: { id: 'CC' },
+          createArguments: { instrumentId: 'CC' },
         },
       },
       {
         ExerciseCommand: {
           templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
           contractId: '00abc',
-          choice: 'InstrumentConfig_Archive',
-          choiceArgument: {},
+          choice: 'InstrumentConfig_Mint',
+          choiceArgument: { recipient: 'alice::1', amount: '42.0' },
         },
       },
     ])
@@ -179,9 +179,9 @@ describe('HttpLedgerClient.submitAndWait', () => {
 
     const disclosedContracts = [
       {
-        templateId: 'pkg:Canton.TokenForge.Registry:TokenRegistry',
-        contractId: 'reg1',
-        createdEventBlob: 'BLOB-REG',
+        templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
+        contractId: 'cfg1',
+        createdEventBlob: 'BLOB-CFG',
         synchronizerId: 'sync-1',
       },
     ]
@@ -190,10 +190,10 @@ describe('HttpLedgerClient.submitAndWait', () => {
       ['admin::1'],
       [
         {
-          templateId: 'pkg:Canton.TokenForge.Registry:TokenRegistry',
-          contractId: 'reg1',
-          choice: 'TokenRegistry_ProposeInstrument',
-          choiceArgument: {},
+          templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
+          contractId: 'cfg1',
+          choice: 'InstrumentConfig_Mint',
+          choiceArgument: { recipient: 'alice::1', amount: '42.0' },
         },
       ],
       disclosedContracts,
