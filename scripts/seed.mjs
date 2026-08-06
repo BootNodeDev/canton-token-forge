@@ -285,13 +285,16 @@ async function main() {
   // keep a real credential out of terminal scrollback and CI logs.
   console.log(`LEDGER_API_TOKEN=${token ? '<the LEDGER_API_TOKEN you passed in>' : 'placeholder'}`)
   // Only an unauthenticated participant needs to be told the ledger user: it
-  // has no claims to default one from. Where a token was supplied the
-  // participant derives the user from it and rejects a submission naming a
-  // different one, so the line is emitted commented out.
+  // has no claims to default one from. A user id resolves empty for two
+  // different reasons, so the emitted note names the one that applies: a token
+  // was supplied and the participant will derive the user from it, or the
+  // caller passed an empty LEDGER_USER_ID to force omission.
   if (userId) {
     console.log(`LEDGER_USER_ID=${userId}`)
-  } else {
+  } else if (token) {
     console.log('# LEDGER_USER_ID is unset on purpose: the participant reads it from the token')
+  } else {
+    console.log('# LEDGER_USER_ID was forced empty, so submissions omit it')
   }
   console.log(`ADMIN_PARTY=${admin}`)
   quoted('INSTRUMENT_CONFIG_TEMPLATE_ID', INSTRUMENT_CONFIG)
