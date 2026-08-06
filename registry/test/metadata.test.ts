@@ -3,23 +3,18 @@ import { describe, expect, it } from 'vitest'
 import type { LedgerClient } from '../src/ledger'
 import type { InstrumentConfigPayload } from '../src/payloads'
 import { createServer } from '../src/server'
-import { config } from './helpers/fixtures'
+import { cfgEntry, config, ledgerFrom } from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
 
 function ledgerWith(payloads: InstrumentConfigPayload[]): LedgerClient {
-  return {
-    activeContracts: () =>
-      Promise.resolve(
-        payloads.map((p, i) => ({
-          templateId: config.instrumentConfigTemplateId,
-          contractId: `c${i}`,
-          createdEventBlob: 'b',
-          synchronizerId: 's',
-          payload: p,
-        })),
-      ),
-    submitAndWait: () => Promise.reject(new Error('submitAndWait not expected in this test')),
-  }
+  return ledgerFrom({
+    [config.instrumentConfigTemplateId]: payloads.map((p, i) => {
+      const entry = cfgEntry(p, [p.admin, p.operator])
+      entry.contractId = `c${i}`
+      entry.createdEventBlob = 'b'
+      return entry
+    }),
+  })
 }
 
 const cantonCoin: InstrumentConfigPayload = {
