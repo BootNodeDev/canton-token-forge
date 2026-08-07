@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 //
 // seed.mjs - seed a running Canton sandbox with the contracts the registry
-// service needs: an operator party, an instrument admin, two demo users, a
-// TokenRegistry, and one InstrumentConfig created through the propose/accept
-// flow. Prints the resulting contract ids and a ready-to-paste registry/.env
-// block.
+// service needs: an instrument admin, two demo users, and one InstrumentConfig
+// created directly by the admin. Prints the resulting contract ids and a
+// ready-to-paste registry/.env block.
 //
 // Usage:
 //   bash scripts/sandbox.sh                    # in one shell
@@ -13,13 +12,13 @@
 // Env overrides:
 //   LEDGER_API_URL        JSON Ledger API base URL (default http://localhost:7575)
 //   LEDGER_API_TOKEN      bearer token; omitted entirely when unset (sandbox needs none)
-//   REGISTRY_BASE_URL     URL the registry advertises for its own routes (default http://localhost:8080)
 //   SEED_INSTRUMENT_ID    instrument id to register (default CC)
 //   SEED_INSTRUMENT_NAME  display name (default Canton Coin Forge)
 //   SEED_SYMBOL           ticker symbol (default CC)
 //   SEED_DECIMALS         decimals, 0..18 (default 10)
 //   SEED_FAUCET_MAX       per-tap cap; set empty to register without a faucet (default 1000.0)
-//   LEDGER_USER_ID        ledger user id for submissions (default participant_admin)
+//   LEDGER_USER_ID        ledger user id for submissions (default participant_admin
+//                         without a token, omitted with one; set empty to force omission)
 
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -29,9 +28,10 @@ import { fileURLToPath } from 'node:url'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 // An exported-but-empty variable means "unset" for every override below except
-// SEED_FAUCET_MAX, where empty is the documented way to ask for no faucet.
-// Letting "" through would commit an instrument with an empty id or symbol,
-// which the ledger accepts and no later run can distinguish from a real one.
+// SEED_FAUCET_MAX and LEDGER_USER_ID, where empty is the documented way to ask
+// for no faucet and no user id. Letting "" through elsewhere would commit an
+// instrument with an empty id or symbol, which the ledger accepts and no later
+// run can distinguish from a real one.
 const strEnv = (name, fallback) => {
   const raw = process.env[name]
   return raw === undefined || raw === '' ? fallback : raw
@@ -57,16 +57,20 @@ function packageNameFromDamlYaml() {
 }
 
 function loadConfig() {
+  const token = strEnv('LEDGER_API_TOKEN', '')
   return {
     base: strEnv('LEDGER_API_URL', 'http://localhost:7575'),
-    token: strEnv('LEDGER_API_TOKEN', ''),
-    registryBaseUrl: strEnv('REGISTRY_BASE_URL', 'http://localhost:8080'),
+    token,
     instrumentId: strEnv('SEED_INSTRUMENT_ID', 'CC'),
     instrumentName: strEnv('SEED_INSTRUMENT_NAME', 'Canton Coin Forge'),
     symbol: strEnv('SEED_SYMBOL', 'CC'),
     decimals: intEnv('SEED_DECIMALS', 10, 0, 18),
     faucetMax: process.env.SEED_FAUCET_MAX ?? '1000.0',
-    userId: strEnv('LEDGER_USER_ID', 'participant_admin'),
+    // A token already names the ledger user, and the participant rejects a
+    // submission naming a different one, so the default is to omit it there.
+    // Without authentication there are no claims to read it from and the
+    // participant rejects a submission that leaves it out.
+    userId: process.env.LEDGER_USER_ID ?? (token ? '' : 'participant_admin'),
     packageName: packageNameFromDamlYaml(),
   }
 }
@@ -85,7 +89,6 @@ try {
 const {
   base,
   token,
-  registryBaseUrl,
   instrumentId,
   instrumentName,
   symbol,
@@ -105,8 +108,6 @@ const headers = {
 // outright ("expected a package name"), so every id below uses the name form.
 const pkg = `#${packageName}`
 const tid = (entity) => `${pkg}:Canton.TokenForge.Registry:${entity}`
-const TOKEN_REGISTRY = tid('TokenRegistry')
-const INSTRUMENT_CONFIG_PROPOSAL = tid('InstrumentConfigProposal')
 const INSTRUMENT_CONFIG = tid('InstrumentConfig')
 const PREAPPROVAL = tid('TokenTransferPreapproval')
 const TOKEN = `${pkg}:Canton.TokenForge.Token:Token`
@@ -169,9 +170,7 @@ async function activeContracts(templateId, party) {
         [party]: {
           cumulative: [
             {
-              identifierFilter: {
-                TemplateFilter: { value: { templateId, includeCreatedEventBlob: true } },
-              },
+              identifierFilter: { TemplateFilter: { value: { templateId } } },
             },
           ],
         },
@@ -183,151 +182,88 @@ async function activeContracts(templateId, party) {
   return rows.flatMap((row) => {
     const ac = row?.contractEntry?.JsActiveContract
     if (!ac) return []
-    return [
-      {
-        templateId: ac.createdEvent.templateId,
-        contractId: ac.createdEvent.contractId,
-        createdEventBlob: ac.createdEvent.createdEventBlob,
-        synchronizerId: ac.synchronizerId,
-        payload: ac.createdEvent.createArgument,
-      },
-    ]
+    return [{ contractId: ac.createdEvent.contractId, payload: ac.createdEvent.createArgument }]
   })
 }
 
 // The submission envelope nests the command list inside a `commands` object;
 // a flat body is rejected with "Missing required field at 'commands.commands'".
-// `userId` must be sent explicitly: with authentication off there are no claims
-// to default it from, and the participant rejects the submission without it.
-async function submit(actAs, commands, disclosedContracts = []) {
+// `userId` is sent only when resolved, matching the service's own ledger client.
+async function create(actAs, createCommand) {
   return call('/v2/commands/submit-and-wait-for-transaction', {
     commands: {
-      commands: commands.map((command) =>
-        'contractId' in command ? { ExerciseCommand: command } : { CreateCommand: command },
-      ),
+      commands: [{ CreateCommand: createCommand }],
       actAs,
-      userId,
+      ...(userId ? { userId } : {}),
       commandId: `seed-${randomUUID()}`,
-      disclosedContracts,
     },
   })
 }
 
-function expectOne(rows, what) {
-  if (rows.length !== 1) throw new Error(`expected exactly one ${what}, found ${rows.length}`)
-  return rows[0]
+// LF 2.1 has no contract keys, so nothing on the ledger stops two overlapping
+// seed runs from both creating a config for the same (admin, instrumentId).
+// There is no useful winner to pick: the registry answers 409 for an ambiguous
+// instrument, so a seed that chose one would hand out an env block for an
+// instrument the service cannot serve.
+function expectOneConfig(rows) {
+  if (rows.length === 1) return rows[0]
+  if (rows.length === 0) {
+    throw new Error(`no InstrumentConfig for ${instrumentId} after creating one`)
+  }
+  throw new Error(
+    `found ${rows.length} InstrumentConfig contracts for ${instrumentId}: archive all but one, ` +
+      'or restart the sandbox for a clean ledger, and seed again',
+  )
 }
 
-// The instrument identity is (admin, instrumentId); the payload spells the id
-// field `instrumentId`, unlike the standard InstrumentId value type's `id`.
-const forThisInstrument = (rows, admin) =>
-  rows.filter((r) => r.payload.admin === admin && r.payload.instrumentId === instrumentId)
+// The instrument identity is (admin, instrumentId), but admin is
+// InstrumentConfig's only signatory and these rows come from the admin's own
+// active contract set, so only the id half is left to filter on. The payload
+// spells that field `instrumentId`, unlike the standard InstrumentId value
+// type's `id`.
+const forThisInstrument = (rows) => rows.filter((r) => r.payload.instrumentId === instrumentId)
 
 async function main() {
   console.log(`seeding ${base}`)
   console.log(`package ${packageName}\n`)
 
-  const operator = await allocate('operator')
   const admin = await allocate('admin')
   const user1 = await allocate('user1')
   const user2 = await allocate('user2')
 
   // Contract ids are read back from the active contract set rather than out of
   // the submission response, so the seed does not depend on where a given Canton
-  // version puts an exercise result in the transaction envelope.
-  let registryRows = await activeContracts(TOKEN_REGISTRY, operator)
-  if (registryRows.length === 0) {
-    await submit(
-      [operator],
-      [{ templateId: TOKEN_REGISTRY, createArguments: { operator, registryBaseUrl } }],
-    )
-    registryRows = await activeContracts(TOKEN_REGISTRY, operator)
-  }
-  const registry = expectOne(registryRows, 'TokenRegistry')
-
-  let configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, operator), admin)
+  // version puts a create result in the transaction envelope.
+  let configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin))
   if (configRows.length === 0) {
-    let proposalRows = forThisInstrument(
-      await activeContracts(INSTRUMENT_CONFIG_PROPOSAL, admin),
-      admin,
-    )
-    if (proposalRows.length === 0) {
-      // The admin controls TokenRegistry_ProposeInstrument but is not a
-      // stakeholder of the operator-signed registry, so the registry is
-      // disclosed explicitly. Same disclosure the service's propose route makes.
-      await submit(
-        [admin],
-        [
-          {
-            templateId: TOKEN_REGISTRY,
-            contractId: registry.contractId,
-            choice: 'TokenRegistry_ProposeInstrument',
-            choiceArgument: {
-              admin,
-              instrumentId,
-              name: instrumentName,
-              symbol,
-              // Int64 is encoded as a JSON string; a bare number is rejected
-              // with "Expected ujson.Str".
-              decimals: String(decimals),
-              faucet: faucetMax ? { maxPerTap: faucetMax } : null,
-            },
-          },
-        ],
-        [
-          {
-            templateId: registry.templateId,
-            contractId: registry.contractId,
-            createdEventBlob: registry.createdEventBlob,
-            synchronizerId: registry.synchronizerId,
-          },
-        ],
-      )
-      proposalRows = forThisInstrument(
-        await activeContracts(INSTRUMENT_CONFIG_PROPOSAL, admin),
+    await create([admin], {
+      templateId: INSTRUMENT_CONFIG,
+      createArguments: {
         admin,
-      )
-    }
-    const proposal = expectOne(proposalRows, 'InstrumentConfigProposal')
-
-    await submit(
-      [operator],
-      [
-        {
-          templateId: INSTRUMENT_CONFIG_PROPOSAL,
-          contractId: proposal.contractId,
-          choice: 'InstrumentConfigProposal_Accept',
-          choiceArgument: {},
-        },
-      ],
-    )
-    configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, operator), admin)
+        instrumentId,
+        name: instrumentName,
+        symbol,
+        // Int64 is encoded as a JSON string; a bare number is rejected
+        // with "Expected ujson.Str".
+        decimals: String(decimals),
+        faucet: faucetMax ? { maxPerTap: faucetMax } : null,
+        meta: { values: {} },
+      },
+    })
+    configRows = forThisInstrument(await activeContracts(INSTRUMENT_CONFIG, admin))
   }
-  const config = expectOne(configRows, 'InstrumentConfig')
+  const config = expectOneConfig(configRows)
 
   // Report the contract that is actually on the ledger, not the requested
   // values: on a re-run the find-or-create branches are skipped and the
   // existing contract wins, so echoing the env vars would misreport it.
   const instrument = config.payload
 
-  // Same reasoning for the registry: a reused one keeps whatever base URL it
-  // was created with, and that is the URL standard clients resolve from the
-  // ledger, so the generated .env has to agree with it rather than with the env.
-  const onLedgerBaseUrl = registry.payload.registryBaseUrl
-  if (onLedgerBaseUrl !== registryBaseUrl) {
-    console.warn(
-      `warning: reusing a TokenRegistry that advertises ${onLedgerBaseUrl}; ` +
-        `REGISTRY_BASE_URL=${registryBaseUrl} was ignored\n`,
-    )
-  }
-
   console.log('parties')
-  console.log(`  operator ${operator}`)
-  console.log(`  admin    ${admin}`)
-  console.log(`  user1    ${user1}`)
-  console.log(`  user2    ${user2}\n`)
+  console.log(`  admin ${admin}`)
+  console.log(`  user1 ${user1}`)
+  console.log(`  user2 ${user2}\n`)
   console.log('contracts')
-  console.log(`  TokenRegistry    ${registry.contractId}`)
   console.log(`  InstrumentConfig ${config.contractId}`)
   console.log(
     `  instrument       ${instrument.instrumentId} (${instrument.symbol}, ${instrument.decimals} decimals)`,
@@ -352,16 +288,13 @@ async function main() {
   // has no claims to default one from. Where a token was supplied the
   // participant derives the user from it and rejects a submission naming a
   // different one, so the line is emitted commented out.
-  if (token) {
-    console.log('# LEDGER_USER_ID is unset on purpose: the participant reads it from the token')
-  } else {
+  if (userId) {
     console.log(`LEDGER_USER_ID=${userId}`)
+  } else {
+    console.log('# LEDGER_USER_ID is unset on purpose: the participant reads it from the token')
   }
-  console.log(`OPERATOR_PARTY=${operator}`)
-  console.log(`REGISTRY_BASE_URL=${onLedgerBaseUrl}`)
+  console.log(`ADMIN_PARTY=${admin}`)
   quoted('INSTRUMENT_CONFIG_TEMPLATE_ID', INSTRUMENT_CONFIG)
-  quoted('INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID', INSTRUMENT_CONFIG_PROPOSAL)
-  quoted('TOKEN_REGISTRY_TEMPLATE_ID', TOKEN_REGISTRY)
   quoted('PREAPPROVAL_TEMPLATE_ID', PREAPPROVAL)
   quoted('LOCKED_TOKEN_TEMPLATE_ID', LOCKED_TOKEN)
   quoted('TRANSFER_INSTRUCTION_TEMPLATE_ID', TRANSFER_INSTRUCTION)
