@@ -53,6 +53,23 @@ export function cfgEntry(
   }
 }
 
+// A second instrument under the SAME admin, which is what a single-admin
+// registry actually serves. Its distinct contract id is what lets a route's
+// factoryId show which config was selected, so a filter that matches on admin
+// alone (or one that takes the first row) is visible.
+export const otherInstrumentId: InstrumentIdValue = { admin: instrumentId.admin, id: 'GOLD-BAR' }
+
+export function otherCfgEntry(): StubEntry<InstrumentConfigPayload> {
+  const entry = cfgEntry({
+    instrumentId: otherInstrumentId.id,
+    name: 'Gold Bar',
+    symbol: 'GB',
+    decimals: 2,
+  })
+  entry.contractId = 'cfg2'
+  return entry
+}
+
 // LockedToken is signatory admin, owner, holders. The escrow behind a transfer
 // instruction is sender-owned with the admin as its sole holder.
 export function lockedTokenEntry(
