@@ -4,10 +4,7 @@ export interface Config {
   // Optional on purpose: see the userId note in ledger.ts submitAndWait.
   ledgerUserId?: string
   adminParty: string
-  registryBaseUrl: string
   instrumentConfigTemplateId: string
-  instrumentConfigProposalTemplateId: string
-  tokenRegistryTemplateId: string
   transferInstructionTemplateId: string
   preapprovalTemplateId: string
   lockedTokenTemplateId: string
@@ -63,10 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     ledgerApiToken: require_('LEDGER_API_TOKEN'),
     ...(env.LEDGER_USER_ID ? { ledgerUserId: env.LEDGER_USER_ID } : {}),
     adminParty: require_('ADMIN_PARTY'),
-    registryBaseUrl: require_('REGISTRY_BASE_URL'),
     instrumentConfigTemplateId: requireTemplateId('INSTRUMENT_CONFIG_TEMPLATE_ID'),
-    instrumentConfigProposalTemplateId: requireTemplateId('INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID'),
-    tokenRegistryTemplateId: requireTemplateId('TOKEN_REGISTRY_TEMPLATE_ID'),
     transferInstructionTemplateId: requireTemplateId('TRANSFER_INSTRUCTION_TEMPLATE_ID'),
     preapprovalTemplateId: requireTemplateId('PREAPPROVAL_TEMPLATE_ID'),
     lockedTokenTemplateId: requireTemplateId('LOCKED_TOKEN_TEMPLATE_ID'),
