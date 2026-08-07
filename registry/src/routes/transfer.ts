@@ -4,7 +4,7 @@ import { matchesInstrument, resolveConfig } from '../mapping.js'
 import type { InstrumentIdValue, TransferInstructionPayload } from '../payloads.js'
 import type { ServerDeps } from '../server.js'
 import { asyncHandler } from './async-handler.js'
-import { activeConfigs, activePreapprovals, escrowDisclosure, findByContractId } from './lookup.js'
+import { activeConfigs, activePreapprovals, findByContractId, findEscrow } from './lookup.js'
 import { resolveOrRespond } from './respond.js'
 
 interface TransferFactoryBody {
@@ -92,7 +92,7 @@ export function transferRouter(deps: ServerDeps): Router {
         const instr = await findByContractId<TransferInstructionPayload>(
           deps.ledger,
           deps.config.transferInstructionTemplateId,
-          deps.config.operatorParty,
+          deps.config.adminParty,
           req.params.transferInstructionId,
         )
         if (!instr) return res.status(404).json({ error: 'transfer instruction not found' })
@@ -102,15 +102,16 @@ export function transferRouter(deps: ServerDeps): Router {
         // instruction is resolved, so run them concurrently.
         const [cfgRows, escrow] = await Promise.all([
           activeConfigs(deps.ledger, deps.config),
-          escrowDisclosure(deps.ledger, deps.config, instr.payload.lockedCid),
+          findEscrow(deps.ledger, deps.config, instr.payload.lockedCid),
         ])
         const cfg = resolveOrRespond(
           res,
           resolveConfig(cfgRows, instrumentId.admin, instrumentId.id),
         )
         if (!cfg) return
+        if (!escrow) return res.status(404).json({ error: 'escrow not found' })
 
-        const disclosedContracts = [toDisclosed(cfg), ...escrow]
+        const disclosedContracts = [toDisclosed(cfg), toDisclosed(escrow)]
         res.json({ choiceContextData: {}, disclosedContracts })
       }),
     )

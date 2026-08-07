@@ -10,6 +10,7 @@ import {
   ledgerFrom,
   lockedTokenEntry,
   preapprovalEntry,
+  recordingLedgerFrom,
 } from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
 
@@ -36,11 +37,7 @@ describe('transfer factory', () => {
     expect(res.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
   })
 
-  // Expected to fail: the service queries the active set as the operator, which
-  // is not a stakeholder of TokenTransferPreapproval (signatory admin, receiver).
-  // The preapproval is therefore invisible and the factory falls through to the
-  // two-step offer, answering 200 with the wrong transferKind.
-  it.fails('returns transferKind direct and discloses config + preapproval when an in-window preapproval exists', async () => {
+  it('returns transferKind direct and discloses config + preapproval when an in-window preapproval exists', async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
       [config.preapprovalTemplateId]: [preapprovalEntry()],
@@ -93,9 +90,6 @@ describe('transfer factory', () => {
     expect(res.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
   })
 
-  // Passes today for a second reason as well as the intended one: the preapproval
-  // is invisible to the querying party before its validity window is examined.
-  // Once the read party can see it, the window check is what keeps this at offer.
   it('falls through to offer when the only preapproval is out of its validity window', async () => {
     const expired = preapprovalEntry({
       validFrom: '2020-01-01T00:00:00Z',
@@ -120,6 +114,101 @@ describe('transfer factory', () => {
     )
     expect(res.body.transferKind).toBe('offer')
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
+  it('falls through to offer when the only preapproval is not yet valid', async () => {
+    const notYetValid = preapprovalEntry({
+      validFrom: '2999-01-01T00:00:00Z',
+      expiresAt: '2999-06-01T00:00:00Z',
+    })
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [notYetValid],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    expect(res.body.transferKind).toBe('offer')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
+  // The admin is a stakeholder of every preapproval it issued, so these two
+  // reach the match filter and must be rejected by it, not by visibility.
+  it('falls through to offer when the only preapproval is for a different receiver', async () => {
+    const otherReceiver = preapprovalEntry({ receiver: 'other::1' }, [
+      instrumentId.admin,
+      'other::1',
+    ])
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [otherReceiver],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    expect(res.body.transferKind).toBe('offer')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
+  it('falls through to offer when the only preapproval is for a different instrument', async () => {
+    const otherInstrument = preapprovalEntry({ instrumentId: 'USDX' })
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [otherInstrument],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    expect(res.body.transferKind).toBe('offer')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
+  // Every InstrumentConfig this service can read is one it administers, so the
+  // admin comparison in resolveConfig looks redundant from inside the suite.
+  // It is not: it is the only thing stopping the registry from answering for an
+  // instrument someone else administers. Pinning the read party at the same
+  // time keeps a refactor from sourcing it off the request body.
+  it('404s a factory request for an instrument administered by someone else, reading as the configured admin', async () => {
+    const { ledger, queries } = recordingLedgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [preapprovalEntry()],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: {
+            instrumentId: { admin: 'other-registry::1', id: instrumentId.id },
+            sender: 'sender::1',
+            receiver: 'receiver::1',
+          },
+        },
+      })
+    expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+    expect(queries).toEqual([
+      [config.instrumentConfigTemplateId, config.adminParty],
+      [config.preapprovalTemplateId, config.adminParty],
+    ])
   })
 
   it('400s when choiceArguments.transfer.instrumentId is missing', async () => {
@@ -176,11 +265,7 @@ describe('transfer factory', () => {
 })
 
 describe('transfer-instruction choice-contexts', () => {
-  // Expected to fail: the service resolves the transfer instruction as the
-  // operator, which is not a stakeholder of TokenTransferInstruction (signatory
-  // admin, transfer.sender; observer transfer.receiver). The lookup misses and
-  // the route 404s before it ever reaches the config or escrow disclosure.
-  it.fails('discloses the config and the escrow LockedToken for accept', async () => {
+  it('discloses the config and the escrow LockedToken for accept', async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
       [config.transferInstructionTemplateId]: [instructionEntry()],
@@ -199,11 +284,7 @@ describe('transfer-instruction choice-contexts', () => {
     expect(ids).toEqual(['cfg1', 'locked1'])
   })
 
-  // Expected to fail: the service resolves the transfer instruction as the
-  // operator, which is not a stakeholder of TokenTransferInstruction (signatory
-  // admin, transfer.sender; observer transfer.receiver). The lookup misses and
-  // the route 404s before it ever reaches the config or escrow disclosure.
-  it.fails('discloses the config and the escrow LockedToken for reject', async () => {
+  it('discloses the config and the escrow LockedToken for reject', async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
       [config.transferInstructionTemplateId]: [instructionEntry()],
@@ -222,11 +303,7 @@ describe('transfer-instruction choice-contexts', () => {
     expect(ids).toEqual(['cfg1', 'locked1'])
   })
 
-  // Expected to fail: the service resolves the transfer instruction as the
-  // operator, which is not a stakeholder of TokenTransferInstruction (signatory
-  // admin, transfer.sender; observer transfer.receiver). The lookup misses and
-  // the route 404s before it ever reaches the config or escrow disclosure.
-  it.fails('discloses the config and the escrow LockedToken for withdraw', async () => {
+  it('discloses the config and the escrow LockedToken for withdraw', async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
       [config.transferInstructionTemplateId]: [instructionEntry()],
@@ -269,12 +346,24 @@ describe('transfer-instruction choice-contexts', () => {
     validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
-  // Expected to fail: the service resolves the transfer instruction as the
-  // operator, which is not a stakeholder of TokenTransferInstruction (signatory
-  // admin, transfer.sender; observer transfer.receiver). The lookup misses and
-  // the route 404s before it ever reaches the config uniqueness check this test
-  // means to exercise.
-  it.fails('409s instead of returning a context that omits the config when (admin, instrumentId) is not unique', async () => {
+  it('404s instead of returning a context that omits the escrow when the LockedToken is gone', async () => {
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+    // The instruction and its config both resolve on this path, so only the
+    // message separates a stale escrow from the route's two other 404s.
+    expect(res.body.error).toBe('escrow not found')
+  })
+
+  it('409s instead of returning a context that omits the config when (admin, instrumentId) is not unique', async () => {
     const dup = cfgEntry()
     dup.contractId = 'cfg2'
     const ledger = ledgerFrom({

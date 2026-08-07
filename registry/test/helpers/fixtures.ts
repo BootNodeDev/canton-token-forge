@@ -17,7 +17,7 @@ import type {
 export const config: Config = {
   ledgerApiUrl: 'http://ledger',
   ledgerApiToken: 'secret',
-  operatorParty: 'op::1',
+  adminParty: 'admin::1',
   registryBaseUrl: 'http://r',
   instrumentConfigTemplateId: '#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfig',
   instrumentConfigProposalTemplateId:
@@ -34,10 +34,10 @@ export const config: Config = {
 
 export const instrumentId: InstrumentIdValue = { admin: 'admin::1', id: 'CC' }
 
-// InstrumentConfig is signatory admin, observer operator.
+// InstrumentConfig is signatory admin.
 export function cfgEntry(
   overrides: Partial<InstrumentConfigPayload> = {},
-  stakeholders: string[] = [instrumentId.admin, config.operatorParty],
+  stakeholders: string[] = [instrumentId.admin],
 ): StubEntry<InstrumentConfigPayload> {
   return {
     templateId: config.instrumentConfigTemplateId,
@@ -47,7 +47,6 @@ export function cfgEntry(
     stakeholders,
     payload: {
       admin: instrumentId.admin,
-      operator: 'op::1',
       instrumentId: instrumentId.id,
       name: 'Canton Coin',
       symbol: 'CC',
@@ -93,6 +92,29 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
     activeContracts: (templateId: string, party: string) =>
       Promise.resolve((byTemplate[templateId] ?? []).filter((e) => e.stakeholders.includes(party))),
     submitAndWait: () => Promise.reject(new Error('submitAndWait not expected in this test')),
+  }
+}
+
+// ledgerFrom answers every query the same way, so a route that read as the
+// wrong party or off the wrong template id is invisible to it. This wrapper
+// records what was asked as well as answering it, which is the only way to
+// pin the read party now that the configured admin and the instrument admin
+// in the request body are necessarily the same value.
+export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
+  ledger: LedgerClient
+  queries: [string, string][]
+} {
+  const queries: [string, string][] = []
+  const inner = ledgerFrom(byTemplate)
+  return {
+    queries,
+    ledger: {
+      activeContracts: (templateId, party) => {
+        queries.push([templateId, party])
+        return inner.activeContracts(templateId, party)
+      },
+      submitAndWait: inner.submitAndWait,
+    },
   }
 }
 

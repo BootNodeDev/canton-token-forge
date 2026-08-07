@@ -63,10 +63,7 @@ describe('allocation factory', () => {
 })
 
 describe('allocation choice-contexts', () => {
-  // Expected to fail: the service resolves the allocation as the operator, which
-  // is not a stakeholder of TokenAllocation (signatory admin, sender; observer
-  // executor, receiver), so the lookup misses and the route 404s.
-  it.fails('cancel carries the expire-lock signal and discloses the escrow LockedToken', async () => {
+  it('cancel carries the expire-lock signal and discloses the escrow LockedToken', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
@@ -84,10 +81,7 @@ describe('allocation choice-contexts', () => {
     expect(ids).toEqual(['locked1'])
   })
 
-  // Expected to fail: the service resolves the allocation as the operator, which
-  // is not a stakeholder of TokenAllocation (signatory admin, sender; observer
-  // executor, receiver), so the lookup misses and the route 404s.
-  it.fails('withdraw discloses the escrow LockedToken but sends no signal', async () => {
+  it('withdraw discloses the escrow LockedToken but sends no signal', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
@@ -105,10 +99,7 @@ describe('allocation choice-contexts', () => {
     expect(ids).toEqual(['locked1'])
   })
 
-  // Expected to fail: the service resolves the allocation as the operator, which
-  // is not a stakeholder of TokenAllocation (signatory admin, sender; observer
-  // executor, receiver), so the lookup misses and the route 404s.
-  it.fails('execute-transfer sends no signal', async () => {
+  it('execute-transfer discloses the escrow LockedToken but sends no signal', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
@@ -120,6 +111,26 @@ describe('allocation choice-contexts', () => {
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
     expect(res.body.choiceContextData).toEqual({})
+    const ids = (res.body.disclosedContracts as { contractId: string }[])
+      .map((d) => d.contractId)
+      .sort()
+    expect(ids).toEqual(['locked1'])
+  })
+
+  it('404s instead of returning an empty context when the escrow LockedToken is gone', async () => {
+    const ledger = ledgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/allocations/v1/alloc1/choice-contexts/cancel')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
+    // The allocation itself resolves here, so only the message separates a
+    // stale escrow from the not-found allocation below.
+    expect(res.body.error).toBe('escrow not found')
   })
 
   it('404s when the allocation is not found', async () => {

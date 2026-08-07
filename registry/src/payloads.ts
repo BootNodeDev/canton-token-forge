@@ -15,7 +15,6 @@ export interface InstrumentIdValue {
 
 export interface InstrumentConfigPayload {
   admin: string
-  operator: string
   instrumentId: string
   name: string
   symbol: string
