@@ -89,7 +89,7 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 | `npm run clean` | Remove both `.daml` build dirs. |
 | `npm run setup` | Re-vendor deps + re-create the stable symlinks. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
-| `npm run seed` | Seed a running sandbox with parties, a registry, and one instrument. |
+| `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
 
 See [`RUNBOOK.md`](RUNBOOK.md) for the full local bring-up, including wiring the
 `registry/` HTTP service to the seeded sandbox.
