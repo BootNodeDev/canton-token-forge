@@ -66,7 +66,7 @@ the `splice-api-token-*` DARs. The core module hierarchy:
 
 - **`InstrumentConfig`** (`Registry.daml`) - admin-signed per-instrument
   rules/factory contract (the AmuletRules analog), created directly by its admin.
-  `ensure` constrains `decimals` to 0..18. `InstrumentConfig_Mint` is free,
+  `ensure` constrains `decimals` to 0..10. `InstrumentConfig_Mint` is free,
   admin-and-recipient-authorized minting (no economics). Implements the
   `TransferFactory`, `AllocationFactory`, and `BurnMintFactory` interfaces. One
   admin creates one config per instrument and serves all of them through a single
@@ -153,8 +153,13 @@ overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 
 ### Number / Precision Handling
 
-Amounts are Daml `Decimal`. `InstrumentConfig` constrains `decimals` to the range
-0..18 via `ensure`. `Token` enforces `amount > 0.0`. Transfers sum the input
+Amounts are Daml `Decimal`, which is `Numeric 10`, so every holding amount
+carries ten decimal places whatever its instrument declares. `InstrumentConfig`
+constrains `decimals` to the range 0..10 via `ensure`, matching that ceiling and
+the token standard's own cap. `decimals` is display guidance for clients
+deciding how to render and accept amounts; it is not a scale enforced on
+amounts, so a `decimals = 0` instrument can still hold `42.5`. `Token` enforces
+`amount > 0.0`. Transfers sum the input
 holding amounts, require the total to cover the requested amount, and emit a
 sender-change holding for any surplus, so no value is created or destroyed in a
 transfer.

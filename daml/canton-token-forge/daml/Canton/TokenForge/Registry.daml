@@ -62,7 +62,7 @@ template InstrumentConfig
     meta : Metadata
   where
     signatory admin
-    ensure decimals >= 0 && decimals <= 18
+    ensure decimals >= 0 && decimals <= 10
 
     -- Free minting (no economics), co-authorized by the recipient so a holding
     -- is never created for a party that did not consent (Amulet AmuletRules_Mint,
