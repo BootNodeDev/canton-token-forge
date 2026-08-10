@@ -15,12 +15,11 @@ import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
 
 directTransferCompletes : Script ()
 directTransferCompletes = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -59,12 +58,11 @@ directTransferCompletes = do
 -- A memo carried in transfer.meta reaches the receiver's delivered holding.
 directTransferPropagatesMeta : Script ()
 directTransferPropagatesMeta = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -99,12 +97,11 @@ directTransferPropagatesMeta = do
 -- input are all rejected.
 transferRejectsBadInputs : Script ()
 transferRejectsBadInputs = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
@@ -154,12 +151,11 @@ transferRejectsBadInputs = do
 -- choice enforces the deadline, so the transfer is rejected.
 directTransferRejectsExpiredPreapproval : Script ()
 directTransferRejectsExpiredPreapproval = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
 
-  cfg <- registerInstrument operator admin "CC" "Canton Coin" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
   aliceToken <- mintToken cfg admin alice 100.0
 
   let start = time (date 2026 Jan 1) 0 0 0

@@ -15,19 +15,11 @@ export interface InstrumentIdValue {
 
 export interface InstrumentConfigPayload {
   admin: string
-  operator: string
   instrumentId: string
   name: string
   symbol: string
   decimals: number | string
   faucet: unknown
-}
-
-export type InstrumentConfigProposalPayload = InstrumentConfigPayload
-
-export interface TokenRegistryPayload {
-  operator: string
-  registryBaseUrl: string
 }
 
 export interface PreapprovalPayload {

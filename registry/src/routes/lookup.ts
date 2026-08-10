@@ -1,10 +1,9 @@
 import type { Config } from '../config.js'
-import { type DisclosedContract, toDisclosed } from '../disclose.js'
 import type { ContractEntry, LedgerClient } from '../ledger.js'
 import type {
   InstrumentConfigPayload,
+  LockedTokenPayload,
   PreapprovalPayload,
-  TokenRegistryPayload,
 } from '../payloads.js'
 
 // The ledger client returns payloads as unknown; the wrappers below pair one
@@ -19,46 +18,37 @@ function activeContractsAs<P>(
   return ledger.activeContracts(templateId, party) as Promise<ContractEntry<P>[]>
 }
 
-// The InstrumentConfig active set for the operator, which the routes then run
-// through resolveConfig/resolveById. Centralized so the "which template, which
-// party identifies the config set" choice has one home, alongside
-// findByContractId and escrowDisclosure below.
+// The InstrumentConfig active set for the admin. The metadata and factory
+// routes run it through resolveConfig/resolveById; the readiness probe issues
+// it for the round-trip alone and ignores the rows, so an empty set is not an
+// error there. Centralized so the "which template, which party identifies the
+// config set" choice has one home, alongside findByContractId and findEscrow
+// below.
 export function activeConfigs(
   ledger: LedgerClient,
-  config: Pick<Config, 'instrumentConfigTemplateId' | 'operatorParty'>,
+  config: Pick<Config, 'instrumentConfigTemplateId' | 'adminParty'>,
 ): Promise<ContractEntry<InstrumentConfigPayload>[]> {
   return activeContractsAs<InstrumentConfigPayload>(
     ledger,
     config.instrumentConfigTemplateId,
-    config.operatorParty,
+    config.adminParty,
   )
 }
 
 export function activePreapprovals(
   ledger: LedgerClient,
-  config: Pick<Config, 'preapprovalTemplateId' | 'operatorParty'>,
+  config: Pick<Config, 'preapprovalTemplateId' | 'adminParty'>,
 ): Promise<ContractEntry<PreapprovalPayload>[]> {
   return activeContractsAs<PreapprovalPayload>(
     ledger,
     config.preapprovalTemplateId,
-    config.operatorParty,
-  )
-}
-
-export function activeRegistries(
-  ledger: LedgerClient,
-  config: Pick<Config, 'tokenRegistryTemplateId' | 'operatorParty'>,
-): Promise<ContractEntry<TokenRegistryPayload>[]> {
-  return activeContractsAs<TokenRegistryPayload>(
-    ledger,
-    config.tokenRegistryTemplateId,
-    config.operatorParty,
+    config.adminParty,
   )
 }
 
 // Locate a single active contract by its id within a template's active set.
-// Several handlers resolve a path parameter (a proposal, an allocation, a
-// transfer instruction) this way before acting on it, so the query lives in
+// Several handlers resolve a path parameter (an allocation, a transfer
+// instruction) this way before acting on it, so the query lives in
 // one place; live-node work that changes how a contract is located by id
 // then has a single call site to update.
 export async function findByContractId<P = unknown>(
@@ -71,20 +61,24 @@ export async function findByContractId<P = unknown>(
   return rows.find((row) => row.contractId === contractId)
 }
 
-// Resolve the escrow LockedToken behind a lockedCid and return it as a
-// disclosure list (empty if it is not in the active set). The receiver is not
-// a stakeholder of the escrow, so the transfer and allocation choice-contexts
-// both disclose it this way before the counterparty exercises its choice.
-export async function escrowDisclosure(
+// Resolve the escrow LockedToken behind a lockedCid. The receiver is not a
+// stakeholder of the escrow, so the transfer and allocation choice-contexts
+// both disclose it before the counterparty exercises its choice. An absent
+// escrow is returned as undefined rather than an empty disclosure list, because
+// a context that silently omits it would only fail later inside the choice.
+// Note the caller need not hold a stale id for this to happen: after expiry the
+// sender can reclaim the escrow through LockedToken_ExpireLock, which archives
+// it and leaves the instruction active but inert, so the cid the service itself
+// just read out of a live instruction can already be gone.
+export async function findEscrow(
   ledger: LedgerClient,
-  config: Pick<Config, 'lockedTokenTemplateId' | 'operatorParty'>,
+  config: Pick<Config, 'lockedTokenTemplateId' | 'adminParty'>,
   lockedCid: string,
-): Promise<DisclosedContract[]> {
-  const escrow = await findByContractId(
+): Promise<ContractEntry<LockedTokenPayload> | undefined> {
+  return findByContractId<LockedTokenPayload>(
     ledger,
     config.lockedTokenTemplateId,
-    config.operatorParty,
+    config.adminParty,
     lockedCid,
   )
-  return escrow ? [toDisclosed(escrow)] : []
 }

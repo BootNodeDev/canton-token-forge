@@ -23,15 +23,15 @@ export interface Instrument {
   supportedApis: Record<string, number>
 }
 
-// The two payload fields that identify an instrument on-ledger. Config,
-// proposal, and preapproval payloads all carry them.
+// The two payload fields that identify an instrument on-ledger. Both the
+// config and the preapproval payloads carry them.
 interface InstrumentKeyedPayload {
   admin: string
   instrumentId: string
 }
 
 // The InstrumentConfig contract payload uses the Daml record field names
-// (admin, operator, instrumentId, name, symbol, decimals, faucet), not the
+// (admin, instrumentId, name, symbol, decimals, faucet), not the
 // metadata standard's `id`. This maps the on-ledger payload to the
 // standard's Instrument shape.
 export function toInstrument(payload: InstrumentConfigPayload): Instrument {
@@ -44,8 +44,8 @@ export function toInstrument(payload: InstrumentConfigPayload): Instrument {
   }
 }
 
-// An on-ledger payload (InstrumentConfig, proposal, preapproval) identifies its
-// instrument by the Daml record fields (admin, instrumentId), while the
+// An on-ledger payload (InstrumentConfig, TokenTransferPreapproval) identifies
+// its instrument by the Daml record fields (admin, instrumentId), while the
 // standard API carries the same identity as InstrumentId { admin, id }. These
 // two helpers are the single place that bridges the two field namings, so the
 // admin-and-id equality rule the whole service depends on is defined once.
@@ -72,6 +72,9 @@ export function resolveUnique<P>(matches: ContractEntry<P>[]): ResolveResult<P> 
   return { kind: 'ok', entry: matches[0] }
 }
 
+// Keeps its admin comparison even though every readable row is administered by
+// the configured party: here the admin arrives in the request body, and without
+// the check the service would answer for an instrument it does not administer.
 export function resolveConfig(
   rows: ContractEntry<InstrumentConfigPayload>[],
   admin: string,

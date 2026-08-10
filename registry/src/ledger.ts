@@ -24,6 +24,12 @@ export interface ExerciseCommand {
 
 export interface LedgerClient {
   activeContracts(templateId: string, party: string): Promise<ContractEntry[]>
+  // The service answers reads only: an instrument is registered by an admin
+  // creating the contract directly, so no route submits and nothing calls this
+  // today. It stays on the client because it encodes the participant's
+  // submission rules (the nested envelope and the userId contract documented
+  // below), which were established against a live node and cannot be recovered
+  // from the API reference alone.
   submitAndWait(
     actAs: string[],
     commands: (CreateCommand | ExerciseCommand)[],

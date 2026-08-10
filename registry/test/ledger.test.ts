@@ -58,7 +58,7 @@ describe('HttpLedgerClient.activeContracts', () => {
     )
     const rows = await client.activeContracts(
       'pkg:Canton.TokenForge.Registry:InstrumentConfig',
-      'operator::1',
+      'admin::1',
     )
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
@@ -75,7 +75,7 @@ describe('HttpLedgerClient.activeContracts', () => {
     expect(init.method).toBe('POST')
     const body = JSON.parse(init.body as string)
     expect(
-      body.filter.filtersByParty['operator::1'].cumulative[0].identifierFilter.TemplateFilter.value
+      body.filter.filtersByParty['admin::1'].cumulative[0].identifierFilter.TemplateFilter.value
         .templateId,
     ).toBe('pkg:Canton.TokenForge.Registry:InstrumentConfig')
   })
@@ -90,7 +90,7 @@ describe('HttpLedgerClient.activeContracts', () => {
       fakeFetch,
     )
 
-    await client.activeContracts('pkg:M:InstrumentConfig', 'operator::1')
+    await client.activeContracts('pkg:M:InstrumentConfig', 'admin::1')
 
     expect(calls.map(([url]) => new URL(url).pathname)).toEqual([LEDGER_END, ACTIVE_CONTRACTS])
     const [, init] = calls[1]
@@ -107,7 +107,7 @@ describe('HttpLedgerClient.activeContracts', () => {
       fakeFetch,
     )
 
-    await expect(client.activeContracts('pkg:M:InstrumentConfig', 'operator::1')).rejects.toThrow(
+    await expect(client.activeContracts('pkg:M:InstrumentConfig', 'admin::1')).rejects.toThrow(
       /503/,
     )
   })
@@ -124,17 +124,17 @@ describe('HttpLedgerClient.submitAndWait', () => {
     )
 
     const result = await client.submitAndWait(
-      ['operator::1'],
+      ['admin::1'],
       [
         {
           templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
-          createArguments: { id: 'CC' },
+          createArguments: { instrumentId: 'CC' },
         },
         {
           templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
           contractId: '00abc',
-          choice: 'InstrumentConfig_Archive',
-          choiceArgument: {},
+          choice: 'InstrumentConfig_Mint',
+          choiceArgument: { recipient: 'alice::1', amount: '42.0' },
         },
       ],
     )
@@ -147,21 +147,21 @@ describe('HttpLedgerClient.submitAndWait', () => {
     // The participant reads every submission field one level deep, inside a
     // `commands` object; a flat body loses all of them.
     const body = JSON.parse(init.body as string).commands
-    expect(body.actAs).toEqual(['operator::1'])
+    expect(body.actAs).toEqual(['admin::1'])
     expect(typeof body.commandId).toBe('string')
     expect(body.commands).toEqual([
       {
         CreateCommand: {
           templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
-          createArguments: { id: 'CC' },
+          createArguments: { instrumentId: 'CC' },
         },
       },
       {
         ExerciseCommand: {
           templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
           contractId: '00abc',
-          choice: 'InstrumentConfig_Archive',
-          choiceArgument: {},
+          choice: 'InstrumentConfig_Mint',
+          choiceArgument: { recipient: 'alice::1', amount: '42.0' },
         },
       },
     ])
@@ -179,9 +179,9 @@ describe('HttpLedgerClient.submitAndWait', () => {
 
     const disclosedContracts = [
       {
-        templateId: 'pkg:Canton.TokenForge.Registry:TokenRegistry',
-        contractId: 'reg1',
-        createdEventBlob: 'BLOB-REG',
+        templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
+        contractId: 'cfg1',
+        createdEventBlob: 'BLOB-CFG',
         synchronizerId: 'sync-1',
       },
     ]
@@ -190,10 +190,10 @@ describe('HttpLedgerClient.submitAndWait', () => {
       ['admin::1'],
       [
         {
-          templateId: 'pkg:Canton.TokenForge.Registry:TokenRegistry',
-          contractId: 'reg1',
-          choice: 'TokenRegistry_ProposeInstrument',
-          choiceArgument: {},
+          templateId: 'pkg:Canton.TokenForge.Registry:InstrumentConfig',
+          contractId: 'cfg1',
+          choice: 'InstrumentConfig_Mint',
+          choiceArgument: { recipient: 'alice::1', amount: '42.0' },
         },
       ],
       disclosedContracts,
@@ -214,7 +214,7 @@ describe('HttpLedgerClient.submitAndWait', () => {
       fakeFetch,
     )
 
-    await client.submitAndWait(['operator::1'], [{ templateId: 'T', createArguments: {} }])
+    await client.submitAndWait(['admin::1'], [{ templateId: 'T', createArguments: {} }])
 
     const [, init] = calls[0]
     expect(JSON.parse(init.body as string).commands.userId).toBe('registry-service')
@@ -232,7 +232,7 @@ describe('HttpLedgerClient.submitAndWait', () => {
       fakeFetch,
     )
 
-    await client.submitAndWait(['operator::1'], [{ templateId: 'T', createArguments: {} }])
+    await client.submitAndWait(['admin::1'], [{ templateId: 'T', createArguments: {} }])
 
     const [, init] = calls[0]
     expect(JSON.parse(init.body as string).commands).not.toHaveProperty('userId')
@@ -248,7 +248,7 @@ describe('HttpLedgerClient.submitAndWait', () => {
     )
 
     await expect(
-      client.submitAndWait(['operator::1'], [{ templateId: 'T', createArguments: {} }]),
+      client.submitAndWait(['admin::1'], [{ templateId: 'T', createArguments: {} }]),
     ).rejects.toThrow(/400/)
   })
 })

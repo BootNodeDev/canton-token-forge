@@ -89,7 +89,7 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 | `npm run clean` | Remove both `.daml` build dirs. |
 | `npm run setup` | Re-vendor deps + re-create the stable symlinks. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
-| `npm run seed` | Seed a running sandbox with parties, a registry, and one instrument. |
+| `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
 
 See [`RUNBOOK.md`](RUNBOOK.md) for the full local bring-up, including wiring the
 `registry/` HTTP service to the seeded sandbox.
@@ -143,7 +143,7 @@ transfer/mint data flow.
 ## Code Style
 
 - Name every choice we define `TemplateName_ChoiceName` (e.g.
-  `TokenRegistry_ProposeInstrument`, `InstrumentConfig_Mint`), matching the CN
+  `InstrumentConfig_Preapprove`, `InstrumentConfig_Mint`), matching the CN
   Token Standard's own choice-naming convention (`TransferFactory_Transfer`,
   `AllocationFactory_Allocate`). Interface method implementations keep the names
   the standard interface dictates.

@@ -3,79 +3,23 @@ module Canton.TokenForge.Test.Util where
 import Daml.Script
 import DA.TextMap qualified as TextMap
 import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
-import Canton.TokenForge.Registry (TokenRegistry(..), TokenRegistry_ProposeInstrument(..), InstrumentConfig, InstrumentConfig_Mint(..), InstrumentConfigProposal, InstrumentConfigProposal_Accept(..), FaucetConfig)
+import Canton.TokenForge.Registry (InstrumentConfig(..), InstrumentConfig_Mint(..), FaucetConfig)
 import Canton.TokenForge.Token (Token)
 import Canton.TokenForge.Locked (expireLockContextKey)
 
--- | Create an operator-owned registry. Shared so tests that register several
--- instruments under one operator reuse a single registry.
-createRegistry : Party -> Script (ContractId TokenRegistry)
-createRegistry operator = submit operator $ createCmd TokenRegistry with operator; registryBaseUrl = "http://r"
-
--- | Propose an instrument through an existing registry (disclosed to the admin
--- so the admin can drive the propose choice), returning the pending proposal
--- without accepting it. Lets a test then exercise accept, reject, or withdraw.
-proposeInstrumentOn
-  : ContractId TokenRegistry
-  -> Party           -- ^ operator
-  -> Party           -- ^ admin
-  -> Text            -- ^ instrumentId
-  -> Text            -- ^ name
-  -> Text            -- ^ symbol
-  -> Int             -- ^ decimals
-  -> Optional FaucetConfig
-  -> Script (ContractId InstrumentConfigProposal)
-proposeInstrumentOn reg operator admin instrumentId name symbol decimals faucet = do
-  Some regDisclosure <- queryDisclosure operator reg
-  submit (actAs admin <> disclose regDisclosure) $ exerciseCmd reg TokenRegistry_ProposeInstrument with
-    admin; instrumentId; name; symbol; decimals; faucet
-
--- | Register an instrument through an existing registry: propose (admin) then
--- accept (operator), returning the created InstrumentConfig.
-registerInstrumentOn
-  : ContractId TokenRegistry
-  -> Party           -- ^ operator
-  -> Party           -- ^ admin
-  -> Text            -- ^ instrumentId
-  -> Text            -- ^ name
-  -> Text            -- ^ symbol
-  -> Int             -- ^ decimals
-  -> Optional FaucetConfig
-  -> Script (ContractId InstrumentConfig)
-registerInstrumentOn reg operator admin instrumentId name symbol decimals faucet = do
-  prop <- proposeInstrumentOn reg operator admin instrumentId name symbol decimals faucet
-  submit operator $ exerciseCmd prop InstrumentConfigProposal_Accept
-
--- | Propose an instrument through a fresh registry, returning the pending
--- proposal. One-instrument convenience over 'proposeInstrumentOn'.
-proposeInstrument
-  : Party            -- ^ operator
-  -> Party           -- ^ admin
-  -> Text            -- ^ instrumentId
-  -> Text            -- ^ name
-  -> Text            -- ^ symbol
-  -> Int             -- ^ decimals
-  -> Optional FaucetConfig
-  -> Script (ContractId InstrumentConfigProposal)
-proposeInstrument operator admin instrumentId name symbol decimals faucet = do
-  reg <- createRegistry operator
-  proposeInstrumentOn reg operator admin instrumentId name symbol decimals faucet
-
--- | Register an instrument end to end through a fresh registry, returning the
--- created InstrumentConfig. One call replaces the two-step submit across the
--- suites.
+-- | Create an instrument. The admin signs its own config, so registration is a
+-- single create with no counterparty.
 registerInstrument
-  : Party            -- ^ operator
-  -> Party           -- ^ admin
+  : Party            -- ^ admin
   -> Text            -- ^ instrumentId
   -> Text            -- ^ name
   -> Text            -- ^ symbol
   -> Int             -- ^ decimals
   -> Optional FaucetConfig
   -> Script (ContractId InstrumentConfig)
-registerInstrument operator admin instrumentId name symbol decimals faucet = do
-  reg <- createRegistry operator
-  registerInstrumentOn reg operator admin instrumentId name symbol decimals faucet
+registerInstrument admin instrumentId name symbol decimals faucet =
+  submit admin $ createCmd InstrumentConfig with
+    admin; instrumentId; name; symbol; decimals; faucet; meta = emptyMetadata
 
 -- | Mint `amount` of an instrument to `recipient`. The recipient co-authorizes
 -- the mint because holdings are co-signed by their owner; admin authority

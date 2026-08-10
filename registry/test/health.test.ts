@@ -1,7 +1,13 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { createServer } from '../src/server'
-import { config, ledgerFrom, recordingLogger, rejectingLedger } from './helpers/fixtures'
+import {
+  config,
+  ledgerFrom,
+  recordingLedgerFrom,
+  recordingLogger,
+  rejectingLedger,
+} from './helpers/fixtures'
 
 describe('health', () => {
   it('GET /healthz returns 200 ok', async () => {
@@ -16,6 +22,16 @@ describe('health', () => {
     const res = await request(app).get('/readyz')
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ status: 'ready' })
+  })
+
+  // ledgerFrom answers [] for every template id and party, including one that
+  // is undefined, so the 200-ready case above cannot tell what the probe asks
+  // the ledger for. This pins it.
+  it('GET /readyz probes the InstrumentConfig active set as the configured party', async () => {
+    const { ledger, queries } = recordingLedgerFrom({})
+    const res = await request(createServer({ ledger, config })).get('/readyz')
+    expect(res.status).toBe(200)
+    expect(queries).toEqual([[config.instrumentConfigTemplateId, config.adminParty]])
   })
 
   it('GET /readyz returns 503 and logs the error when the ledger is unreachable', async () => {

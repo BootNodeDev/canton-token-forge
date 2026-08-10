@@ -42,11 +42,15 @@ describe('runtime request validation', () => {
     expect(res.body).toEqual({ instruments: [] })
   })
 
-  it('leaves the undocumented admin endpoints unvalidated by the specs', async () => {
-    const ledger = ledgerFrom({ [config.instrumentConfigProposalTemplateId]: [] })
+  it('lets a request on a path no spec documents through to express routing', async () => {
+    const ledger = ledgerFrom({})
     const app = createServer({ ledger, config })
-    const res = await request(app).post('/admin/proposals/nope/reject').send({})
+    const res = await request(app).post('/not-a-documented-path').send({ any: 'body' })
+    // Express's own 404 page, not a JSON error body, is the evidence: it can
+    // only be reached after all three validators have passed the request on.
+    // Were any of them enforcing its spec here, the request would stop at that
+    // validator with { error: 'not found' } instead.
     expect(res.status).toBe(404)
-    expect(res.body).toEqual({ error: 'proposal not found' })
+    expect(res.text).toMatch(/Cannot POST \/not-a-documented-path/)
   })
 })

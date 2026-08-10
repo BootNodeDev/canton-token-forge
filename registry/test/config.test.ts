@@ -1,37 +1,56 @@
 import { describe, expect, it } from 'vitest'
-import { loadConfig } from '../src/config'
+import { type Config, loadConfig } from '../src/config'
 
 const baseEnv: Record<string, string> = {
   LEDGER_API_URL: 'http://ledger',
   LEDGER_API_TOKEN: 't',
-  OPERATOR_PARTY: 'op::1',
-  REGISTRY_BASE_URL: 'http://r',
+  // Deliberately unlike every other value here, so a binding that reads the
+  // wrong variable cannot pass by coincidence.
+  ADMIN_PARTY: 'admin-party::1',
   INSTRUMENT_CONFIG_TEMPLATE_ID: '#pkg:M:InstrumentConfig',
-  INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID: '#pkg:M:InstrumentConfigProposal',
-  TOKEN_REGISTRY_TEMPLATE_ID: '#pkg:M:TokenRegistry',
   TRANSFER_INSTRUCTION_TEMPLATE_ID: '#pkg:M:TokenTransferInstruction',
   PREAPPROVAL_TEMPLATE_ID: '#pkg:M:TokenTransferPreapproval',
   LOCKED_TOKEN_TEMPLATE_ID: '#pkg:M:LockedToken',
   ALLOCATION_TEMPLATE_ID: '#pkg:M:TokenAllocation',
 }
 
+// Every template id goes through the same helper, so covering only one of them
+// lets the other four be bound with a plain require_ (or to each other's
+// variable) without a single test failing.
+const templateIdVars: ReadonlyArray<readonly [string, keyof Config]> = [
+  ['INSTRUMENT_CONFIG_TEMPLATE_ID', 'instrumentConfigTemplateId'],
+  ['TRANSFER_INSTRUCTION_TEMPLATE_ID', 'transferInstructionTemplateId'],
+  ['PREAPPROVAL_TEMPLATE_ID', 'preapprovalTemplateId'],
+  ['LOCKED_TOKEN_TEMPLATE_ID', 'lockedTokenTemplateId'],
+  ['ALLOCATION_TEMPLATE_ID', 'allocationTemplateId'],
+]
+
 describe('loadConfig template ids', () => {
-  it('reads the transfer instruction and allocation ids as template ids', () => {
-    const config = loadConfig({ ...baseEnv })
-    expect(config.transferInstructionTemplateId).toBe('#pkg:M:TokenTransferInstruction')
-    expect(config.allocationTemplateId).toBe('#pkg:M:TokenAllocation')
+  it.each(templateIdVars)('binds %s to the config field it names', (envVar, field) => {
+    expect(loadConfig({ ...baseEnv })[field]).toBe(baseEnv[envVar])
   })
 
-  it('throws when a template id is package-id qualified instead of package-name form', () => {
-    expect(() =>
-      loadConfig({ ...baseEnv, TOKEN_REGISTRY_TEMPLATE_ID: 'deadbeef:M:TokenRegistry' }),
-    ).toThrow(/invalid TOKEN_REGISTRY_TEMPLATE_ID/)
-  })
-
-  it('throws when a template id is missing its module or entity', () => {
-    expect(() => loadConfig({ ...baseEnv, LOCKED_TOKEN_TEMPLATE_ID: '#pkg:LockedToken' })).toThrow(
-      /invalid LOCKED_TOKEN_TEMPLATE_ID/,
+  it.each(templateIdVars)('throws when %s is package-id qualified', (envVar) => {
+    expect(() => loadConfig({ ...baseEnv, [envVar]: 'deadbeef:M:Entity' })).toThrow(
+      new RegExp(`invalid ${envVar}`),
     )
+  })
+
+  it.each(templateIdVars)('throws when %s is missing its module or entity', (envVar) => {
+    expect(() => loadConfig({ ...baseEnv, [envVar]: '#pkg:Entity' })).toThrow(
+      new RegExp(`invalid ${envVar}`),
+    )
+  })
+})
+
+describe('loadConfig admin party', () => {
+  it('reads ADMIN_PARTY as the party every ledger read runs under', () => {
+    expect(loadConfig({ ...baseEnv }).adminParty).toBe('admin-party::1')
+  })
+
+  it('throws when ADMIN_PARTY is absent', () => {
+    const { ADMIN_PARTY, ...withoutAdminParty } = baseEnv
+    expect(() => loadConfig(withoutAdminParty)).toThrow(/missing required env var ADMIN_PARTY/)
   })
 })
 

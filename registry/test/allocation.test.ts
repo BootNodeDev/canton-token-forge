@@ -1,39 +1,18 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { anyValueBool, EXPIRE_LOCK_CONTEXT_KEY } from '../src/disclose'
-import type { ContractEntry } from '../src/ledger'
-import type { AllocationPayload } from '../src/payloads'
 import { createServer } from '../src/server'
-import { cfgEntry, config, instrumentId, ledgerFrom, lockedTokenEntry } from './helpers/fixtures'
+import {
+  allocationEntry,
+  cfgEntry,
+  config,
+  instrumentId,
+  ledgerFrom,
+  lockedTokenEntry,
+  otherCfgEntry,
+  otherInstrumentId,
+} from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
-
-function allocationEntry(
-  overrides: Partial<AllocationPayload> = {},
-): ContractEntry<AllocationPayload> {
-  return {
-    templateId: config.allocationTemplateId,
-    contractId: 'alloc1',
-    createdEventBlob: 'BLOB-ALLOC',
-    synchronizerId: 's',
-    payload: {
-      admin: instrumentId.admin,
-      allocation: {
-        settlement: {
-          executor: 'executor::1',
-          settlementRef: { id: 'ref1', cid: null },
-          requestedAt: '2020-01-01T00:00:00Z',
-          allocateBefore: '2999-01-01T00:00:00Z',
-          settleBefore: '2999-01-01T00:00:00Z',
-        },
-        transferLegId: 'leg1',
-        transferLeg: { sender: 'sender::1', receiver: 'receiver::1', amount: '10.0', instrumentId },
-      },
-      lockedCid: 'locked1',
-      meta: { values: {} },
-      ...overrides,
-    },
-  }
-}
 
 describe('allocation factory', () => {
   it('returns factoryId + disclosed config', async () => {
@@ -48,6 +27,29 @@ describe('allocation factory', () => {
     expect(res.body.choiceContext.choiceContextData).toEqual({})
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
     expect(res.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
+  })
+
+  it('selects the config of the requested instrument when the admin serves several', async () => {
+    // The other config comes first, so answering with the first readable row
+    // rather than the matching one is a failure, not a coincidence.
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [otherCfgEntry(), cfgEntry()],
+    })
+    const app = createServer({ ledger, config })
+    const factoryFor = async (id: typeof instrumentId) =>
+      await request(app)
+        .post('/registry/allocation-instruction/v1/allocation-factory')
+        .send({ choiceArguments: { allocation: { instrumentId: id } } })
+
+    const cc = await factoryFor(instrumentId)
+    expect(cc.status).toBe(200)
+    expect(cc.body.factoryId).toBe('cfg1')
+    expect(cc.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
+
+    const other = await factoryFor(otherInstrumentId)
+    expect(other.status).toBe(200)
+    expect(other.body.factoryId).toBe('cfg2')
+    expect(other.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg2' })
   })
 
   it('400s when choiceArguments.allocation.instrumentId is missing', async () => {
@@ -122,7 +124,7 @@ describe('allocation choice-contexts', () => {
     expect(ids).toEqual(['locked1'])
   })
 
-  it('execute-transfer sends no signal', async () => {
+  it('execute-transfer discloses the escrow LockedToken but sends no signal', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
@@ -134,6 +136,26 @@ describe('allocation choice-contexts', () => {
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
     expect(res.body.choiceContextData).toEqual({})
+    const ids = (res.body.disclosedContracts as { contractId: string }[])
+      .map((d) => d.contractId)
+      .sort()
+    expect(ids).toEqual(['locked1'])
+  })
+
+  it('404s instead of returning an empty context when the escrow LockedToken is gone', async () => {
+    const ledger = ledgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/allocations/v1/alloc1/choice-contexts/cancel')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
+    // The allocation itself resolves here, so only the message separates a
+    // stale escrow from the not-found allocation below.
+    expect(res.body.error).toBe('escrow not found')
   })
 
   it('404s when the allocation is not found', async () => {

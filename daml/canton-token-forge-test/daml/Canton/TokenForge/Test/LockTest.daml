@@ -11,10 +11,9 @@ import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
 
 lockThenUnlock : Script ()
 lockThenUnlock = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 50.0
 
   let expiresAt = time (date 2026 Jan 2) 0 0 0
@@ -36,10 +35,9 @@ lockThenUnlock = do
 -- Negative + expiry paths.
 lockRejectsAndExpires : Script ()
 lockRejectsAndExpires = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 50.0
 
   let expiresAt = time (date 2026 Jan 2) 0 0 0
@@ -61,11 +59,10 @@ lockRejectsAndExpires = do
 -- authorize the lock. charlie is named as a holder but does not act.
 lockRequiresHolderConsent : Script ()
 lockRequiresHolderConsent = do
-  operator <- allocateParty "operator"
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   charlie <- allocateParty "charlie"
-  cfg <- registerInstrument operator admin "CC" "CC" "CC" 10 None
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 50.0
   let expiresAt = time (date 2026 Jan 2) 0 0 0
   Some cfgDisclosure <- queryDisclosure admin cfg

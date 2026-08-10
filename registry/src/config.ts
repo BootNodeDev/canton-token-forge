@@ -1,13 +1,12 @@
 export interface Config {
   ledgerApiUrl: string
   ledgerApiToken: string
-  // Optional on purpose: see the userId note in ledger.ts submitAndWait.
+  // Read by the submission path only, which no route reaches; see the note on
+  // LedgerClient.submitAndWait for why that path is kept. Optional on purpose:
+  // see the userId note on the implementation.
   ledgerUserId?: string
-  operatorParty: string
-  registryBaseUrl: string
+  adminParty: string
   instrumentConfigTemplateId: string
-  instrumentConfigProposalTemplateId: string
-  tokenRegistryTemplateId: string
   transferInstructionTemplateId: string
   preapprovalTemplateId: string
   lockedTokenTemplateId: string
@@ -62,11 +61,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     ledgerApiUrl: require_('LEDGER_API_URL'),
     ledgerApiToken: require_('LEDGER_API_TOKEN'),
     ...(env.LEDGER_USER_ID ? { ledgerUserId: env.LEDGER_USER_ID } : {}),
-    operatorParty: require_('OPERATOR_PARTY'),
-    registryBaseUrl: require_('REGISTRY_BASE_URL'),
+    adminParty: require_('ADMIN_PARTY'),
     instrumentConfigTemplateId: requireTemplateId('INSTRUMENT_CONFIG_TEMPLATE_ID'),
-    instrumentConfigProposalTemplateId: requireTemplateId('INSTRUMENT_CONFIG_PROPOSAL_TEMPLATE_ID'),
-    tokenRegistryTemplateId: requireTemplateId('TOKEN_REGISTRY_TEMPLATE_ID'),
     transferInstructionTemplateId: requireTemplateId('TRANSFER_INSTRUCTION_TEMPLATE_ID'),
     preapprovalTemplateId: requireTemplateId('PREAPPROVAL_TEMPLATE_ID'),
     lockedTokenTemplateId: requireTemplateId('LOCKED_TOKEN_TEMPLATE_ID'),
