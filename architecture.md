@@ -160,8 +160,11 @@ Registration and transfer move through the ledger as follows:
    creates outputs in one atomic step, authorized by the admin plus the
    `extraActors` the standard expects to carry the input and output owners.
 
-Steps 3 to 5 are the paths a client drives through the registry service, which
-supplies the factory id and the choice context for each of them.
+Steps 3 to 5 are the paths a client drives through the registry service. The two
+factory routes supply a `factoryId` alongside the choice context; the accept,
+reject, withdraw, execute-transfer and cancel routes supply the choice context
+and its disclosures alone, since the client already holds the instruction or
+allocation contract id it is exercising.
 
 ## Choice Contexts
 
