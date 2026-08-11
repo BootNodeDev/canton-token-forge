@@ -16,6 +16,7 @@ import {
   LEDGER_API_URL,
   LEDGER_USER_ID,
   TRANSFER_FACTORY_INTERFACE_ID,
+  TRANSFER_INSTRUCTION_INTERFACE_ID,
   templateIds,
   uniqueSuffix,
 } from './sandbox'
@@ -288,4 +289,36 @@ export async function createOfferInstruction(
   if (!instruction) throw new Error(`no pending instruction from ${sender} to ${receiver}`)
 
   return { instructionCid: instruction.contractId, escrowCid: instruction.payload.lockedCid }
+}
+
+// Every TransferInstruction choice takes only extraArgs, so one helper covers
+// accept, reject and withdraw. The service's context and disclosures go
+// through untouched for the same reason submitTransfer forwards them.
+export async function submitInstructionChoice(
+  fx: LiveFixture,
+  instructionCid: string,
+  choice: string,
+  actor: string,
+  choiceContext: {
+    choiceContextData: Record<string, unknown>
+    disclosedContracts: DisclosedContract[]
+  },
+): Promise<unknown> {
+  return fx.ledger.submitAndWait(
+    [actor],
+    [
+      {
+        templateId: TRANSFER_INSTRUCTION_INTERFACE_ID,
+        contractId: instructionCid,
+        choice,
+        choiceArgument: {
+          extraArgs: {
+            context: { values: choiceContext.choiceContextData },
+            meta: { values: {} },
+          },
+        },
+      },
+    ],
+    choiceContext.disclosedContracts,
+  )
 }
