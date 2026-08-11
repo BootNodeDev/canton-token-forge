@@ -45,9 +45,12 @@ describe.skipIf(!live)('live direct transfer', () => {
     const bob = await allocateParty(`e2e-bob-${suffix}`)
     const aliceCid = await tapFaucet(fx, alice, '100.0')
     await preapprove(fx, bob)
-    const factory = (await requestTransferFactory(fx, alice, bob)).body
 
-    await submitTransfer(fx, factory, {
+    const res = await requestTransferFactory(fx, alice, bob)
+    expect(res.status).toBe(200)
+    expect(res.body.transferKind).toBe('direct')
+
+    await submitTransfer(fx, res.body, {
       sender: alice,
       receiver: bob,
       amount: '30.0',
