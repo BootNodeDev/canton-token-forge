@@ -5,7 +5,11 @@ import type { DisclosedContract } from '../../../src/disclose'
 import { toDisclosed } from '../../../src/disclose'
 import type { ContractEntry } from '../../../src/ledger'
 import { HttpLedgerClient } from '../../../src/ledger'
-import type { InstrumentConfigPayload, PreapprovalPayload } from '../../../src/payloads'
+import type {
+  InstrumentConfigPayload,
+  PreapprovalPayload,
+  TransferInstructionPayload,
+} from '../../../src/payloads'
 import { createServer } from '../../../src/server'
 import {
   allocateParty,
@@ -241,4 +245,47 @@ export async function requestTransferFactory(fx: LiveFixture, sender: string, re
         transfer: { instrumentId: { admin: fx.admin, id: fx.instrumentId }, sender, receiver },
       },
     })
+}
+
+// The service never reads a LockedToken's amount, so it is not declared in
+// src/payloads.ts. This suite asserts on it, so it declares the field here.
+export interface LockedPayload {
+  admin: string
+  owner: string
+  instrumentId: string
+  amount: string
+}
+
+// Taps, requests the factory, submits, then reads back the pending
+// instruction and its escrow. Both tests on this path need the same state, and
+// building it per test keeps them independent of each other's ordering.
+export async function createOfferInstruction(
+  fx: LiveFixture,
+  sender: string,
+  receiver: string,
+  amount: string,
+): Promise<{ instructionCid: string; escrowCid: string }> {
+  const inputCid = await tapFaucet(fx, sender, '100.0')
+  const factory = (await requestTransferFactory(fx, sender, receiver)).body as FactoryResponse
+  if (factory.transferKind !== 'offer') {
+    throw new Error(`expected an offer transfer for ${receiver}, got ${factory.transferKind}`)
+  }
+
+  await submitTransfer(fx, factory, {
+    sender,
+    receiver,
+    amount,
+    inputHoldingCids: [inputCid],
+  })
+
+  const instructions = (await fx.ledger.activeContracts(
+    fx.ids.transferInstruction,
+    fx.admin,
+  )) as ContractEntry<TransferInstructionPayload>[]
+  const instruction = instructions.find(
+    (i) => i.payload.transfer.sender === sender && i.payload.transfer.receiver === receiver,
+  )
+  if (!instruction) throw new Error(`no pending instruction from ${sender} to ${receiver}`)
+
+  return { instructionCid: instruction.contractId, escrowCid: instruction.payload.lockedCid }
 }
