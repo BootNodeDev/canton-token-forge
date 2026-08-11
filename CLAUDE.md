@@ -91,6 +91,21 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
 
+### The registry service
+
+`registry/` is a separate npm package with its own dependency tree; the root
+`npm install` does not populate `registry/node_modules`. Run its commands from
+that directory.
+
+| Command | Does |
+| --- | --- |
+| `npm install` | Install the service's own dependencies. |
+| `npm test` | Unit suites against an in-process server with a stub ledger. No sandbox needed. |
+| `npm run test:e2e` | Drive both transfer paths against a live participant. Skips itself when nothing is listening. |
+| `npm run build` | Typecheck and emit `dist/`. |
+| `npm start` / `npm run dev` | Run the built service / run it from source. |
+| `npm run lint` | Biome check (`lint:fix` to write). |
+
 See [`RUNBOOK.md`](RUNBOOK.md) for the full local bring-up, including wiring the
 `registry/` HTTP service to the seeded sandbox.
 
@@ -109,9 +124,10 @@ export LANG=C.UTF-8
 ## The Amulet harness (unused by default)
 
 > The Amulet test harness is NOT used by default. `setup` is slimmed to
-> `fetch-dep` only; the harness is built solely by Plan 05 (conformance) via
-> `scripts/build-harness.sh`. The section below documents that build for when Plan
-> 05 reaches for it.
+> `fetch-dep` only, and nothing in the build, the test suites, or the local
+> bring-up needs the harness. It is built only by `scripts/build-harness.sh`, for
+> conformance work against Amulet's own test engine. The section below documents
+> that build for whoever reaches for it.
 
 ### Why the harness build is finicky
 
@@ -164,7 +180,9 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 - **Scope** is optional: `feat: add mint choice` and `feat(registry): add mint choice` are both valid
 - **Subject** uses imperative mood, lowercase after the colon, no trailing period
-- **Body** (optional): separated by a blank line, explains *what* and *why*
+- **A commit message is the subject line and nothing else**: no body, no bullet
+  list, no explanatory paragraphs. Anything that seems to need more explanation
+  belongs in the PR description or a code comment
 - Commits use **no `Co-Authored-By` trailer**
 
 **Prefixes:**
