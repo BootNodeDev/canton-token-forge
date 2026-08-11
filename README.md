@@ -95,10 +95,13 @@ From the `splice-api-token-*` DARs:
 | `AllocationV1.Allocation` | `TokenAllocation` |
 | `BurnMintV1.BurnMintFactory` | `InstrumentConfig` |
 
-The registry API advertises the six corresponding APIs from
-`GET /registry/metadata/v1/info`. The seventh data-dependency,
-`splice-api-token-allocation-request-v1`, defines `AllocationRequest`, which an
-app implements to solicit allocations from its users when settling a DvP. That is
+`GET /registry/metadata/v1/info` advertises six supported APIs: the five DARs
+these interfaces come from, plus `splice-api-token-metadata-v1`, which is the
+registry's own HTTP API and has no Daml interface to implement.
+
+The seventh data-dependency, `splice-api-token-allocation-request-v1`, defines
+`AllocationRequest`, which an app implements to solicit allocations from its
+users when settling a DvP. That is
 the settlement venue's role rather than a token registry's, so this package
 declares the DAR without implementing the interface.
 
