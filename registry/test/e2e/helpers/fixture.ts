@@ -1,12 +1,20 @@
 import type { Express } from 'express'
 import request from 'supertest'
 import type { Config } from '../../../src/config'
+import type { DisclosedContract } from '../../../src/disclose'
 import { toDisclosed } from '../../../src/disclose'
 import type { ContractEntry } from '../../../src/ledger'
 import { HttpLedgerClient } from '../../../src/ledger'
 import type { InstrumentConfigPayload, PreapprovalPayload } from '../../../src/payloads'
 import { createServer } from '../../../src/server'
-import { allocateParty, LEDGER_API_URL, LEDGER_USER_ID, templateIds, uniqueSuffix } from './sandbox'
+import {
+  allocateParty,
+  LEDGER_API_URL,
+  LEDGER_USER_ID,
+  TRANSFER_FACTORY_INTERFACE_ID,
+  templateIds,
+  uniqueSuffix,
+} from './sandbox'
 
 export interface LiveFixture {
   admin: string
@@ -175,6 +183,54 @@ export async function preapprove(fx: LiveFixture, receiver: string): Promise<str
   )
   if (!row) throw new Error(`no preapproval on the ledger for ${receiver}`)
   return row.contractId
+}
+
+export interface FactoryResponse {
+  factoryId: string
+  transferKind: string
+  choiceContext: {
+    choiceContextData: Record<string, unknown>
+    disclosedContracts: DisclosedContract[]
+  }
+}
+
+// The service's context and disclosures are forwarded untouched. Rebuilding
+// either from what this suite already knows would make the test check its own
+// encoder instead of the service's.
+export async function submitTransfer(
+  fx: LiveFixture,
+  factory: FactoryResponse,
+  transfer: { sender: string; receiver: string; amount: string; inputHoldingCids: string[] },
+): Promise<unknown> {
+  const now = Date.now()
+  return fx.ledger.submitAndWait(
+    [transfer.sender],
+    [
+      {
+        templateId: TRANSFER_FACTORY_INTERFACE_ID,
+        contractId: factory.factoryId,
+        choice: 'TransferFactory_Transfer',
+        choiceArgument: {
+          expectedAdmin: fx.admin,
+          transfer: {
+            sender: transfer.sender,
+            receiver: transfer.receiver,
+            amount: transfer.amount,
+            instrumentId: { admin: fx.admin, id: fx.instrumentId },
+            requestedAt: new Date(now - WINDOW_MS).toISOString(),
+            executeBefore: new Date(now + WINDOW_MS).toISOString(),
+            inputHoldingCids: transfer.inputHoldingCids,
+            meta: { values: {} },
+          },
+          extraArgs: {
+            context: { values: factory.choiceContext.choiceContextData },
+            meta: { values: {} },
+          },
+        },
+      },
+    ],
+    factory.choiceContext.disclosedContracts,
+  )
 }
 
 export async function requestTransferFactory(fx: LiveFixture, sender: string, receiver: string) {
