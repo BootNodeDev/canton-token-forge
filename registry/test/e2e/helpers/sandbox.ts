@@ -3,23 +3,36 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const LEDGER_API_URL = process.env.LEDGER_API_URL ?? 'http://localhost:7575'
+// `||` rather than `??`: an exported-but-empty value has to fall back too, or
+// the probe fetches a relative URL and the whole suite silently skips.
+export const LEDGER_API_URL = process.env.LEDGER_API_URL || 'http://localhost:7575'
 
 // An unauthenticated participant has no token claims to default the ledger
 // user from and rejects every submission that omits it.
-export const LEDGER_USER_ID = process.env.LEDGER_USER_ID ?? 'participant_admin'
+export const LEDGER_USER_ID = process.env.LEDGER_USER_ID || 'participant_admin'
 
 // A short timeout rather than the default: an unreachable participant is the
 // expected case, and it must cost the run seconds, not a hung socket.
+//
+// Only a probe that fails to connect means "no participant". An address that
+// answers non-2xx is a broken setup, and skipping it would report a green run
+// that asserted nothing, so it throws instead.
 export async function probeSandbox(): Promise<boolean> {
+  let res: Response
   try {
-    const res = await fetch(`${LEDGER_API_URL}/v2/version`, {
+    res = await fetch(`${LEDGER_API_URL}/v2/version`, {
       signal: AbortSignal.timeout(2_000),
     })
-    return res.ok
   } catch {
     return false
   }
+  if (!res.ok) {
+    throw new Error(
+      `${LEDGER_API_URL} answered ${res.status} on /v2/version: something serves that ` +
+        'address but it is not a participant this suite can drive.',
+    )
+  }
+  return true
 }
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')

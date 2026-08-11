@@ -152,6 +152,8 @@ seeding first, and re-running is safe.
 The suite is not part of `npm test`, which stays hermetic. When no participant
 answers on `LEDGER_API_URL` (default `http://localhost:7575`), it prints a
 warning naming that URL and reports every test as skipped rather than failing.
+Something answering that address without being a usable participant fails the
+run instead, so a skipped run always means nothing was listening.
 
 ## JSON Ledger API conventions this sandbox enforces
 
