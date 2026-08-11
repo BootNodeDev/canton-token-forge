@@ -15,7 +15,7 @@ if (!live) console.warn(`no participant on ${LEDGER_API_URL}: skipping the end-t
 
 describe.skipIf(!live)('live offer transfer', () => {
   // A receiver with no preapproval is the whole difference from the direct
-  // path, so nothing here funds anyone: the factory route never reads holdings.
+  // path.
   it('answers transferKind offer for a receiver with no preapproval', async () => {
     const fx = await setupInstrument()
     const suffix = uniqueSuffix()

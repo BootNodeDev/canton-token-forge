@@ -68,12 +68,7 @@ export async function setupInstrument(): Promise<LiveFixture> {
           instrumentId,
           name: 'End-to-end test instrument',
           symbol: 'E2E',
-          // Int64 is a JSON string on this API; a bare number is rejected
-          // with "Expected ujson.Str".
           decimals: '10',
-          // Decimal is sent as plain decimal text: a JSON number is rendered
-          // from a double first, and that rendering is exponential from 1e7 up,
-          // which the Numeric parser rejects.
           faucet: { maxPerTap: FAUCET_MAX },
           meta: { values: {} },
         },
@@ -257,9 +252,8 @@ export interface LockedPayload {
   amount: string
 }
 
-// Taps, requests the factory, submits, then reads back the pending
-// instruction and its escrow. Both tests on this path need the same state, and
-// building it per test keeps them independent of each other's ordering.
+// Both tests on this path need the same state, and building it per test keeps
+// them independent of each other's ordering.
 export async function createOfferInstruction(
   fx: LiveFixture,
   sender: string,

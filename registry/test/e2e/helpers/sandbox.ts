@@ -7,8 +7,6 @@ import { fileURLToPath } from 'node:url'
 // the probe fetches a relative URL and the whole suite silently skips.
 export const LEDGER_API_URL = process.env.LEDGER_API_URL || 'http://localhost:7575'
 
-// An unauthenticated participant has no token claims to default the ledger
-// user from and rejects every submission that omits it.
 export const LEDGER_USER_ID = process.env.LEDGER_USER_ID || 'participant_admin'
 
 // A short timeout rather than the default: an unreachable participant is the
