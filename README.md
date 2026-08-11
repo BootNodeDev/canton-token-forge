@@ -105,9 +105,6 @@ users when settling a DvP. That is
 the settlement venue's role rather than a token registry's, so this package
 declares the DAR without implementing the interface.
 
-A conformance record produced by running the CN Token Standard CLI against a live
-instrument is planned and will land as `CONFORMANCE.md`.
-
 ## Requirements
 
 - `dpm` (Digital Asset Package Manager) and a JDK 17+ on `PATH`
