@@ -202,11 +202,13 @@ Two asymmetries in that table are deliberate:
   which answers 409 when two configs share an `(admin, instrumentId)`: a route
   that fetches a reference contract no choice reads imports that contract's
   failure modes into an operation that does not depend on it.
-- **Only `cancel` carries the early-release signal.** It is the one allocation
-  choice authorized jointly by the executor, sender and receiver, so it is the
-  only one entitled to release an escrow before `settleBefore`.
-  `execute-transfer` never needs it, and `withdraw` is deadline-gated on-ledger
-  and ignores it.
+- **Only `cancel` carries the early-release signal.** It is the only path that
+  returns an escrow to the sender under joint authorization: its controllers are
+  the executor, sender and receiver together, and their co-signature is what
+  makes honoring a caller-supplied signal safe. `withdraw` returns the escrow
+  too but the sender acts alone, so it is deadline-gated on-ledger and ignores
+  the signal; `execute-transfer` shares `cancel`'s joint controllers but
+  delivers to the receiver rather than unwinding, so it never needs one.
 
 The escrow disclosures exist because a receiver is not a stakeholder of the
 `LockedToken` holding its incoming funds. On the JSON Ledger API a missing
