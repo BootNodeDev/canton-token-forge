@@ -168,8 +168,10 @@ That is how a choice body reaches a contract the submitting party does not know
 about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look a
 contract up by identity, and the registry supplies the contract id instead. For a
 real client the registry service builds the context, and
-`registry/src/disclose.ts` is its single `AnyValue` encoding site; the Daml suite
-builds the same contexts directly (`Test/Util.daml`).
+`registry/src/disclose.ts` is its single `AnyValue` encoding site. The Daml suite
+builds the same contexts directly, in two places: `Test/Util.daml`'s
+`expireLockArgs` for the expire-lock signal, and the preapproval context inline
+at each direct-transfer call site in `Test/TransferTest.daml`.
 
 Two context keys are ours rather than the standard's, and each is a named
 constant on both sides rather than a literal: `preapprovalContextKey`
