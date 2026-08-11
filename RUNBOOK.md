@@ -147,11 +147,20 @@ receiver accepts.
 
 Every run allocates its own admin, sender and receiver parties and creates its
 own instrument, so it neither reads nor disturbs a seeded `CC`. Nothing needs
-seeding first, and re-running is safe.
+seeding first, and re-running is safe. Nothing is archived afterwards either:
+each run leaves its parties, instrument and holdings on the participant, so the
+suite assumes a sandbox you can throw away rather than a long-lived one.
 
 The suite is not part of `npm test`, which stays hermetic. When no participant
 answers on `LEDGER_API_URL` (default `http://localhost:7575`), it prints a
 warning naming that URL and reports every test as skipped rather than failing.
+Something answering that address without being a usable participant fails the
+run instead, so a skipped run always means nothing was listening.
+
+A non-default port has to be exported into the environment
+(`LEDGER_API_URL=http://localhost:7576 npm run test:e2e`). Only the service
+loads `registry/.env`; recording the port there alone leaves the suite probing
+the default and reporting every test as skipped against a healthy sandbox.
 
 ## JSON Ledger API conventions this sandbox enforces
 
