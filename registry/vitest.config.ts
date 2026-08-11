@@ -4,7 +4,6 @@ import { configDefaults, defineConfig } from 'vitest/config'
 // for explicitly through `npm run test:e2e`.
 export default defineConfig({
   test: {
-    include: ['test/**/*.test.ts'],
     exclude: [...configDefaults.exclude, 'test/e2e/**'],
   },
 })
