@@ -5,8 +5,10 @@ import DA.Assert ((===))
 import DA.Text qualified as T
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
-import Canton.TokenForge.Registry (InstrumentConfig(..))
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
+import DA.Time (time)
+import DA.Date (date, Month(Jan))
+import Canton.TokenForge.Registry (InstrumentConfig(..), InstrumentConfig_Preapprove(..), TokenTransferPreapproval(..))
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, preapprove)
 
 -- The admin creates its own config and mints from it.
 createInstrumentMints : Script ()
@@ -61,3 +63,22 @@ createEnforcesDecimalRange = do
 
   expectDecimalsRejected admin (ccConfig admin "CCneg" (-1))
   expectDecimalsRejected admin (ccConfig admin "CC11" 11)
+
+preapprovalNeedsOnlyTheReceiver : Script ()
+preapprovalNeedsOnlyTheReceiver = do
+  admin <- allocateParty "admin"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
+
+  let validFrom = time (date 2026 Jan 1) 0 0 0
+      expiresAt = time (date 2026 Jan 2) 0 0 0
+  pre <- preapprove cfg admin bob validFrom expiresAt
+  Some p <- queryContractId admin pre
+  p.receiver === bob
+  p.admin === admin
+
+  -- The preapproval is co-signed by its receiver, so the admin cannot opt a
+  -- party in unilaterally even though it signs the config the choice sits on.
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  submitMustFail (actAs admin <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob; validFrom; expiresAt
