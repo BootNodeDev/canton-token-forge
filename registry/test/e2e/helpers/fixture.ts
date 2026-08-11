@@ -1,9 +1,10 @@
 import type { Express } from 'express'
+import request from 'supertest'
 import type { Config } from '../../../src/config'
 import { toDisclosed } from '../../../src/disclose'
 import type { ContractEntry } from '../../../src/ledger'
 import { HttpLedgerClient } from '../../../src/ledger'
-import type { InstrumentConfigPayload } from '../../../src/payloads'
+import type { InstrumentConfigPayload, PreapprovalPayload } from '../../../src/payloads'
 import { createServer } from '../../../src/server'
 import { allocateParty, LEDGER_API_URL, LEDGER_USER_ID, templateIds, uniqueSuffix } from './sandbox'
 
@@ -136,4 +137,52 @@ export async function tapFaucet(fx: LiveFixture, user: string, amount: string): 
     throw new Error(`expected one new holding for ${user} after the tap, got ${created.length}`)
   }
   return created[0].contractId
+}
+
+// An hour of slack either side of now. The sandbox runs on wall clock, so a
+// window that closes mid-run would turn a wire question into a flake.
+const WINDOW_MS = 60 * 60 * 1000
+
+// The receiver opts in on its own and is not a stakeholder of the config, so
+// the config has to be disclosed to it, exactly as the faucet does for a
+// tapping party.
+export async function preapprove(fx: LiveFixture, receiver: string): Promise<string> {
+  const now = Date.now()
+  const cfg = await configEntry(fx)
+  await fx.ledger.submitAndWait(
+    [receiver],
+    [
+      {
+        templateId: fx.ids.instrumentConfig,
+        contractId: fx.configCid,
+        choice: 'InstrumentConfig_Preapprove',
+        choiceArgument: {
+          receiver,
+          validFrom: new Date(now - WINDOW_MS).toISOString(),
+          expiresAt: new Date(now + WINDOW_MS).toISOString(),
+        },
+      },
+    ],
+    [toDisclosed(cfg)],
+  )
+
+  const rows = (await fx.ledger.activeContracts(
+    fx.ids.preapproval,
+    fx.admin,
+  )) as ContractEntry<PreapprovalPayload>[]
+  const row = rows.find(
+    (r) => r.payload.receiver === receiver && r.payload.instrumentId === fx.instrumentId,
+  )
+  if (!row) throw new Error(`no preapproval on the ledger for ${receiver}`)
+  return row.contractId
+}
+
+export async function requestTransferFactory(fx: LiveFixture, sender: string, receiver: string) {
+  return request(fx.app)
+    .post('/registry/transfer-instruction/v1/transfer-factory')
+    .send({
+      choiceArguments: {
+        transfer: { instrumentId: { admin: fx.admin, id: fx.instrumentId }, sender, receiver },
+      },
+    })
 }
