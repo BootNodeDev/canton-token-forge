@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 export const LEDGER_API_URL = process.env.LEDGER_API_URL ?? 'http://localhost:7575'
 
 // An unauthenticated participant has no token claims to default the ledger
@@ -15,4 +20,51 @@ export async function probeSandbox(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+
+// Read from daml.yaml rather than pinned here, so renaming the package cannot
+// leave the suite querying template ids that no longer resolve while every
+// query still returns a well-formed empty result.
+export function packageName(): string {
+  const path = resolve(repoRoot, 'daml/canton-token-forge/daml.yaml')
+  const match = readFileSync(path, 'utf8').match(/^name:\s*(\S+)/m)
+  if (!match) throw new Error(`could not read 'name' from ${path}`)
+  return match[1]
+}
+
+export function templateIds() {
+  const pkg = `#${packageName()}`
+  return {
+    instrumentConfig: `${pkg}:Canton.TokenForge.Registry:InstrumentConfig`,
+    preapproval: `${pkg}:Canton.TokenForge.Registry:TokenTransferPreapproval`,
+    token: `${pkg}:Canton.TokenForge.Token:Token`,
+    lockedToken: `${pkg}:Canton.TokenForge.Locked:LockedToken`,
+    transferInstruction: `${pkg}:Canton.TokenForge.Instruction:TokenTransferInstruction`,
+    allocation: `${pkg}:Canton.TokenForge.Allocation:TokenAllocation`,
+  }
+}
+
+const TRANSFER_MODULE =
+  '#splice-api-token-transfer-instruction-v1:Splice.Api.Token.TransferInstructionV1'
+export const TRANSFER_FACTORY_INTERFACE_ID = `${TRANSFER_MODULE}:TransferFactory`
+export const TRANSFER_INSTRUCTION_INTERFACE_ID = `${TRANSFER_MODULE}:TransferInstruction`
+
+// Every run gets its own parties and its own instrument id. LF 2.1 has no
+// contract keys, so a second InstrumentConfig under an existing
+// (admin, instrumentId) is accepted by the ledger and then makes the service
+// answer 409 for that instrument until one of them is archived.
+export function uniqueSuffix(): string {
+  return randomUUID().slice(0, 8)
+}
+
+export async function allocateParty(hint: string): Promise<string> {
+  const res = await fetch(`${LEDGER_API_URL}/v2/parties`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ partyIdHint: hint }),
+  })
+  if (!res.ok) throw new Error(`party allocation failed: ${res.status} ${await res.text()}`)
+  return ((await res.json()) as { partyDetails: { party: string } }).partyDetails.party
 }
