@@ -47,6 +47,19 @@ daml/                                    Container of dpm packages (mirrors upst
       TransferTest.daml                  direct transfer flow tests
       Util.daml                          shared test/setup helpers
 registry/                                Read-only TypeScript HTTP service serving the CN Token Standard registry API
+  src/
+    config.ts                            Env-var config, validated at boot (see Environment Variables)
+    ledger.ts                            JSON Ledger API client: ledger end, active contracts, disclosures
+    mapping.ts                           ACS payload -> API shapes; resolveConfig picks the (admin, instrumentId) config
+    disclose.ts                          The single AnyValue encoding site + the two choice-context keys
+    openapi.ts, server.ts, index.ts      Spec loading, middleware stack, process lifecycle
+    routes/
+      metadata.ts                        /info, /instruments, /instruments/:id
+      transfer.ts                        Transfer factory + accept/reject/withdraw choice contexts
+      allocation.ts                      Allocation factory + execute-transfer/withdraw/cancel choice contexts
+      lookup.ts, respond.ts              Shared ACS lookups and the 404/409 response helpers
+  openapi/                               The CN Token Standard OpenAPI specs the service validates against
+  test/                                  Unit suites (stub ledger) + test/e2e (live participant, skip-guarded)
 scripts/
   fetch-dep.sh                           Vendor Splice sources, derive DAR versions, create stable-name symlinks
   build-harness.sh                       Build the Amulet test harness (unused by default; conformance only)
@@ -66,8 +79,12 @@ the `splice-api-token-*` DARs. The core module hierarchy:
 
 - **`InstrumentConfig`** (`Registry.daml`) - admin-signed per-instrument
   rules/factory contract (the AmuletRules analog), created directly by its admin.
-  `ensure` constrains `decimals` to 0..10. `InstrumentConfig_Mint` is free,
-  admin-and-recipient-authorized minting (no economics). Implements the
+  `ensure` constrains `decimals` to 0..10. It carries the four choices we define
+  on it: `InstrumentConfig_Mint` (free, admin-and-recipient-authorized issuance,
+  no economics), `InstrumentConfig_Tap` (the optional faucet, controlled by the
+  tapping user alone and capped per tap), `InstrumentConfig_Preapprove`
+  (controlled by the receiver, creating the opt-in that enables direct
+  transfers), and `InstrumentConfig_LockHolding`. Implements the
   `TransferFactory`, `AllocationFactory`, and `BurnMintFactory` interfaces. One
   admin creates one config per instrument and serves all of them through a single
   registry API; the instrument identity is `(admin, instrumentId)`.
@@ -120,6 +137,78 @@ Registration and transfer move through the ledger as follows:
      or the choice context supplies a matching `TokenTransferPreapproval`; or
    - escrows the amount in a `LockedToken` and creates a pending
      `TokenTransferInstruction`, returning `TransferInstructionResult_Pending`.
+4. **Settle or unwind a pending transfer** - the receiver accepts
+   (`TransferInstruction_Accept`, unlocking the escrow into a receiver `Token`)
+   or rejects it, and the sender may withdraw it. Reject, withdraw and
+   allocation cancel all funnel through one `abortEscrow` in `Locked.daml`,
+   which returns the escrow to its owner.
+5. **Allocate for settlement** - `AllocationFactory_Allocate` escrows a
+   `LockedToken` and creates a `TokenAllocation` holding one leg of a DvP.
+   `Allocation_ExecuteTransfer` delivers it to the receiver,
+   `Allocation_Withdraw` and `Allocation_Cancel` unwind it.
+6. **Faucet** - `InstrumentConfig_Tap` is controlled by the tapping user alone
+   and mints up to the instrument's per-tap cap, when the config declares a
+   faucet. It is the one path that gives a party funds without the admin acting,
+   which is what lets an unfunded party bootstrap itself in a demo.
+7. **Burn and mint** - `BurnMintFactory_BurnMint` archives input holdings and
+   creates outputs in one atomic step, authorized by the admin plus the
+   `extraActors` the standard expects to carry the input and output owners.
+
+Steps 3 to 5 are the paths a client drives through the registry service, which
+supplies the factory id and the choice context for each of them.
+
+## Choice Contexts
+
+The standard's factory and instruction choices take an `ExtraArgs` carrying a
+`ChoiceContext` (`values : TextMap AnyValue`) plus a list of disclosed contracts.
+That is how a choice body reaches a contract the submitting party does not know
+about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look a
+contract up by identity, and the registry supplies the contract id instead. For a
+real client the registry service builds the context, and
+`registry/src/disclose.ts` is its single `AnyValue` encoding site; the Daml suite
+builds the same contexts directly (`Test/Util.daml`).
+
+Two context keys are ours rather than the standard's, and each is a named
+constant on both sides rather than a literal: `preapprovalContextKey`
+(`Registry.daml`) and `expireLockContextKey` (`Locked.daml`) in Daml,
+`PREAPPROVAL_CONTEXT_KEY` and `EXPIRE_LOCK_CONTEXT_KEY` in `disclose.ts`.
+
+| Key | Value | Read by |
+|-----|-------|---------|
+| `canton-token-forge/transfer-preapproval` | `AV_ContractId` of a `TokenTransferPreapproval` | `transferImpl`, to take the direct path |
+| `canton-token-forge/expire-lock` | `AV_Bool true` | `abortEscrow`, to release an escrow before its deadline |
+
+What each route returns:
+
+| Route | Context data | Discloses |
+|-------|--------------|-----------|
+| transfer factory, `direct` | the preapproval cid | `InstrumentConfig` + the preapproval |
+| transfer factory, `offer` / `self` | empty | `InstrumentConfig` |
+| transfer accept / reject / withdraw | empty | the escrow `LockedToken` |
+| allocation factory | empty | `InstrumentConfig` |
+| allocation execute-transfer / withdraw | empty | the escrow `LockedToken` |
+| allocation cancel | the expire-lock signal | the escrow `LockedToken` |
+
+Two asymmetries in that table are deliberate:
+
+- **The factory routes disclose the `InstrumentConfig` because they must name one
+  contract as `factoryId`; the instruction and allocation routes disclose only
+  the escrow.** None of the accept, reject or withdraw choice bodies fetches a
+  config, so disclosing one would add a lookup that can fail without adding
+  authority. That matters because the lookup routes through `resolveConfig`,
+  which answers 409 when two configs share an `(admin, instrumentId)`: a route
+  that fetches a reference contract no choice reads imports that contract's
+  failure modes into an operation that does not depend on it.
+- **Only `cancel` carries the early-release signal.** It is the one allocation
+  choice authorized jointly by the executor, sender and receiver, so it is the
+  only one entitled to release an escrow before `settleBefore`.
+  `execute-transfer` never needs it, and `withdraw` is deadline-gated on-ledger
+  and ignores it.
+
+The escrow disclosures exist because a receiver is not a stakeholder of the
+`LockedToken` holding its incoming funds. On the JSON Ledger API a missing
+disclosure surfaces as a 404 on submission rather than as an authorization
+error, since from the submitting party's side the contract simply does not exist.
 
 ## Environment Variables
 
@@ -175,9 +264,14 @@ transfer.
   (`admin, allocation.transferLeg.sender`, executor and receiver observing).
   Holdings are co-signed by their owner, matching Amulet, so the admin cannot
   archive and re-mint an owner's funds unilaterally.
-- **Single-party registry:** the instrument admin is also the registry identity
-  the metadata API reports as `adminId`, matching CIP-0056 and Amulet, where the
-  DSO party is both the instrument admin and the registry app.
+- **Single-party registry:** one party carries every role. It is the
+  `InstrumentId.admin`, signs `InstrumentConfig` and every holding, is the party
+  the service reads the active contract set as, and is what the metadata API
+  reports as `adminId`. There is no separate operator. This matches CIP-0056,
+  which models a single instrument admin, and Amulet, where the DSO party is both
+  the instrument admin and the registry app. Reading as any other party is not a
+  configuration choice but a broken one: the admin is a signatory of every
+  contract the service serves, and a non-stakeholder's queries come back empty.
 - **Rules/factory pattern:** `InstrumentConfig` is the per-instrument rules/factory
   (AmuletRules analog); it implements `TransferFactory`, `AllocationFactory`, and
   `BurnMintFactory`, and exposes minting as a nonconsuming choice.
