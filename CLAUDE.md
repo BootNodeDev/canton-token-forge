@@ -152,7 +152,7 @@ package-id; and it filters **choices only** (no template-ignore flag).
 
 ## Architecture
 
-See [`architecture.md`](architecture.md) for the full system overview: package
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full system overview: package
 layout, key templates and interfaces, the dependency-vendoring flow, and the
 transfer/mint data flow.
 
@@ -243,7 +243,7 @@ The `/sdlc:issue` skill applies these labels automatically when creating issues 
 
 - Prefer small, focused diffs over broad refactors
 - Avoid introducing new patterns when a project pattern already exists
-- Update docs (this file and `architecture.md`) only when behavior or workflow changes
+- Update docs (this file and `ARCHITECTURE.md`) only when behavior or workflow changes
 
 ## Validation Checklist
 

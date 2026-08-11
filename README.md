@@ -76,7 +76,7 @@ and the service look the way they do.
   and not needed to build, test, or run anything above; it exists for conformance
   work against Amulet's own test engine.
 - `versions.env` - the single knob: `SPLICE_TAG`.
-- [`architecture.md`](architecture.md) - system shape: templates, authority
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) - system shape: templates, authority
   model, data flow, and the choice-context pattern.
 - [`CLAUDE.md`](CLAUDE.md) - the operational guide (toolchain, conventions,
   gotchas, versioning model); [`AGENTS.md`](AGENTS.md) is a thin pointer to it
