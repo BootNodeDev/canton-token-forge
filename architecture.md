@@ -138,10 +138,13 @@ Registration and transfer move through the ledger as follows:
    - escrows the amount in a `LockedToken` and creates a pending
      `TokenTransferInstruction`, returning `TransferInstructionResult_Pending`.
 4. **Settle or unwind a pending transfer** - the receiver accepts
-   (`TransferInstruction_Accept`, unlocking the escrow into a receiver `Token`)
-   or rejects it, and the sender may withdraw it. Reject, withdraw and
-   allocation cancel all funnel through one `abortEscrow` in `Locked.daml`,
-   which returns the escrow to its owner.
+   (`TransferInstruction_Accept`, which archives the escrow and creates the
+   receiver's `Token`) or rejects it, and the sender may withdraw it. The two
+   unwind paths take different helpers from `Locked.daml`, and the split is
+   deliberate: reject returns the escrow to the sender immediately
+   (`unlockHolding`), since a receiver declining delivery leaves nowhere else
+   for the funds to go, while withdraw is the sender acting alone and so is
+   gated on `executeBefore` (`reclaimAtDeadline`).
 5. **Allocate for settlement** - `AllocationFactory_Allocate` escrows a
    `LockedToken` and creates a `TokenAllocation` holding one leg of a DvP.
    `Allocation_ExecuteTransfer` delivers it to the receiver,
