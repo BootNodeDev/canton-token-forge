@@ -50,14 +50,17 @@ registry/                                Read-only TypeScript HTTP service servi
   src/
     config.ts                            Env-var config, validated at boot (see Environment Variables)
     ledger.ts                            JSON Ledger API client: ledger end, active contracts, disclosures
+    payloads.ts                          JSON shapes of the on-ledger payloads the service reads
     mapping.ts                           ACS payload -> API shapes; resolveConfig picks the (admin, instrumentId) config
     disclose.ts                          The single AnyValue encoding site + the two choice-context keys
+    logger.ts                            The structural Logger interface plus the pino instance
     openapi.ts, server.ts, index.ts      Spec loading, middleware stack, process lifecycle
     routes/
       metadata.ts                        /info, /instruments, /instruments/:id
       transfer.ts                        Transfer factory + accept/reject/withdraw choice contexts
       allocation.ts                      Allocation factory + execute-transfer/withdraw/cancel choice contexts
       lookup.ts, respond.ts              Shared ACS lookups and the 404/409 response helpers
+      async-handler.ts                   Wraps every route so a rejected promise reaches the error middleware
   openapi/                               The CN Token Standard OpenAPI specs the service validates against
   test/                                  Unit suites (stub ledger) + test/e2e (live participant, skip-guarded)
 scripts/
