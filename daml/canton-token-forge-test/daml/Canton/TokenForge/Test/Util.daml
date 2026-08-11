@@ -3,7 +3,7 @@ module Canton.TokenForge.Test.Util where
 import Daml.Script
 import DA.TextMap qualified as TextMap
 import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
-import Canton.TokenForge.Registry (InstrumentConfig(..), InstrumentConfig_Mint(..), FaucetConfig)
+import Canton.TokenForge.Registry (InstrumentConfig(..), InstrumentConfig_Mint(..), InstrumentConfig_Preapprove(..), TokenTransferPreapproval, FaucetConfig)
 import Canton.TokenForge.Token (Token)
 import Canton.TokenForge.Locked (expireLockContextKey)
 
@@ -27,6 +27,21 @@ registerInstrument admin instrumentId name symbol decimals faucet =
 mintToken : ContractId InstrumentConfig -> Party -> Party -> Decimal -> Script (ContractId Token)
 mintToken cfg admin recipient amount =
   submit (actAs [admin, recipient]) $ exerciseCmd cfg InstrumentConfig_Mint with recipient; amount
+
+-- | Opt `receiver` in to direct transfers. The receiver is the only controller,
+-- and it is not a stakeholder of the config, so the config must be disclosed to
+-- it the same way the faucet discloses it to a tapping party.
+preapprove
+  : ContractId InstrumentConfig
+  -> Party           -- ^ admin
+  -> Party           -- ^ receiver
+  -> Time            -- ^ validFrom
+  -> Time            -- ^ expiresAt
+  -> Script (ContractId TokenTransferPreapproval)
+preapprove cfg admin receiver validFrom expiresAt = do
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  submit (actAs receiver <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Preapprove with receiver; validFrom; expiresAt
 
 -- | Choice-context args carrying the early-release signal, so an escrow can be
 -- returned before its deadline (Amulet's expire-lock path). Honored only by the

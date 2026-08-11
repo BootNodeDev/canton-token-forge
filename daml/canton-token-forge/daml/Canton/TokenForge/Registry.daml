@@ -92,12 +92,15 @@ template InstrumentConfig
         create LockedToken with
           admin; owner; instrumentId; amount = token.amount; holders; expiresAt; meta = token.meta
 
+    -- The receiver alone opts in. Admin authority comes from this admin-signed
+    -- config, so naming the admin a controller would add nothing but a joint
+    -- submission that only a participant hosting both parties could make.
     nonconsuming choice InstrumentConfig_Preapprove : ContractId TokenTransferPreapproval
       with
         receiver : Party
         validFrom : Time
         expiresAt : Time
-      controller admin, receiver
+      controller receiver
       do create TokenTransferPreapproval with admin; instrumentId; receiver; validFrom; expiresAt
 
     -- Self-service faucet. Enabled only when `faucet` is set; capped per tap.
