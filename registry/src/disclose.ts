@@ -20,10 +20,9 @@ export const PREAPPROVAL_CONTEXT_KEY = 'canton-token-forge/transfer-preapproval'
 export const EXPIRE_LOCK_CONTEXT_KEY = 'canton-token-forge/expire-lock'
 
 // The ChoiceContext value is a Daml AnyValue (AV_ContractId / AV_Bool, see
-// MetadataV1.daml). The exact JSON shape the Canton JSON Ledger API expects
-// for a Daml variant is UNVERIFIED against a live node, so this file is the
-// single site that encodes AnyValue and the assumption can be revisited in
-// one place.
+// MetadataV1.daml). Canton 3.5.6 accepted this variant shape in a live
+// TransferFactory_Transfer, and this file stays the single site that encodes
+// AnyValue so any later variant question is settled in one place.
 export function anyValueContractId(cid: string): unknown {
   return { tag: 'AV_ContractId', value: cid }
 }
