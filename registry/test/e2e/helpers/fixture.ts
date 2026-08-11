@@ -143,12 +143,14 @@ export async function tapFaucet(fx: LiveFixture, user: string, amount: string): 
 // window that closes mid-run would turn a wire question into a flake.
 const WINDOW_MS = 60 * 60 * 1000
 
-// No disclosure: the admin is the config's signatory and is one of the acting
-// parties, so it already sees the contract.
+// The receiver opts in on its own and is not a stakeholder of the config, so
+// the config has to be disclosed to it, exactly as the faucet does for a
+// tapping party.
 export async function preapprove(fx: LiveFixture, receiver: string): Promise<string> {
   const now = Date.now()
+  const cfg = await configEntry(fx)
   await fx.ledger.submitAndWait(
-    [fx.admin, receiver],
+    [receiver],
     [
       {
         templateId: fx.ids.instrumentConfig,
@@ -161,6 +163,7 @@ export async function preapprove(fx: LiveFixture, receiver: string): Promise<str
         },
       },
     ],
+    [toDisclosed(cfg)],
   )
 
   const rows = (await fx.ledger.activeContracts(
