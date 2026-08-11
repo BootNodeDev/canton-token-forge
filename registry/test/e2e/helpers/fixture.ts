@@ -1,5 +1,7 @@
 import type { Express } from 'express'
 import type { Config } from '../../../src/config'
+import { toDisclosed } from '../../../src/disclose'
+import type { ContractEntry } from '../../../src/ledger'
 import { HttpLedgerClient } from '../../../src/ledger'
 import type { InstrumentConfigPayload } from '../../../src/payloads'
 import { createServer } from '../../../src/server'
@@ -78,4 +80,60 @@ export async function setupInstrument(): Promise<LiveFixture> {
     app: createServer({ ledger, config }),
     ids,
   }
+}
+
+// The service never reads a Token, so its payload shape is not declared in
+// src/payloads.ts. This suite reads holdings to assert outcomes, so it
+// declares the fields it asserts on.
+export interface TokenPayload {
+  admin: string
+  owner: string
+  instrumentId: string
+  amount: string
+}
+
+export async function configEntry(fx: LiveFixture): Promise<ContractEntry> {
+  const rows = await fx.ledger.activeContracts(fx.ids.instrumentConfig, fx.admin)
+  const row = rows.find((r) => r.contractId === fx.configCid)
+  if (!row) throw new Error('the run InstrumentConfig is no longer active')
+  return row
+}
+
+export async function holdingsOf(
+  fx: LiveFixture,
+  owner: string,
+): Promise<ContractEntry<TokenPayload>[]> {
+  const rows = (await fx.ledger.activeContracts(
+    fx.ids.token,
+    owner,
+  )) as ContractEntry<TokenPayload>[]
+  return rows.filter((r) => r.payload.instrumentId === fx.instrumentId)
+}
+
+// The tapping party is not a stakeholder of the config, so the config has to
+// be disclosed to it. Which holding the tap created is derived by difference
+// rather than read out of the transaction, so the helper does not depend on
+// where a given Canton version puts a create result in the envelope.
+export async function tapFaucet(fx: LiveFixture, user: string, amount: string): Promise<string> {
+  const before = new Set((await holdingsOf(fx, user)).map((h) => h.contractId))
+  const cfg = await configEntry(fx)
+
+  await fx.ledger.submitAndWait(
+    [user],
+    [
+      {
+        templateId: fx.ids.instrumentConfig,
+        contractId: fx.configCid,
+        choice: 'InstrumentConfig_Tap',
+        choiceArgument: { user, amount },
+      },
+    ],
+    [toDisclosed(cfg)],
+  )
+
+  const created = (await holdingsOf(fx, user)).filter((h) => !before.has(h.contractId))
+  if (created.length !== 1) {
+    throw new Error(`expected one new holding for ${user} after the tap, got ${created.length}`)
+  }
+  return created[0].contractId
 }
