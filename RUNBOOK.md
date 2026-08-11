@@ -130,11 +130,37 @@ readable with an active-contracts query on
 
 ## 5. Transfer
 
-Not yet exercised end to end. `POST /registry/transfer-instruction/v1/transfer-factory`
-answers against the live sandbox (returning `transferKind: "offer"` with the
-instrument config disclosed), but driving a transfer to completion also means
-submitting the returned choice and settling it. That is the end-to-end transfer
-test, which is separate work.
+Both transfer paths are exercised end to end by the registry service's
+end-to-end suite. With a sandbox running:
+
+```
+cd registry && npm run test:e2e
+```
+
+The suite plays the part of an app backend's client. It asks the service for
+the transfer factory and for each choice context, then submits the resulting
+exercise itself, forwarding the service's `choiceContextData` and
+`disclosedContracts` untouched. Two flows are covered: a direct transfer, which
+completes in one step against a receiver's `TokenTransferPreapproval`, and a
+two-step offer, which escrows the sender's funds and delivers them when the
+receiver accepts.
+
+Every run allocates its own admin, sender and receiver parties and creates its
+own instrument, so it neither reads nor disturbs a seeded `CC`. Nothing needs
+seeding first, and re-running is safe. Nothing is archived afterwards either:
+each run leaves its parties, instrument and holdings on the participant, so the
+suite assumes a sandbox you can throw away rather than a long-lived one.
+
+The suite is not part of `npm test`, which stays hermetic. When no participant
+answers on `LEDGER_API_URL` (default `http://localhost:7575`), it prints a
+warning naming that URL and reports every test as skipped rather than failing.
+Something answering that address without being a usable participant fails the
+run instead, so a skipped run always means nothing was listening.
+
+A non-default port has to be exported into the environment
+(`LEDGER_API_URL=http://localhost:7576 npm run test:e2e`). Only the service
+loads `registry/.env`; recording the port there alone leaves the suite probing
+the default and reporting every test as skipped against a healthy sandbox.
 
 ## JSON Ledger API conventions this sandbox enforces
 
@@ -168,8 +194,28 @@ reason the seed script looks the way it does.
   party that can see the contract. Those rows report the template id in
   package-**id** form, and disclosing it that way is accepted. The package-name
   rule above applies to the filter you send, not to the id that comes back.
+- **A choice declared on an interface is exercised under the INTERFACE id**, not
+  under the id of the template implementing it: `ExerciseCommand.templateId` for
+  `TransferFactory_Transfer` on an `InstrumentConfig` contract is
+  `#splice-api-token-transfer-instruction-v1:Splice.Api.Token.TransferInstructionV1:TransferFactory`.
+  Naming the template instead is rejected with "Invalid
+  template:...:Canton.TokenForge.Registry:InstrumentConfig or
+  choice:TransferFactory_PublicFetch", which reads as a plain resolution failure
+  and does not point at the interface. Consuming and nonconsuming choices behave
+  the same, and both the package-name and the (deprecated) package-id form of the
+  interface id are accepted.
 - The sandbox needs no bearer token. `LEDGER_API_TOKEN` is still required by the
   service config, so any placeholder value works locally.
+- **A `ChoiceContext`'s `values` are a Daml `TextMap AnyValue`, and the
+  participant accepts the variant written as `{"tag": "AV_ContractId", "value":
+  "<cid>"}`.** Confirmed against Canton 3.5.6 inside a real
+  `TransferFactory_Transfer`. `registry/src/disclose.ts` is the single site that
+  encodes it; the same file also encodes `AV_Bool` for the allocation cancel
+  signal, which has not been exercised live.
+- **A Daml `Time` field accepts a millisecond-precision ISO-8601 string**, which
+  is what `new Date().toISOString()` produces, even though the ledger stores and
+  reports microseconds. The end-to-end suite relies on this for `validFrom`,
+  `expiresAt`, `requestedAt` and `executeBefore`.
 
 ## What the service configuration has to match
 
