@@ -6,8 +6,10 @@ that changes ledger state is submitted directly to the participant, as
 `scripts/seed.mjs` does.
 
 Everything below was executed against Canton 3.5.6 (the version `dpm sandbox`
-resolves for SDK 3.4.11) on 2026-08-05. Steps that are known NOT to work yet are
-marked as such rather than omitted.
+resolves for SDK 3.4.11). Sections 1 to 5 were last run end to end on 2026-08-11
+from a clean clone, with nothing built or vendored beforehand; the wire
+conventions and troubleshooting notes below them were established by probing the
+same participant version on 2026-08-05 and have not been re-probed since.
 
 ## Prerequisites
 
