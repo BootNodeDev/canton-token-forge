@@ -76,6 +76,9 @@ and the service look the way they do.
   and not needed to build, test, or run anything above; it exists for conformance
   work against Amulet's own test engine.
 - `versions.env` - the single knob: `SPLICE_TAG`.
+- [`SPEC.md`](SPEC.md) - the specification: capabilities, the standard surface
+  implemented, the authorization model, verification, and the known limits.
+  Written to be read on its own by someone evaluating the system.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - system shape: templates, authority
   model, data flow, and the choice-context pattern.
 - [`CLAUDE.md`](CLAUDE.md) - the operational guide (toolchain, conventions,
