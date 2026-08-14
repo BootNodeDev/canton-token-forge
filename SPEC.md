@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `8ab0f81`.
+checked against the tree at commit `e6d1e2e`.
 
 ---
 
@@ -46,12 +46,12 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `8ab0f81`, exit 0:
+All three suites were re-run at commit `e6d1e2e`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **44 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **89 tests**, 8 files | nothing, in-process server with a stub ledger |
+| Registry unit | **96 tests**, 8 files | nothing, in-process server with a stub ledger |
 | End-to-end | **10 tests**, 4 files | a live participant, verified against Canton 3.5.6 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-687 lines of production Daml, 1239 lines of Daml tests, 962 lines of TypeScript
-service, 2082 lines of TypeScript tests. MIT licensed. Pre-release: the package
+687 lines of production Daml, 1239 lines of Daml tests, 1025 lines of TypeScript
+service, 2287 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -336,7 +336,7 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 44 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, deadline boundaries, missing authority, and the `decimals` bound |
-| Registry unit, 89 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation |
+| Registry unit, 96 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation |
 | End-to-end, 10 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -354,7 +354,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 44 Daml scenarios
-cd registry && npm install && npm test   # 89 unit tests, no ledger needed
+cd registry && npm install && npm test   # 96 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
@@ -399,6 +399,12 @@ Stated plainly, because they are what an evaluation turns on.
   of withdrawing. The funds are safe, already back with the sender, but the
   pending `TokenTransferInstruction` is then not consumable. Documented at the
   call site.
+- **Two reads still walk a whole active set.** A contract named by id is
+  resolved directly, but the instrument listing, get-by-id and both factory
+  routes match on payload fields (an instrument id, a receiver), and the JSON
+  Ledger API has no payload predicate to narrow them server-side. Their cost
+  grows with the instruments an admin issues and the preapprovals its receivers
+  hold, both far slower than the escrows and instructions resolved by id.
 - **The service holds one static ledger token and never forwards a caller's
   JWT.** This is sound only because it submits nothing and reads solely as the
   admin. It is not a template for a service that writes.
