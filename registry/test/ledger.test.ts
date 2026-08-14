@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { HttpLedgerClient } from '../src/ledger'
+import { recordingLogger } from './helpers/fixtures'
 
 interface FakeResponse {
   ok: boolean
   status?: number
   json?: () => Promise<unknown>
+  text?: () => Promise<string>
 }
 
 // Routes by path because a single client call now hits two endpoints: an
@@ -15,7 +17,7 @@ function recordingFetch(routes: Record<string, FakeResponse>) {
     calls.push([url, init])
     const res = routes[new URL(url).pathname]
     if (!res) throw new Error(`unexpected request to ${url}`)
-    return res as Response
+    return { text: async () => '', ...res } as Response
   }) as typeof fetch
   return { fakeFetch, calls }
 }
@@ -176,16 +178,56 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   // a different template. Each is "not found" to the caller.
   it('returns undefined when the participant reports no such contract', async () => {
     const { fakeFetch } = recordingFetch({
-      [BY_CONTRACT_ID]: { ok: false, status: 404, json: async () => ({}) },
+      [BY_CONTRACT_ID]: {
+        ok: false,
+        status: 404,
+        text: async () => JSON.stringify({ code: 'CONTRACT_EVENTS_NOT_FOUND' }),
+      },
     })
+    const { logger, entries } = recordingLogger()
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
       fakeFetch,
+      logger,
     )
 
     await expect(
       client.lookupByContractId('pkg:M:T', '00gone', 'admin::1'),
     ).resolves.toBeUndefined()
+    // A miss is the routine answer on these routes, so it must stay silent:
+    // logging it would bury the rejections below in traffic a caller controls.
+    expect(entries).toEqual([])
+  })
+
+  // The service cannot tell this apart from a missing contract by status alone,
+  // and answering "not found" forever with nothing in the log is what made the
+  // whole class invisible: a participant that does not serve this endpoint
+  // returns a path-level 404, and a rejected event format or party returns 400.
+  it('logs a rejection that is not the participant reporting a missing contract', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: false,
+        status: 404,
+        text: async () => '<html><body>404 Not Found</body></html>',
+      },
+    })
+    const { logger, entries } = recordingLogger()
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+      logger,
+    )
+
+    await expect(
+      client.lookupByContractId('pkg:M:T', '00locked', 'admin::1'),
+    ).resolves.toBeUndefined()
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      status: 404,
+      templateId: 'pkg:M:T',
+      contractId: '00locked',
+      detail: '<html><body>404 Not Found</body></html>',
+    })
   })
 
   // A ledger outage must not read as "no such contract": that would turn a
@@ -209,16 +251,26 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   // their own "not found" for it, as they did when this was an in-memory scan.
   it('returns undefined when the participant rejects the contract id as unparseable', async () => {
     const { fakeFetch } = recordingFetch({
-      [BY_CONTRACT_ID]: { ok: false, status: 400, json: async () => ({}) },
+      [BY_CONTRACT_ID]: {
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ code: 'INVALID_FIELD' }),
+      },
     })
+    const { logger, entries } = recordingLogger()
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
       fakeFetch,
+      logger,
     )
 
     await expect(
       client.lookupByContractId('pkg:M:T', 'not-a-cid', 'admin::1'),
     ).resolves.toBeUndefined()
+    // A 400 is logged with the rest: telling a malformed contract id apart from
+    // an event format the participant refuses needs the message text, which no
+    // run against a live participant has pinned down.
+    expect(entries).toHaveLength(1)
   })
 
   // An archived contract still answers 200 with its created event; only
