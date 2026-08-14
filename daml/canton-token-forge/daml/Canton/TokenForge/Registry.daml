@@ -11,6 +11,7 @@ import Canton.TokenForge.Locked (LockedToken(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
 import Canton.TokenForge.Allocation (allocateImpl)
 import Canton.TokenForge.Types (mkInstrumentId)
+import Canton.TokenForge.TxMeta (TxKind(..), holdingTxMeta)
 
 -- | Faucet policy for an instrument.
 data FaucetConfig = FaucetConfig
@@ -48,6 +49,24 @@ template TokenTransferPreapproval
         assertMsg "preapproval has expired" (now < expiresAt)
         create (mkToken admin receiver instrumentId amount meta)
 
+data InstrumentConfig_MintResult = InstrumentConfig_MintResult
+  with
+    tokenCid : ContractId Token
+    meta : Optional Metadata
+  deriving (Eq, Show)
+
+data InstrumentConfig_TapResult = InstrumentConfig_TapResult
+  with
+    tokenCid : ContractId Token
+    meta : Optional Metadata
+  deriving (Eq, Show)
+
+data InstrumentConfig_LockHoldingResult = InstrumentConfig_LockHoldingResult
+  with
+    lockedCid : ContractId LockedToken
+    meta : Optional Metadata
+  deriving (Eq, Show)
+
 -- | Per-instrument rules/factory contract (the AmuletRules analog). Signed by
 -- the instrument admin, which is also the registry identity the metadata API
 -- reports as `adminId`. Implements the standard factory interfaces.
@@ -67,17 +86,20 @@ template InstrumentConfig
     -- Free minting (no economics), co-authorized by the recipient so a holding
     -- is never created for a party that did not consent (Amulet AmuletRules_Mint,
     -- controller dso, receiver). Self-mint (recipient == admin) is unaffected.
-    nonconsuming choice InstrumentConfig_Mint : ContractId Token
+    nonconsuming choice InstrumentConfig_Mint : InstrumentConfig_MintResult
       with
         recipient : Party
         amount : Decimal
       controller admin, recipient
       do
-        create (mkToken admin recipient instrumentId amount emptyMetadata)
+        tokenCid <- create (mkToken admin recipient instrumentId amount emptyMetadata)
+        pure InstrumentConfig_MintResult with
+          tokenCid
+          meta = Some (holdingTxMeta TxKind_Mint None None)
 
     -- Owner-consented locking, co-authorized by the holders now that they sign
     -- the lock. Admin authority flows from this admin-signed config.
-    nonconsuming choice InstrumentConfig_LockHolding : ContractId LockedToken
+    nonconsuming choice InstrumentConfig_LockHolding : InstrumentConfig_LockHoldingResult
       with
         owner : Party
         tokenCid : ContractId Token
@@ -89,8 +111,11 @@ template InstrumentConfig
         assertMsg "token belongs to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
         assertMsg "caller must own the token" (token.owner == owner)
         archive tokenCid
-        create LockedToken with
+        lockedCid <- create LockedToken with
           admin; owner; instrumentId; amount = token.amount; holders; expiresAt; meta = token.meta
+        pure InstrumentConfig_LockHoldingResult with
+          lockedCid
+          meta = Some (holdingTxMeta TxKind_Transfer (Some "holding locked") (Some owner))
 
     -- The receiver alone opts in. Admin authority comes from this admin-signed
     -- config, so naming the admin a controller would add nothing but a joint
@@ -104,7 +129,7 @@ template InstrumentConfig
       do create TokenTransferPreapproval with admin; instrumentId; receiver; validFrom; expiresAt
 
     -- Self-service faucet. Enabled only when `faucet` is set; capped per tap.
-    nonconsuming choice InstrumentConfig_Tap : ContractId Token
+    nonconsuming choice InstrumentConfig_Tap : InstrumentConfig_TapResult
       with
         user : Party
         amount : Decimal
@@ -115,7 +140,10 @@ template InstrumentConfig
           Some fc -> do
             assertMsg "tap amount must be positive" (amount > 0.0)
             assertMsg "tap amount exceeds per-tap cap" (amount <= fc.maxPerTap)
-            create (mkToken admin user instrumentId amount emptyMetadata)
+            tokenCid <- create (mkToken admin user instrumentId amount emptyMetadata)
+            pure InstrumentConfig_TapResult with
+              tokenCid
+              meta = Some (holdingTxMeta TxKind_Mint (Some "tapped faucet") None)
 
     interface instance TransferFactory for InstrumentConfig where
       view = TransferFactoryView with admin; meta = emptyMetadata
