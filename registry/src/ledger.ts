@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Config } from './config.js'
 import type { DisclosedContract } from './disclose.js'
+import { createLogger, type Logger } from './logger.js'
 
 export interface ContractEntry<P = unknown> {
   templateId: string
@@ -118,6 +119,7 @@ export class HttpLedgerClient implements LedgerClient {
   constructor(
     private readonly config: Pick<Config, 'ledgerApiUrl' | 'ledgerApiToken' | 'ledgerUserId'>,
     private readonly fetchFn: FetchFn = fetch,
+    private readonly logger: Logger = createLogger(),
   ) {}
 
   private headers(): Record<string, string> {
@@ -175,7 +177,24 @@ export class HttpLedgerClient implements LedgerClient {
     // party cannot see, and one of a different template. 400 is a contract id
     // the participant cannot parse. Every other failure is the ledger's, and
     // must not be reported to a caller as an absent contract.
-    if (res.status === 404 || res.status === 400) return undefined
+    if (res.status === 404 || res.status === 400) {
+      const detail = await res.text()
+      // Both statuses also carry faults that are not a missing contract at all:
+      // a participant that does not serve this endpoint answers a path-level
+      // 404, and a party or event format it refuses answers 400. Those would
+      // otherwise 404 every choice-context route indefinitely with nothing in
+      // the log, which is the one failure the active-set query could not have.
+      // The participant names a genuine miss, so anything else is worth an
+      // operator's attention; the check picks the log level only, never the
+      // answer, so a drift in that code costs noise and not behaviour.
+      if (!detail.includes('CONTRACT_EVENTS_NOT_FOUND')) {
+        this.logger.error(
+          { status: res.status, templateId, contractId, detail },
+          'contract lookup rejected',
+        )
+      }
+      return undefined
+    }
     if (!res.ok) throw new Error(`ledger query failed: ${res.status}`)
     const body = (await res.json()) as EventsByContractIdResponse
     // An archived contract is still answered with its created event, so the

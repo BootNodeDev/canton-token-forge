@@ -14,7 +14,7 @@ try {
   process.exit(1)
 }
 
-const ledger = new HttpLedgerClient(config)
+const ledger = new HttpLedgerClient(config, fetch, logger)
 const app = createServer({ ledger, config, logger })
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'canton-token-forge registry listening')
