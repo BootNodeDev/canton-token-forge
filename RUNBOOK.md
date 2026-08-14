@@ -5,11 +5,14 @@ instrument, and serve it through the read-only registry HTTP service. Anything
 that changes ledger state is submitted directly to the participant, as
 `scripts/seed.mjs` does.
 
-Everything below was executed against Canton 3.5.6 (the version `dpm sandbox`
-resolves for SDK 3.4.11). Sections 1 to 5 were last run end to end on 2026-08-11
-from a clean clone, with nothing built or vendored beforehand; the wire
-conventions and troubleshooting notes below them were established by probing the
-same participant version on 2026-08-05 and have not been re-probed since.
+Everything below was executed against Canton 3.5.6. The Canton version is not
+pinned by this repo: `dpm sandbox` resolves the current patch of the 3.5 line
+for SDK 3.4.11, and it has since moved to 3.5.12, so expect the participant to
+report a version newer than the one named here. Sections 1 to 5 were last run
+end to end on 2026-08-11 from a clean clone, with nothing built or vendored
+beforehand; the wire conventions and troubleshooting notes below them were
+established by probing the same participant version on 2026-08-05 and have not
+been re-probed since.
 
 ## Prerequisites
 
