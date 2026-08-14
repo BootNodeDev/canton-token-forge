@@ -175,13 +175,16 @@ the interface and inherited unchanged.
 | `LockedToken_Unlock` | `owner :: holders` | Cooperative release back to the owner |
 | `LockedToken_ExpireLock` | `owner` | Owner reclaim once `expiresAt` has passed |
 
-Every one of these that moves holdings annotates its result with the standard's
-`splice.lfdecentralizedtrust.org/tx-kind` key, so a wallet can classify it
-without registry-specific knowledge: `mint` for issuance and the faucet,
-`transfer` for a lock (which hands control to the lock holders, and so also
-carries `.../sender`), and `unlock` for both releases. `InstrumentConfig_Preapprove`
-creates no holding, and `TokenTransferPreapproval_Send` runs inside the
-standardized transfer that the parser already recognizes, so neither carries one.
+Five of these seven annotate their result with the standard's
+`splice.lfdecentralizedtrust.org/tx-kind` key, so a transaction parser can
+classify them without registry-specific knowledge: `mint` for issuance and the
+faucet, `unlock` for both releases, and `transfer` for a lock. The lock also
+carries `.../sender`, which the parser's transfer path requires and cannot read
+off a registry-native choice argument; a lock still renders as a merge or split
+rather than an outbound payment, because the holding never changes owner. The
+two exemptions: `InstrumentConfig_Preapprove` creates no holding, and this
+registry exercises `TokenTransferPreapproval_Send` only inside the standardized
+transfer that the parser already recognizes by name.
 
 ### Authorization
 
