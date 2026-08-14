@@ -31,6 +31,7 @@ daml/                                    Container of dpm packages (mirrors upst
       Instruction.daml                   TokenTransferInstruction template + TransferInstruction interface instance
       Allocation.daml                    TokenAllocation template + Allocation interface instance
       Types.daml                         mkInstrumentId helper (admin + id -> InstrumentId)
+      TxMeta.daml                        tx-kind annotations for the choices the standard does not define
       Version.daml                       package version marker
   canton-token-forge-test/               Integration-test package (name: canton-token-forge-test)
     daml.yaml                            data-deps on the compiled production DAR + the interface DARs
@@ -45,6 +46,7 @@ daml/                                    Container of dpm packages (mirrors upst
       Smoke.daml                         version-marker smoke script
       TokenTest.daml                     token minting / holding tests
       TransferTest.daml                  direct transfer flow tests
+      TxMetaTest.daml                    tx-kind metadata assertions per annotated choice
       Util.daml                          shared test/setup helpers
 registry/                                Read-only TypeScript HTTP service serving the CN Token Standard registry API
   src/

@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `2eeb1cb`.
+checked against the tree at commit `8ab0f81`.
 
 ---
 
@@ -38,6 +38,7 @@ registry in any test that must not become Amulet-specific.
 | On-ledger instrument metadata (name, symbol, decimals) | Yes |
 | Registry HTTP API (metadata, transfer-instruction, allocation, allocation-instruction) | Yes, read-only |
 | Choice contexts and explicit disclosure | Yes, both context keys documented below |
+| Transaction-kind metadata on registry-native choices | Yes, `mint` / `transfer` / `unlock` |
 | Token standard **v2** interfaces | No, v1 only |
 | `AllocationRequest`, the settlement venue side | No, deliberately out of scope |
 | `TransferInstruction_Update` | No, the implementation aborts |
@@ -45,11 +46,11 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `2eeb1cb`, exit 0:
+All three suites were re-run at commit `8ab0f81`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
-| Daml Script | **39 scenarios**, 10 modules | nothing, runs in-process |
+| Daml Script | **44 scenarios**, 11 modules | nothing, runs in-process |
 | Registry unit | **89 tests**, 8 files | nothing, in-process server with a stub ledger |
 | End-to-end | **10 tests**, 4 files | a live participant, verified against Canton 3.5.6 |
 
@@ -60,7 +61,7 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-582 lines of production Daml, 1152 lines of Daml tests, 962 lines of TypeScript
+687 lines of production Daml, 1239 lines of Daml tests, 962 lines of TypeScript
 service, 2082 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
@@ -173,6 +174,14 @@ the interface and inherited unchanged.
 | `TokenTransferPreapproval_Send` | `admin` | Mints the receiver holding on the direct path |
 | `LockedToken_Unlock` | `owner :: holders` | Cooperative release back to the owner |
 | `LockedToken_ExpireLock` | `owner` | Owner reclaim once `expiresAt` has passed |
+
+Every one of these that moves holdings annotates its result with the standard's
+`splice.lfdecentralizedtrust.org/tx-kind` key, so a wallet can classify it
+without registry-specific knowledge: `mint` for issuance and the faucet,
+`transfer` for a lock (which hands control to the lock holders, and so also
+carries `.../sender`), and `unlock` for both releases. `InstrumentConfig_Preapprove`
+creates no holding, and `TokenTransferPreapproval_Send` runs inside the
+standardized transfer that the parser already recognizes, so neither carries one.
 
 ### Authorization
 
@@ -323,7 +332,7 @@ exist.
 
 | Level | What it covers |
 |---|---|
-| Daml Script, 39 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, deadline boundaries, missing authority, and the `decimals` bound |
+| Daml Script, 44 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, deadline boundaries, missing authority, and the `decimals` bound |
 | Registry unit, 89 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation |
 | End-to-end, 10 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
@@ -341,7 +350,7 @@ instrument, then prints a ready-to-paste service configuration.
 
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
-npm test                          # builds the production DAR, runs 39 Daml scenarios
+npm test                          # builds the production DAR, runs 44 Daml scenarios
 cd registry && npm install && npm test   # 89 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
@@ -370,12 +379,10 @@ Stated plainly, because they are what an evaluation turns on.
 - **`TransferInstruction_Update` is not supported.** The implementation aborts.
 - **`AllocationRequest` is not implemented.** That is the settlement venue's
   side of a DvP rather than the registry's.
-- **No `tx-kind` metadata on registry-native choices.** The standard lets a
-  registry label its own non-standardized choices so the standard transaction
-  parser can classify them. Mint, tap, lock, unlock and expire-lock emit none,
-  because each returns a bare contract id with nowhere to carry the annotation,
-  so a strict parse of a history containing them will not classify those nodes.
-  The standardized paths parse normally. Tracked; the fix is a return-type change.
+- **The `tx-kind` annotations have not been run through the standard parser.**
+  Mint, tap, lock, unlock and expire-lock carry the annotation on their choice
+  results and the Daml suite asserts every emitted value, but no run of the CN
+  Token Standard CLI has yet confirmed how a real parser renders them.
 - **Nothing enforces `(admin, instrumentId)` uniqueness.** LF 2.1 has no contract
   keys, so a duplicate cannot be prevented on-ledger. The service reports a
   duplicate as a 409 from get-by-id and the factory routes, while the instrument
