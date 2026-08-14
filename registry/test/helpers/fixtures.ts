@@ -97,13 +97,25 @@ export interface StubEntry<P = unknown> extends ContractEntry<P> {
   stakeholders: string[]
 }
 
-// A read-only ledger stub serving active contracts by template id, visible
-// only to their stakeholders. Routes driven by it never submit; a submission
-// is therefore a test failure.
+// Any non-zero offset: zero is the beginning of the ledger, where nothing is
+// active, so a stub returning it would make an offset bug look healthy.
+export const LEDGER_END_OFFSET = 7
+
+// A read-only ledger stub serving contracts by template id, visible only to
+// their stakeholders. Routes driven by it never submit; a submission is
+// therefore a test failure.
 export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClient {
+  const visible = (templateId: string, party: string) =>
+    (byTemplate[templateId] ?? []).filter((e) => e.stakeholders.includes(party))
   return {
     activeContracts: (templateId: string, party: string) =>
-      Promise.resolve((byTemplate[templateId] ?? []).filter((e) => e.stakeholders.includes(party))),
+      Promise.resolve(visible(templateId, party)),
+    // A by-id read is answered by the participant off the same template filter
+    // and the same stakeholder visibility as an active-set query, so a contract
+    // of another template, or one this party cannot see, is simply absent.
+    lookupByContractId: (templateId: string, contractId: string, party: string) =>
+      Promise.resolve(visible(templateId, party).find((e) => e.contractId === contractId)),
+    ledgerEnd: () => Promise.resolve(LEDGER_END_OFFSET),
     submitAndWait: () => Promise.reject(new Error('submitAndWait not expected in this test')),
   }
 }
@@ -112,19 +124,36 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
 // wrong party or off the wrong template id is invisible to it. This wrapper
 // records what was asked as well as answering it, which is the only way to
 // pin the read party now that the configured admin and the instrument admin
-// in the request body are necessarily the same value.
+// in the request body are necessarily the same value. `queries` stays
+// active-set queries alone, so a route that traded one for a bounded by-id
+// read shows up as a shorter list rather than a differently-shaped entry.
 export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
   ledger: LedgerClient
   queries: [string, string][]
+  lookups: [string, string, string][]
+  ledgerEnds: number[]
 } {
   const queries: [string, string][] = []
+  const lookups: [string, string, string][] = []
+  const ledgerEnds: number[] = []
   const inner = ledgerFrom(byTemplate)
   return {
     queries,
+    lookups,
+    ledgerEnds,
     ledger: {
       activeContracts: (templateId, party) => {
         queries.push([templateId, party])
         return inner.activeContracts(templateId, party)
+      },
+      lookupByContractId: (templateId, contractId, party) => {
+        lookups.push([templateId, contractId, party])
+        return inner.lookupByContractId(templateId, contractId, party)
+      },
+      ledgerEnd: async () => {
+        const offset = await inner.ledgerEnd()
+        ledgerEnds.push(offset)
+        return offset
       },
       submitAndWait: inner.submitAndWait,
     },
@@ -135,6 +164,8 @@ export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
 // the terminal 5xx error handler and the readiness probe's unavailable branch.
 export const rejectingLedger: LedgerClient = {
   activeContracts: () => Promise.reject(new Error('ledger query failed: 503')),
+  lookupByContractId: () => Promise.reject(new Error('ledger query failed: 503')),
+  ledgerEnd: () => Promise.reject(new Error('ledger end query failed: 503')),
   submitAndWait: () => Promise.reject(new Error('ledger query failed: 503')),
 }
 

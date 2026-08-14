@@ -51,7 +51,7 @@ daml/                                    Container of dpm packages (mirrors upst
 registry/                                Read-only TypeScript HTTP service serving the CN Token Standard registry API
   src/
     config.ts                            Env-var config, validated at boot (see Environment Variables)
-    ledger.ts                            JSON Ledger API client: ledger end, active contracts, disclosures
+    ledger.ts                            JSON Ledger API client: ledger end, active contracts, one contract by id, disclosures
     payloads.ts                          JSON shapes of the on-ledger payloads the service reads
     mapping.ts                           ACS payload -> API shapes; resolveConfig picks the (admin, instrumentId) config
     disclose.ts                          The single AnyValue encoding site + the two choice-context keys

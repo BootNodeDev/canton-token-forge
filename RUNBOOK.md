@@ -176,6 +176,15 @@ reason the seed script looks the way it does.
   `#canton-token-forge:`.
 - **The active contract set must be snapshotted at the current ledger end**,
   read from `GET /v2/state/ledger-end`. At offset 0 the set is always empty.
+- **One contract is read by id with `POST /v2/events/events-by-contract-id`**,
+  whose body is `{"contractId": ..., "eventFormat": {...}}` and whose
+  `eventFormat` takes the same party-and-template filter as an active-contracts
+  query. It answers the contract's whole history, so an **archived** contract
+  still comes back `200` with its created event and a non-null `archived`: that
+  field is the only thing separating it from a live one. A contract that does
+  not exist, that the party cannot see, and one of another template are all the
+  same `404 CONTRACT_EVENTS_NOT_FOUND`; a contract id the participant cannot
+  parse is `400 INVALID_FIELD`.
 - **The command submission body nests the command list**: the payload is
   `{"commands": {"commands": [...], "actAs": [...], "commandId": ..., "userId": ...,
   "disclosedContracts": [...]}}`. A flat body is rejected with "Missing required
@@ -192,8 +201,8 @@ reason the seed script looks the way it does.
   \"1.0E7\"" while `maxPerTap: 1000` succeeds. A decimal string is read
   literally at any magnitude, so send `"10000000.0"`.
 - Disclosed contracts are `{templateId, contractId, createdEventBlob,
-  synchronizerId}`, taken straight from an active-contracts row queried by a
-  party that can see the contract. Those rows report the template id in
+  synchronizerId}`, taken straight from an active-contracts row, or from the
+  created event of a by-id read, queried by a party that can see the contract. Those rows report the template id in
   package-**id** form, and disclosing it that way is accepted. The package-name
   rule above applies to the filter you send, not to the id that comes back.
 - **A choice declared on an interface is exercised under the INTERFACE id**, not

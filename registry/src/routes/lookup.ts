@@ -46,19 +46,25 @@ export function activePreapprovals(
   )
 }
 
-// Locate a single active contract by its id within a template's active set.
-// Several handlers resolve a path parameter (an allocation, a transfer
-// instruction) this way before acting on it, so the query lives in
-// one place; live-node work that changes how a contract is located by id
-// then has a single call site to update.
+// Resolve a single active contract by its id. Several handlers resolve a path
+// parameter (an allocation, a transfer instruction) this way before acting on
+// it, so the one cast from the client's unknown payload lives here.
+//
+// This is the only lookup the JSON Ledger API can answer in bounded time: the
+// active-set queries above are matched on payload fields (an instrumentId, a
+// receiver) and the API has no payload predicate, so they cannot be narrowed
+// server-side. They stay proportional to the instruments an admin issues and
+// the preapprovals its receivers hold, both of which grow far slower than the
+// escrows, instructions and allocations resolved through here.
 export async function findByContractId<P = unknown>(
   ledger: LedgerClient,
   templateId: string,
   party: string,
   contractId: string,
 ): Promise<ContractEntry<P> | undefined> {
-  const rows = await activeContractsAs<P>(ledger, templateId, party)
-  return rows.find((row) => row.contractId === contractId)
+  return ledger.lookupByContractId(templateId, contractId, party) as Promise<
+    ContractEntry<P> | undefined
+  >
 }
 
 // Resolve the escrow LockedToken behind a lockedCid. The receiver is not a

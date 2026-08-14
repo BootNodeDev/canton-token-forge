@@ -7,7 +7,6 @@ import { createLogger, type Logger } from './logger.js'
 import { openapiDir, specFiles } from './openapi.js'
 import { allocationRouter } from './routes/allocation.js'
 import { asyncHandler } from './routes/async-handler.js'
-import { activeConfigs } from './routes/lookup.js'
 import { metadataRouter } from './routes/metadata.js'
 import { transferRouter } from './routes/transfer.js'
 
@@ -67,7 +66,7 @@ export function createServer(deps: ServerDeps): Express {
     '/readyz',
     asyncHandler(async (_req, res) => {
       try {
-        await activeConfigs(deps.ledger, deps.config)
+        await deps.ledger.ledgerEnd()
       } catch (err) {
         // Surface why readiness is failing: the 503 is returned to the
         // orchestrator, but without this the ledger outage behind it is

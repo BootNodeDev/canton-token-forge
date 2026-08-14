@@ -11,6 +11,7 @@ import {
   lockedTokenEntry,
   otherCfgEntry,
   otherInstrumentId,
+  recordingLedgerFrom,
 } from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
 
@@ -88,6 +89,24 @@ describe('allocation factory', () => {
 })
 
 describe('allocation choice-contexts', () => {
+  // The allocation and its escrow are both named by a contract id, so this
+  // route costs two bounded reads however many allocations the admin holds.
+  it('resolves the allocation and its escrow by contract id, downloading no active set', async () => {
+    const { ledger, queries, lookups } = recordingLedgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+    })
+    const res = await request(createServer({ ledger, config }))
+      .post('/registry/allocations/v1/alloc1/choice-contexts/withdraw')
+      .send({ meta: {} })
+    expect(res.status).toBe(200)
+    expect(lookups).toEqual([
+      [config.allocationTemplateId, 'alloc1', config.adminParty],
+      [config.lockedTokenTemplateId, 'locked1', config.adminParty],
+    ])
+    expect(queries).toEqual([])
+  })
+
   it('cancel carries the expire-lock signal and discloses the escrow LockedToken', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
