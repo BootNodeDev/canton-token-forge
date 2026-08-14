@@ -14,8 +14,8 @@ faucetTapWorksWithinCap = do
   cfg <- registerInstrument admin "CC" "CC" "CC" 10 (Some FaucetConfig with maxPerTap = 100.0)
 
   Some cfgDisclosure <- queryDisclosure admin cfg
-  tok <- submit (actAs user <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_Tap with user; amount = 100.0
-  Some hv <- queryInterfaceContractId user (toInterfaceContractId @HoldingV1.Holding tok)
+  tap <- submit (actAs user <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_Tap with user; amount = 100.0
+  Some hv <- queryInterfaceContractId user (toInterfaceContractId @HoldingV1.Holding tap.tokenCid)
   hv.owner === user
   hv.amount === 100.0
 

@@ -1,0 +1,86 @@
+module Canton.TokenForge.Test.TxMetaTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.TextMap qualified as TextMap
+import DA.Time (time)
+import DA.Date (date, Month(Jan))
+import Splice.Api.Token.MetadataV1 (Metadata(..))
+import Canton.TokenForge.Registry (FaucetConfig(..), InstrumentConfig_Mint(..), InstrumentConfig_Tap(..), InstrumentConfig_LockHolding(..))
+import Canton.TokenForge.Locked (LockedToken_Unlock(..), LockedToken_ExpireLock(..))
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
+
+-- The standard's keys and verbs are spelled out here rather than imported from
+-- the production module, so that renaming a constant on the production side
+-- fails this suite instead of silently travelling through it.
+txKindKey : Text
+txKindKey = "splice.lfdecentralizedtrust.org/tx-kind"
+
+reasonKey : Text
+reasonKey = "splice.lfdecentralizedtrust.org/reason"
+
+senderKey : Text
+senderKey = "splice.lfdecentralizedtrust.org/sender"
+
+annotation : [(Text, Text)] -> Optional Metadata
+annotation kvs = Some (Metadata with values = TextMap.fromList kvs)
+
+mintAnnotatesKindMint : Script ()
+mintAnnotatesKindMint = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  result <- submit (actAs [admin, alice]) $ exerciseCmd cfg InstrumentConfig_Mint with
+    recipient = alice; amount = 50.0
+  result.meta === annotation [(txKindKey, "mint")]
+
+-- The tap is a mint too, so only the reason distinguishes a faucet draw from an
+-- admin issuance in a parsed history.
+tapAnnotatesKindMintWithReason : Script ()
+tapAnnotatesKindMintWithReason = do
+  admin <- allocateParty "admin"
+  user <- allocateParty "user"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 (Some FaucetConfig with maxPerTap = 100.0)
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  result <- submit (actAs user <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_Tap with
+    user; amount = 25.0
+  result.meta === annotation [(txKindKey, "mint"), (reasonKey, "tapped faucet")]
+
+-- Locking hands control to the lock holders, which the standard counts as a
+-- transfer; a transfer must name its sender.
+lockAnnotatesKindTransferWithSender : Script ()
+lockAnnotatesKindTransferWithSender = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 50.0
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  result <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+    owner = alice; tokenCid = tok; holders = [admin]; expiresAt = time (date 2026 Jan 2) 0 0 0
+  result.meta === annotation
+    [(txKindKey, "transfer"), (reasonKey, "holding locked"), (senderKey, partyToText alice)]
+
+unlockAnnotatesKindUnlock : Script ()
+unlockAnnotatesKindUnlock = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 50.0
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  lock <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+    owner = alice; tokenCid = tok; holders = [admin]; expiresAt = time (date 2026 Jan 2) 0 0 0
+  result <- submit (actAs [alice, admin]) $ exerciseCmd lock.lockedCid LockedToken_Unlock
+  result.meta === annotation [(txKindKey, "unlock"), (reasonKey, "holders released lock")]
+
+expireLockAnnotatesKindUnlock : Script ()
+expireLockAnnotatesKindUnlock = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 50.0
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  lock <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+    owner = alice; tokenCid = tok; holders = [admin]; expiresAt = time (date 2026 Jan 2) 0 0 0
+  setTime (time (date 2026 Jan 3) 0 0 0)
+  result <- submit alice $ exerciseCmd lock.lockedCid LockedToken_ExpireLock
+  result.meta === annotation [(txKindKey, "unlock"), (reasonKey, "lock expired")]

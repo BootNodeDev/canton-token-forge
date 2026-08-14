@@ -1,0 +1,57 @@
+-- | Transaction-kind annotations for this registry's own, non-standardized
+-- choices (the Amulet Splice.Amulet.TokenApiUtils analog).
+--
+-- The standard's history parser classifies a standardized choice by its name,
+-- but reaches a registry-native one only through a `meta` field on the choice's
+-- result, which it matches by that name. A choice returning a bare contract id
+-- has nowhere to carry the annotation, which is why every annotated choice here
+-- returns a record instead.
+module Canton.TokenForge.TxMeta where
+
+import DA.TextMap (TextMap)
+import DA.TextMap qualified as TextMap
+import Splice.Api.Token.MetadataV1 (Metadata(..))
+
+-- | Prefix owned by the token standard rather than by this registry: wallets
+-- look these keys up by their exact spelling, so unlike our choice-context keys
+-- they cannot be namespaced under canton-token-forge.
+splicePrefix : Text
+splicePrefix = "splice.lfdecentralizedtrust.org/"
+
+txKindMetaKey : Text
+txKindMetaKey = splicePrefix <> "tx-kind"
+
+reasonMetaKey : Text
+reasonMetaKey = splicePrefix <> "reason"
+
+senderMetaKey : Text
+senderMetaKey = splicePrefix <> "sender"
+
+-- | The transaction kinds this registry emits. The standard permits six; burn,
+-- merge-split and expire-dust describe workflows we do not have. Keeping this a
+-- closed type is what stops an invented verb from compiling.
+data TxKind
+  = TxKind_Transfer
+  | TxKind_Mint
+  | TxKind_Unlock
+
+txKindToText : TxKind -> Text
+txKindToText kind = case kind of
+  TxKind_Transfer -> "transfer"
+  TxKind_Mint -> "mint"
+  TxKind_Unlock -> "unlock"
+
+-- | Build the annotation for a choice that affects holdings. A transfer must
+-- pass its sender: the parser otherwise falls back to reading one off a
+-- standardized transfer's choice argument, which our own choices do not have.
+holdingTxMeta : TxKind -> Optional Text -> Optional Party -> Metadata
+holdingTxMeta kind reason sender =
+  Metadata with
+    values =
+      addOptional senderMetaKey (partyToText <$> sender) $
+      addOptional reasonMetaKey reason $
+      TextMap.fromList [(txKindMetaKey, txKindToText kind)]
+  where
+    addOptional : Text -> Optional Text -> TextMap Text -> TextMap Text
+    addOptional _ None values = values
+    addOptional key (Some value) values = TextMap.insert key value values

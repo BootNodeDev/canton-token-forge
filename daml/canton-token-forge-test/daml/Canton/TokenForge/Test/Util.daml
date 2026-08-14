@@ -25,8 +25,9 @@ registerInstrument admin instrumentId name symbol decimals faucet =
 -- the mint because holdings are co-signed by their owner; admin authority
 -- (admin is the config's signatory) carries the rest.
 mintToken : ContractId InstrumentConfig -> Party -> Party -> Decimal -> Script (ContractId Token)
-mintToken cfg admin recipient amount =
-  submit (actAs [admin, recipient]) $ exerciseCmd cfg InstrumentConfig_Mint with recipient; amount
+mintToken cfg admin recipient amount = do
+  result <- submit (actAs [admin, recipient]) $ exerciseCmd cfg InstrumentConfig_Mint with recipient; amount
+  pure result.tokenCid
 
 -- | Opt `receiver` in to direct transfers. The receiver is the only controller,
 -- and it is not a stakeholder of the config, so the config must be disclosed to

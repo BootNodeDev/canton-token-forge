@@ -5,6 +5,19 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, ChoiceContext(..), AnyValue(..))
 import Canton.TokenForge.Token (Token(..), mkToken)
 import Canton.TokenForge.Types (mkInstrumentId)
+import Canton.TokenForge.TxMeta (TxKind(..), holdingTxMeta)
+
+data LockedToken_UnlockResult = LockedToken_UnlockResult
+  with
+    tokenCid : ContractId Token
+    meta : Optional Metadata
+  deriving (Eq, Show)
+
+data LockedToken_ExpireLockResult = LockedToken_ExpireLockResult
+  with
+    tokenCid : ContractId Token
+    meta : Optional Metadata
+  deriving (Eq, Show)
 
 -- | A locked holding of a canton-token-forge instrument (the LockedAmulet
 -- analog, signatory lock.holders, amulet). Co-signed by the admin, the owner,
@@ -36,25 +49,32 @@ template LockedToken
     -- jointly. In every escrow abort path the escrow's parent is signed by both
     -- admin and sender, so owner and holder (admin) authority are already in
     -- scope and this is satisfied for free.
-    choice LockedToken_Unlock : ContractId Token
+    choice LockedToken_Unlock : LockedToken_UnlockResult
       controller owner :: holders
-      do create (mkToken admin owner instrumentId amount meta)
+      do
+        tokenCid <- create (mkToken admin owner instrumentId amount meta)
+        pure LockedToken_UnlockResult with
+          tokenCid
+          meta = Some (holdingTxMeta TxKind_Unlock (Some "holders released lock") None)
 
     -- After expiry the owner can reclaim the funds.
-    choice LockedToken_ExpireLock : ContractId Token
+    choice LockedToken_ExpireLock : LockedToken_ExpireLockResult
       controller owner
       do
         now <- getTime
         assertMsg "lock has not expired yet" (now >= expiresAt)
-        create (mkToken admin owner instrumentId amount meta)
+        tokenCid <- create (mkToken admin owner instrumentId amount meta)
+        pure LockedToken_ExpireLockResult with
+          tokenCid
+          meta = Some (holdingTxMeta TxKind_Unlock (Some "lock expired") None)
 
 -- | Release a locked holding back to its owner as a spendable Holding via the
 -- lock's own unlock choice. Shared by the transfer reject/withdraw path and the
 -- allocation withdraw/cancel path so the two stay in step.
 unlockHolding : ContractId LockedToken -> Update (ContractId HoldingV1.Holding)
 unlockHolding lockedCid = do
-  tokenCid <- exercise lockedCid LockedToken_Unlock
-  pure (toInterfaceContractId @HoldingV1.Holding tokenCid)
+  result <- exercise lockedCid LockedToken_Unlock
+  pure (toInterfaceContractId @HoldingV1.Holding result.tokenCid)
 
 -- | Well-known choice-context key under which the app backend supplies the
 -- Amulet-style early-release signal for an escrow (Amulet's expire-lock key).

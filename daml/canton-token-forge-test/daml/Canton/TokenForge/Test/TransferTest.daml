@@ -137,10 +137,10 @@ transferRejectsBadInputs = do
     expectedAdmin = admin; transfer = dupTransfer; extraArgs = xargs
   -- locked holding passed as an input
   lockedTok <- mintToken cfg admin alice 10.0
-  locked <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
+  lock <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
     owner = alice; tokenCid = lockedTok; holders = [admin]; expiresAt = later
   let lockedTransfer = (mkTransfer 5.0) with
-        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding locked]
+        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding lock.lockedCid]
   submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
     expectedAdmin = admin; transfer = lockedTransfer; extraArgs = xargs
 
