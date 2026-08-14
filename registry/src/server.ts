@@ -31,20 +31,27 @@ export function createServer(deps: ServerDeps): Express {
   const logger = deps.logger ?? createLogger()
   app.use(express.json())
 
-  // One validator per vendored standard spec, requests only. Paths a given
-  // spec does not document are ignored so the other specs' routes and the
-  // health endpoints pass through; responses stay schema-checked in the test
-  // suite instead of per-request.
+  // One validator per vendored standard spec, requests only, each mounted on
+  // the prefix its own spec documents so a request meets only the validator
+  // that could describe it and the health endpoints meet none. The specs are
+  // independent documents with disjoint prefixes, which is why this works
+  // without merging them. Route lookup inside the validator is unaffected by
+  // the mount because express-openapi-validator matches on the unstripped
+  // req.originalUrl (its useRequestUrl option defaults to false).
+  // Paths a spec does not document are still ignored rather than rejected, so
+  // an undocumented route reaches express routing; responses stay
+  // schema-checked in the test suite instead of per-request.
   // Splice/CN integer-width format hints that the schemas' type: integer
   // already covers, so we register them permissively only to keep ajv quiet.
   const customFormats = {
     int8: { type: 'number' as const, validate: () => true },
     int32: { type: 'number' as const, validate: () => true },
   }
-  for (const specFile of Object.values(specFiles)) {
+  for (const spec of Object.values(specFiles)) {
     app.use(
+      spec.basePath,
       OpenApiValidator.middleware({
-        apiSpec: path.join(openapiDir, specFile),
+        apiSpec: path.join(openapiDir, spec.file),
         validateRequests: {
           // Tolerate undeclared query params (cache-busters, client
           // instrumentation): the specs never forbid them and the handlers
