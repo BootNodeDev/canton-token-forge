@@ -315,6 +315,26 @@ describe('transfer-instruction choice-contexts', () => {
     })
   }
 
+  // Both contracts on this path are named by a contract id, so the route
+  // resolves each one directly. Downloading the instruction and escrow active
+  // sets to scan them in memory made the cost of a choice context grow with
+  // every open transfer the admin is a stakeholder of.
+  it('resolves the instruction and its escrow by contract id, downloading no active set', async () => {
+    const { ledger, queries, lookups } = recordingLedgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+    })
+    const res = await request(createServer({ ledger, config }))
+      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
+      .send({ meta: {} })
+    expect(res.status).toBe(200)
+    expect(lookups).toEqual([
+      [config.transferInstructionTemplateId, 'instr1', config.adminParty],
+      [config.lockedTokenTemplateId, 'locked1', config.adminParty],
+    ])
+    expect(queries).toEqual([])
+  })
+
   it('404s when the transfer instruction is not found', async () => {
     const ledger = ledgerFrom({ [config.transferInstructionTemplateId]: [] })
     const app = createServer({ ledger, config })

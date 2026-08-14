@@ -22,6 +22,7 @@ function recordingFetch(routes: Record<string, FakeResponse>) {
 
 const LEDGER_END = '/v2/state/ledger-end'
 const ACTIVE_CONTRACTS = '/v2/state/active-contracts'
+const BY_CONTRACT_ID = '/v2/events/events-by-contract-id'
 const SUBMIT = '/v2/commands/submit-and-wait-for-transaction'
 
 const ledgerEndAt = (offset: number): FakeResponse => ({
@@ -110,6 +111,138 @@ describe('HttpLedgerClient.activeContracts', () => {
     await expect(client.activeContracts('pkg:M:InstrumentConfig', 'admin::1')).rejects.toThrow(
       /503/,
     )
+  })
+})
+
+// The shape of a by-contract-id response, recorded from Canton 3.5.6: the
+// created event and its synchronizer id sit under `created`, and `archived` is
+// null for a contract that is still active.
+const createdEventFor = (contractId: string) => ({
+  created: {
+    createdEvent: {
+      templateId: 'pkg:Canton.TokenForge.Locked:LockedToken',
+      contractId,
+      createdEventBlob: 'BLOB-LOCK',
+      createArgument: { amount: '10.0' },
+    },
+    synchronizerId: 'sync-1',
+  },
+  archived: null,
+})
+
+describe('HttpLedgerClient.lookupByContractId', () => {
+  it('resolves one contract by id without querying an active set', async () => {
+    const { fakeFetch, calls } = recordingFetch({
+      [BY_CONTRACT_ID]: { ok: true, json: async () => createdEventFor('00locked') },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const entry = await client.lookupByContractId(
+      'pkg:Canton.TokenForge.Locked:LockedToken',
+      '00locked',
+      'admin::1',
+    )
+
+    expect(entry).toMatchObject({
+      contractId: '00locked',
+      createdEventBlob: 'BLOB-LOCK',
+      synchronizerId: 'sync-1',
+      payload: { amount: '10.0' },
+    })
+
+    expect(calls.map(([url]) => new URL(url).pathname)).toEqual([BY_CONTRACT_ID])
+    const [url, init] = calls[0]
+    expect(url).toBe('http://ledger/v2/events/events-by-contract-id')
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(init.body as string)
+    expect(body.contractId).toBe('00locked')
+    // The participant matches the template itself and 404s a mismatch, which
+    // is what spares the service comparing a package-id-qualified templateId
+    // from the response against its package-name-qualified configuration.
+    expect(
+      body.eventFormat.filtersByParty['admin::1'].cumulative[0].identifierFilter.TemplateFilter
+        .value,
+    ).toMatchObject({
+      templateId: 'pkg:Canton.TokenForge.Locked:LockedToken',
+      includeCreatedEventBlob: true,
+    })
+  })
+
+  // The participant answers one 404 (CONTRACT_EVENTS_NOT_FOUND) for all three
+  // of: no such contract, a contract this party cannot see, and a contract of
+  // a different template. Each is "not found" to the caller.
+  it('returns undefined when the participant reports no such contract', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: { ok: false, status: 404, json: async () => ({}) },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(
+      client.lookupByContractId('pkg:M:T', '00gone', 'admin::1'),
+    ).resolves.toBeUndefined()
+  })
+
+  // A ledger outage must not read as "no such contract": that would turn a
+  // 503 into a 404 on every route that resolves a path parameter this way.
+  it('throws when the ledger is unreachable', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: { ok: false, status: 503, json: async () => ({}) },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(client.lookupByContractId('pkg:M:T', '00locked', 'admin::1')).rejects.toThrow(
+      /503/,
+    )
+  })
+
+  // A contract id the participant cannot parse comes back 400 INVALID_FIELD.
+  // It is still a path parameter naming no contract, and the routes answer
+  // their own "not found" for it, as they did when this was an in-memory scan.
+  it('returns undefined when the participant rejects the contract id as unparseable', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: { ok: false, status: 400, json: async () => ({}) },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(
+      client.lookupByContractId('pkg:M:T', 'not-a-cid', 'admin::1'),
+    ).resolves.toBeUndefined()
+  })
+
+  // An archived contract still answers 200 with its created event; only
+  // `archived` distinguishes it. Returning it would disclose a dead contract
+  // and push the failure to the on-ledger submission, where the active-set
+  // scan this replaced simply never saw it.
+  it('returns undefined for a contract that has been archived', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: true,
+        json: async () => ({
+          ...createdEventFor('00locked'),
+          archived: { archivedEvent: { contractId: '00locked', offset: 21 } },
+        }),
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(
+      client.lookupByContractId('pkg:Canton.TokenForge.Locked:LockedToken', '00locked', 'admin::1'),
+    ).resolves.toBeUndefined()
   })
 })
 
