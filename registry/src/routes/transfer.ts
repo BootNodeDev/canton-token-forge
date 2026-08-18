@@ -61,13 +61,13 @@ export function transferRouter(deps: ServerDeps): Router {
         })
       }
 
-      // The two edges of the window are not symmetric. validFrom needs no
-      // margin: the delay between this answer and the sender's submission
-      // only moves time forward, so a not-yet-valid preapproval only becomes
-      // more likely to be valid by then, and padding this edge would reject
-      // something that would have worked. expiresAt needs the margin above,
-      // since that same delay can push a still-valid preapproval past its
-      // expiry before the sender submits.
+      // Only expiresAt carries the margin. Latency alone argues for leaving
+      // validFrom bare, since waiting can only bring a not-yet-valid
+      // preapproval into its window; clock skew can push the other way, so a
+      // preapproval that opened moments ago may still be in the future at
+      // ledger time and abort. That exposure is accepted: it lasts only the
+      // opening moments of a window, whereas expiry is a boundary every
+      // preapproval eventually crosses while still being recommended.
       const pre = preapprovalRows.find(
         (p) =>
           matchesInstrument(p.payload, instrumentId) &&
