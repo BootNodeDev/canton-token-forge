@@ -192,6 +192,29 @@ describe('transfer factory', () => {
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
   })
 
+  it('reads the safety margin from the config rather than a fixed value', async () => {
+    // The same preapproval the default-margin test above answers "direct" for,
+    // under a margin wide enough to cover its remaining window.
+    const expiringLater = preapprovalEntry({
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    })
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [expiringLater],
+    })
+    const app = createServer({ ledger, config: { ...config, directTransferMarginMs: 120_000 } })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    expect(res.body.transferKind).toBe('offer')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
   it('returns transferKind direct when the only preapproval expires outside the safety margin', async () => {
     const expiringLater = preapprovalEntry({
       expiresAt: new Date(Date.now() + 60_000).toISOString(),

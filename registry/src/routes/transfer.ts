@@ -13,16 +13,6 @@ interface TransferFactoryBody {
   }
 }
 
-// The sender submits the direct transfer some time after this response, and
-// TokenTransferPreapproval_Send re-checks validFrom <= now < expiresAt against
-// ledger time at that later moment. Recommending "direct" against a
-// preapproval that is about to expire risks the choice aborting on-ledger,
-// with no offer fallback on that path. This margin covers the client round
-// trip, submission and sequencing latency, and tolerated clock skew between
-// the registry host and the synchronizer; a preapproval expiring within it
-// falls through to "offer" instead, which always succeeds.
-const DIRECT_TRANSFER_MARGIN_MS = 30_000
-
 export function transferRouter(deps: ServerDeps): Router {
   const r = Router()
 
@@ -73,7 +63,7 @@ export function transferRouter(deps: ServerDeps): Router {
           matchesInstrument(p.payload, instrumentId) &&
           p.payload.receiver === receiver &&
           Date.parse(p.payload.validFrom) <= now &&
-          now + DIRECT_TRANSFER_MARGIN_MS < Date.parse(p.payload.expiresAt),
+          now + deps.config.directTransferMarginMs < Date.parse(p.payload.expiresAt),
       )
       if (pre) {
         return res.json({

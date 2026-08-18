@@ -129,3 +129,45 @@ describe('loadConfig shutdown timeout parsing', () => {
     )
   })
 })
+
+describe('loadConfig direct transfer margin parsing', () => {
+  it('defaults to 30000 when DIRECT_TRANSFER_MARGIN_MS is unset', () => {
+    expect(loadConfig({ ...baseEnv }).directTransferMarginMs).toBe(30_000)
+  })
+
+  it('defaults to 30000 when DIRECT_TRANSFER_MARGIN_MS is an empty string', () => {
+    expect(loadConfig({ ...baseEnv, DIRECT_TRANSFER_MARGIN_MS: '' }).directTransferMarginMs).toBe(
+      30_000,
+    )
+  })
+
+  it('parses a valid DIRECT_TRANSFER_MARGIN_MS', () => {
+    expect(
+      loadConfig({ ...baseEnv, DIRECT_TRANSFER_MARGIN_MS: '90000' }).directTransferMarginMs,
+    ).toBe(90_000)
+  })
+
+  it('accepts zero, which disables the margin', () => {
+    expect(loadConfig({ ...baseEnv, DIRECT_TRANSFER_MARGIN_MS: '0' }).directTransferMarginMs).toBe(
+      0,
+    )
+  })
+
+  it('throws on a non-numeric DIRECT_TRANSFER_MARGIN_MS', () => {
+    expect(() => loadConfig({ ...baseEnv, DIRECT_TRANSFER_MARGIN_MS: 'abc' })).toThrow(
+      /invalid DIRECT_TRANSFER_MARGIN_MS/,
+    )
+  })
+
+  it('throws on a negative DIRECT_TRANSFER_MARGIN_MS', () => {
+    expect(() => loadConfig({ ...baseEnv, DIRECT_TRANSFER_MARGIN_MS: '-1' })).toThrow(
+      /invalid DIRECT_TRANSFER_MARGIN_MS/,
+    )
+  })
+
+  it('throws on a margin longer than any realistic preapproval window', () => {
+    expect(() => loadConfig({ ...baseEnv, DIRECT_TRANSFER_MARGIN_MS: '3600001' })).toThrow(
+      /invalid DIRECT_TRANSFER_MARGIN_MS/,
+    )
+  })
+})

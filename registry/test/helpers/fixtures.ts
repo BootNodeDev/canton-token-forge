@@ -26,6 +26,7 @@ export const config: Config = {
   allocationTemplateId: '#canton-token-forge:Canton.TokenForge.Allocation:TokenAllocation',
   port: 0,
   shutdownTimeoutMs: 8_000,
+  directTransferMarginMs: 30_000,
 }
 
 export const instrumentId: InstrumentIdValue = { admin: 'admin::1', id: 'CC' }
