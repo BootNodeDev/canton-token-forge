@@ -86,7 +86,8 @@ npm start
 `GET /healthz` and `GET /readyz` answer, `GET /registry/metadata/v1/info` returns
 the admin party as `adminId` with the six supported APIs, and
 `GET /registry/metadata/v1/instruments` and `/instruments/CC` return the seeded
-instrument.
+instrument. The list is paged: pass `pageSize` (25 by default, 100 at most) and
+follow the `nextPageToken` in the response as `pageToken` to read the rest.
 
 The service is read-only: it serves instrument metadata, factory ids, and choice
 contexts, and submits nothing. Registering a second instrument is a `create` on
