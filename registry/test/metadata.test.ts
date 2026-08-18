@@ -137,3 +137,130 @@ describe('metadata', () => {
     expect(gb.body).toMatchObject({ id: 'GOLD-BAR', symbol: 'GB', decimals: 2 })
   })
 })
+
+// Ids are zero-padded so their lexicographic order matches their numeric one,
+// which lets a test name the instrument it expects at a page boundary.
+function manyInstruments(count: number): InstrumentConfigPayload[] {
+  return Array.from({ length: count }, (_, i) => ({
+    ...cantonCoin,
+    instrumentId: `INS-${String(i).padStart(3, '0')}`,
+    symbol: `S${i}`,
+  }))
+}
+
+function idsOf(body: { instruments: Instrument[] }): string[] {
+  return body.instruments.map((i) => i.id)
+}
+
+describe('metadata pagination', () => {
+  it('caps an unpaged request at the page size the spec defaults to', async () => {
+    const app = createServer({ ledger: ledgerWith(manyInstruments(30)), config })
+    const res = await request(app).get('/registry/metadata/v1/instruments')
+    expect(res.status).toBe(200)
+    validateAgainst('metadata#/components/schemas/ListInstrumentsResponse', res.body)
+    expect(res.body.instruments).toHaveLength(25)
+    expect(idsOf(res.body)[0]).toBe('INS-000')
+    expect(res.body.nextPageToken).toBe('INS-024')
+  })
+
+  it('returns a single instrument and a continuation token for pageSize=1', async () => {
+    const app = createServer({ ledger: ledgerWith(manyInstruments(3)), config })
+    const res = await request(app).get('/registry/metadata/v1/instruments?pageSize=1')
+    expect(res.status).toBe(200)
+    validateAgainst('metadata#/components/schemas/ListInstrumentsResponse', res.body)
+    expect(idsOf(res.body)).toEqual(['INS-000'])
+    expect(res.body.nextPageToken).toBe('INS-000')
+  })
+
+  it('resumes after the instrument the page token names', async () => {
+    const app = createServer({ ledger: ledgerWith(manyInstruments(4)), config })
+    const res = await request(app)
+      .get('/registry/metadata/v1/instruments')
+      .query({ pageSize: 2, pageToken: 'INS-001' })
+    expect(res.status).toBe(200)
+    expect(idsOf(res.body)).toEqual(['INS-002', 'INS-003'])
+  })
+
+  it('omits nextPageToken once the last instrument has been served', async () => {
+    const app = createServer({ ledger: ledgerWith(manyInstruments(3)), config })
+    const first = await request(app).get('/registry/metadata/v1/instruments?pageSize=2')
+    expect(first.status).toBe(200)
+    expect(first.body.nextPageToken).toBe('INS-001')
+    const last = await request(app)
+      .get('/registry/metadata/v1/instruments')
+      .query({ pageSize: 2, pageToken: first.body.nextPageToken })
+    expect(last.status).toBe(200)
+    validateAgainst('metadata#/components/schemas/ListInstrumentsResponse', last.body)
+    expect(idsOf(last.body)).toEqual(['INS-002'])
+    expect(last.body.nextPageToken).toBeUndefined()
+  })
+
+  it('walks every instrument exactly once across pages', async () => {
+    const app = createServer({ ledger: ledgerWith(manyInstruments(7)), config })
+    const pages: string[][] = []
+    let token: string | undefined
+    for (let page = 0; page < 10; page++) {
+      const res = await request(app)
+        .get('/registry/metadata/v1/instruments')
+        .query(token === undefined ? { pageSize: 2 } : { pageSize: 2, pageToken: token })
+      expect(res.status).toBe(200)
+      pages.push(idsOf(res.body))
+      token = res.body.nextPageToken
+      if (token === undefined) break
+    }
+    expect(token).toBeUndefined()
+    // Four pages of at most two: a handler that ignores pageSize walks the
+    // whole set in one page and still satisfies the union assertion below.
+    expect(pages.map((p) => p.length)).toEqual([2, 2, 2, 1])
+    expect(pages.flat()).toEqual(manyInstruments(7).map((p) => p.instrumentId))
+  })
+
+  it('pages in instrument id order regardless of the order the ledger returns rows in', async () => {
+    const shuffled = [...manyInstruments(4)].reverse()
+    const app = createServer({ ledger: ledgerWith(shuffled), config })
+    const res = await request(app).get('/registry/metadata/v1/instruments?pageSize=2')
+    expect(res.status).toBe(200)
+    expect(idsOf(res.body)).toEqual(['INS-000', 'INS-001'])
+    expect(res.body.nextPageToken).toBe('INS-001')
+  })
+
+  it('collapses duplicate rows before they consume a page slot', async () => {
+    const [first, second, third] = manyInstruments(3)
+    const duplicate = { ...first, name: 'Canton Coin (second create)' }
+    const app = createServer({ ledger: ledgerWith([first, duplicate, second, third]), config })
+    const res = await request(app).get('/registry/metadata/v1/instruments?pageSize=2')
+    expect(res.status).toBe(200)
+    // A page filled from raw rows would spend a slot on the duplicate and stop
+    // at INS-001 having served INS-000 twice.
+    expect(idsOf(res.body)).toEqual(['INS-000', 'INS-001'])
+    expect(res.body.nextPageToken).toBe('INS-001')
+  })
+
+  it('falls back to the default page size when pageSize is below one', async () => {
+    const app = createServer({ ledger: ledgerWith(manyInstruments(30)), config })
+    for (const pageSize of [0, -1]) {
+      const res = await request(app).get(`/registry/metadata/v1/instruments?pageSize=${pageSize}`)
+      expect(res.status).toBe(200)
+      expect(res.body.instruments).toHaveLength(25)
+      expect(res.body.nextPageToken).toBe('INS-024')
+    }
+  })
+
+  it('caps the page at 100 instruments however many the client asks for', async () => {
+    const app = createServer({ ledger: ledgerWith(manyInstruments(120)), config })
+    const res = await request(app).get('/registry/metadata/v1/instruments?pageSize=1000')
+    expect(res.status).toBe(200)
+    validateAgainst('metadata#/components/schemas/ListInstrumentsResponse', res.body)
+    expect(res.body.instruments).toHaveLength(100)
+    expect(res.body.nextPageToken).toBe('INS-099')
+  })
+
+  it('serves the instruments after an unknown page token rather than failing', async () => {
+    const app = createServer({ ledger: ledgerWith(manyInstruments(3)), config })
+    const res = await request(app)
+      .get('/registry/metadata/v1/instruments')
+      .query({ pageToken: 'INS-000-GONE' })
+    expect(res.status).toBe(200)
+    expect(idsOf(res.body)).toEqual(['INS-001', 'INS-002'])
+  })
+})
