@@ -46,12 +46,12 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `84f8f7a`, exit 0:
+All three suites were re-run at commit `197eb8b`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **44 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **131 tests**, 10 files | nothing, in-process server with a stub ledger |
+| Registry unit | **135 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **10 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-687 lines of production Daml, 1239 lines of Daml tests, 1241 lines of TypeScript
-service, 2791 lines of TypeScript tests. MIT licensed. Pre-release: the package
+687 lines of production Daml, 1239 lines of Daml tests, 1285 lines of TypeScript
+service, 2856 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -291,10 +291,11 @@ answers whether the participant is reachable and the token is accepted, not
 whether the configured admin party and template ids resolve to anything. What
 the probe cannot say, the boot check does: at startup the service asks the
 participant for the configured admin party and reads the instrument configs as
-it, and refuses to start when the participant does not know that party or
-refuses to let the token read as it. A participant that is unreachable, or that
-refuses the party lookup itself, is warned about rather than fatal, so a ledger
-outage does not turn into a crashloop.
+it, and refuses to start when the participant neither knows that party nor
+returns anything it owns, or when it refuses to let the token read as it. A
+participant that is unreachable, that refuses the party lookup itself, or that
+takes longer than the check's timeout to answer, is warned about rather than
+fatal, so a ledger outage does not turn into a crashloop.
 
 Configuration is entirely by environment: eight required variables (ledger URL
 and token, admin party, and five concrete template ids in package-name form) and
@@ -348,7 +349,7 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 44 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, deadline boundaries, missing authority, and the `decimals` bound |
-| Registry unit, 118 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
+| Registry unit, 135 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
 | End-to-end, 10 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -366,7 +367,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 44 Daml scenarios
-cd registry && npm install && npm test   # 118 unit tests, no ledger needed
+cd registry && npm install && npm test   # 135 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument

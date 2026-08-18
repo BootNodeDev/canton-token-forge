@@ -241,7 +241,13 @@ reason the seed script looks the way it does.
   `ADMIN_PARTY names a party this participant does not know` and exits 1. A
   participant that is unreachable, or that refuses the party lookup because
   party management is admin-only, is logged as a warning and the service starts:
-  `/readyz` remains the signal for a ledger that is down.
+  `/readyz` remains the signal for a ledger that is down. The lookup is scoped
+  to the caller's identity provider, so an empty answer is fatal only when
+  reading as the party also returns no instrument configs: a party that owns
+  configs exists and is readable whatever the lookup could see. A check that has
+  not answered within five seconds warns and the boot continues, and a verdict
+  landing after that is logged as a warning, because the service is by then
+  serving and nothing can still stop it starting.
 - All five template ids are package-name form, and the service refuses to start
   otherwise rather than serving empty results from a filter that matches nothing.
   They are concrete template ids, never interface ids: the choice-context
