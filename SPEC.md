@@ -46,12 +46,12 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `67663cf`, exit 0:
+All three suites were re-run at commit `84f8f7a`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **44 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **118 tests**, 9 files | nothing, in-process server with a stub ledger |
+| Registry unit | **131 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **10 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-687 lines of production Daml, 1239 lines of Daml tests, 1091 lines of TypeScript
-service, 2588 lines of TypeScript tests. MIT licensed. Pre-release: the package
+687 lines of production Daml, 1239 lines of Daml tests, 1241 lines of TypeScript
+service, 2791 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -288,14 +288,20 @@ exercise itself.
 
 Liveness does not touch the ledger; readiness reads the ledger end. That probe
 answers whether the participant is reachable and the token is accepted, not
-whether the configured admin party and template ids resolve to anything, so a
-service can report ready and still serve nothing.
+whether the configured admin party and template ids resolve to anything. What
+the probe cannot say, the boot check does: at startup the service asks the
+participant for the configured admin party and reads the instrument configs as
+it, and refuses to start when the participant does not know that party or
+refuses to let the token read as it. A participant that is unreachable, or that
+refuses the party lookup itself, is warned about rather than fatal, so a ledger
+outage does not turn into a crashloop.
 
 Configuration is entirely by environment: eight required variables (ledger URL
 and token, admin party, and five concrete template ids in package-name form) and
 four optional ones. The service refuses to start if any required variable is
-missing or if a template id is not in package-name form, rather than serving
-empty results from a filter that matches nothing.
+missing, if a template id is not in package-name form, or if the admin party
+fails the boot check above, rather than serving empty results from a filter that
+matches nothing.
 
 ### Choice contexts and disclosure
 
@@ -415,9 +421,12 @@ Stated plainly, because they are what an evaluation turns on.
   JWT.** This is sound only because it submits nothing and reads solely as the
   admin. It is not a template for a service that writes.
 - **Readiness does not prove the service can serve.** The probe reads the ledger
-  end, which is scoped to neither the admin party nor any template, so a token
-  that authenticates without the right to read as the configured admin reports
-  ready and then fails every route. Tracked.
+  end, which is scoped to neither the admin party nor any template. The startup
+  check covers the two configuration faults that produced (an admin party the
+  participant does not know, and a token that may not read as it), but it runs
+  once: a right revoked while the service is running still reports ready and
+  fails every route. A template id that is well formed and names nothing is not
+  covered either.
 - **No CI pipeline yet.** The three suites are run by hand. Tracked.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
