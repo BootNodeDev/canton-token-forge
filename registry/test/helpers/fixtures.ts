@@ -117,6 +117,11 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
     lookupByContractId: (templateId: string, contractId: string, party: string) =>
       Promise.resolve(visible(templateId, party).find((e) => e.contractId === contractId)),
     ledgerEnd: () => Promise.resolve(LEDGER_END_OFFSET),
+    // Matches what a participant answers: a party it does not know is an empty
+    // list rather than an error, which is the whole reason a wrong ADMIN_PARTY
+    // is invisible to every other read.
+    partyDetails: (party: string) =>
+      Promise.resolve(party === config.adminParty ? [{ party, isLocal: true }] : []),
     submitAndWait: () => Promise.reject(new Error('submitAndWait not expected in this test')),
   }
 }
@@ -156,6 +161,7 @@ export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
         ledgerEnds.push(offset)
         return offset
       },
+      partyDetails: inner.partyDetails,
       submitAndWait: inner.submitAndWait,
     },
   }
@@ -167,20 +173,34 @@ export const rejectingLedger: LedgerClient = {
   activeContracts: () => Promise.reject(new Error('ledger query failed: 503')),
   lookupByContractId: () => Promise.reject(new Error('ledger query failed: 503')),
   ledgerEnd: () => Promise.reject(new Error('ledger end query failed: 503')),
+  partyDetails: () => Promise.reject(new Error('party lookup failed: 503')),
   submitAndWait: () => Promise.reject(new Error('ledger query failed: 503')),
 }
 
 // A logger that records the structured objects passed to error(), so a suite
 // can assert what the service logged without depending on pino.
-export function recordingLogger(): { logger: Logger; entries: object[] } {
+export function recordingLogger(): {
+  logger: Logger
+  entries: object[]
+  warnings: string[]
+  errors: string[]
+} {
   const entries: object[] = []
+  // The messages, kept apart from the structured objects above: a startup
+  // check is asserted on which variable it named, which lives in the message.
+  const warnings: string[] = []
+  const errors: string[] = []
   const logger: Logger = {
     info: () => {},
-    error: (obj: object | string) => {
+    warn: (obj: object | string, msg?: string) => {
+      warnings.push(typeof obj === 'string' ? obj : (msg ?? ''))
+    },
+    error: (obj: object | string, msg?: string) => {
       if (typeof obj === 'object') entries.push(obj)
+      errors.push(typeof obj === 'string' ? obj : (msg ?? ''))
     },
   }
-  return { logger, entries }
+  return { logger, entries, warnings, errors }
 }
 
 // TokenTransferPreapproval is signatory admin, receiver.
