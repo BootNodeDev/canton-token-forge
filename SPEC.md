@@ -278,13 +278,22 @@ exercise itself.
 | Method | Path |
 |---|---|
 | GET | `/registry/metadata/v1/info` |
-| GET | `/registry/metadata/v1/instruments` |
+| GET | `/registry/metadata/v1/instruments` (paged) |
 | GET | `/registry/metadata/v1/instruments/:instrumentId` |
 | POST | `/registry/transfer-instruction/v1/transfer-factory` |
 | POST | `/registry/transfer-instruction/v1/:id/choice-contexts/{accept,reject,withdraw}` |
 | POST | `/registry/allocation-instruction/v1/allocation-factory` |
 | POST | `/registry/allocations/v1/:id/choice-contexts/{execute-transfer,withdraw,cancel}` |
 | GET | `/healthz`, `/readyz` |
+
+The instrument list is paged as the metadata spec describes it: `pageSize`
+bounds the page (defaulting to the spec's 25, capped at 100, and falling back to
+the default for anything below 1), and `nextPageToken` carries the last
+instrument id served, which the client passes back as `pageToken` to resume.
+Ordering is by instrument id, so a token names a position rather than a
+contract, and a stale one resumes from where it points instead of failing.
+Paging bounds the response only: the active-set query behind it cannot be
+narrowed server-side, so the service reads every instrument either way.
 
 Liveness does not touch the ledger; readiness reads the ledger end. That probe
 answers whether the participant is reachable and the token is accepted, not
