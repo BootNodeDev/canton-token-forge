@@ -66,7 +66,7 @@ describe('transfer factory', () => {
     expect(other.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg2' })
   })
 
-  it('returns transferKind direct and discloses config + preapproval when an in-window preapproval exists', async () => {
+  it('returns transferKind direct and discloses config + preapproval when an active preapproval exists', async () => {
     const ledger = ledgerFrom({
       [config.instrumentConfigTemplateId]: [cfgEntry()],
       [config.preapprovalTemplateId]: [preapprovalEntry()],

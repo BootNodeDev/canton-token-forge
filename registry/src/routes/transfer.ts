@@ -40,16 +40,17 @@ export function transferRouter(deps: ServerDeps): Router {
       // both up front: the common direct/offer path then costs one round-trip
       // instead of two, at the price of one wasted preapproval query on the
       // self and not-found paths.
-      const now = Date.now()
       const [cfgRows, preapprovalRows] = await Promise.all([
         activeConfigs(deps.ledger, deps.config),
         activePreapprovals(deps.ledger, deps.config),
       ])
+      const now = Date.now()
       const cfg = resolveOrRespond(res, resolveConfig(cfgRows, instrumentId.admin, instrumentId.id))
       if (!cfg) return
 
       // self and offer share the same empty context disclosing only the
-      // config; only a matched in-window preapproval upgrades to a direct one.
+      // config; only a matched preapproval with enough of its window left
+      // upgrades to a direct one.
       const baseContext = { choiceContextData: {}, disclosedContracts: [toDisclosed(cfg)] }
 
       if (sender === receiver) {
