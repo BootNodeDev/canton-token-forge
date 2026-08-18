@@ -13,6 +13,16 @@ interface TransferFactoryBody {
   }
 }
 
+// The sender submits the direct transfer some time after this response, and
+// TokenTransferPreapproval_Send re-checks validFrom <= now < expiresAt against
+// ledger time at that later moment. Recommending "direct" against a
+// preapproval that is about to expire risks the choice aborting on-ledger,
+// with no offer fallback on that path. This margin covers the client round
+// trip, submission and sequencing latency, and tolerated clock skew between
+// the registry host and the synchronizer; a preapproval expiring within it
+// falls through to "offer" instead, which always succeeds.
+const DIRECT_TRANSFER_MARGIN_MS = 30_000
+
 export function transferRouter(deps: ServerDeps): Router {
   const r = Router()
 
@@ -50,17 +60,19 @@ export function transferRouter(deps: ServerDeps): Router {
         })
       }
 
-      // Only a preapproval whose validity window covers now enables a direct
-      // transfer: TokenTransferPreapproval_Send asserts validFrom <= now <
-      // expiresAt on-ledger, and the direct path hard-fails (no offer
-      // fallback) against an out-of-window one, so an expired or
-      // not-yet-valid preapproval must fall through to "offer" here.
+      // The two edges of the window are not symmetric. validFrom needs no
+      // margin: the delay between this answer and the sender's submission
+      // only moves time forward, so a not-yet-valid preapproval only becomes
+      // more likely to be valid by then, and padding this edge would reject
+      // something that would have worked. expiresAt needs the margin above,
+      // since that same delay can push a still-valid preapproval past its
+      // expiry before the sender submits.
       const pre = preapprovalRows.find(
         (p) =>
           matchesInstrument(p.payload, instrumentId) &&
           p.payload.receiver === receiver &&
           Date.parse(p.payload.validFrom) <= now &&
-          now < Date.parse(p.payload.expiresAt),
+          now + DIRECT_TRANSFER_MARGIN_MS < Date.parse(p.payload.expiresAt),
       )
       if (pre) {
         return res.json({

@@ -167,6 +167,60 @@ describe('transfer factory', () => {
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
   })
 
+  it('falls through to offer when the only preapproval expires inside the safety margin', async () => {
+    const expiringSoon = preapprovalEntry({
+      expiresAt: new Date(Date.now() + 15_000).toISOString(),
+    })
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [expiringSoon],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    validateAgainst(
+      'transfer-instruction#/components/schemas/TransferFactoryWithChoiceContext',
+      res.body,
+    )
+    expect(res.body.transferKind).toBe('offer')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
+  })
+
+  it('returns transferKind direct when the only preapproval expires outside the safety margin', async () => {
+    const expiringLater = preapprovalEntry({
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    })
+    const ledger = ledgerFrom({
+      [config.instrumentConfigTemplateId]: [cfgEntry()],
+      [config.preapprovalTemplateId]: [expiringLater],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/transfer-factory')
+      .send({
+        choiceArguments: {
+          transfer: { instrumentId, sender: 'sender::1', receiver: 'receiver::1' },
+        },
+      })
+    expect(res.status).toBe(200)
+    validateAgainst(
+      'transfer-instruction#/components/schemas/TransferFactoryWithChoiceContext',
+      res.body,
+    )
+    expect(res.body.transferKind).toBe('direct')
+    expect(res.body.choiceContext.disclosedContracts).toHaveLength(2)
+    expect(res.body.choiceContext.choiceContextData[PREAPPROVAL_CONTEXT_KEY]).toEqual({
+      tag: 'AV_ContractId',
+      value: 'pre1',
+    })
+  })
+
   // The admin is a stakeholder of every preapproval it issued, so these two
   // reach the match filter and must be rejected by it, not by visibility.
   it('falls through to offer when the only preapproval is for a different receiver', async () => {
