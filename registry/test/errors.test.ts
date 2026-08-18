@@ -1,5 +1,6 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
+import { type LedgerClient, LedgerRequestError } from '../src/ledger'
 import { createServer } from '../src/server'
 import { config, ledgerFrom, recordingLogger, rejectingLedger } from './helpers/fixtures'
 
@@ -40,5 +41,23 @@ describe('async route errors', () => {
       method: 'GET',
       path: '/registry/metadata/v1/instruments',
     })
+  })
+
+  it('answers 500 for a ledger failure that carries a status from the participant', async () => {
+    const { logger, entries } = recordingLogger()
+    // A LedgerRequestError carries the participant's status so the boot check
+    // can tell an authorization refusal from a fault. Were that status to
+    // reach the client, an expired LEDGER_API_TOKEN would answer 403 to a
+    // caller who sent a perfectly good request, and the outage would skip the
+    // 5xx log line that is the only record operators get of it.
+    const ledger: LedgerClient = {
+      ...ledgerFrom({}),
+      activeContracts: () =>
+        Promise.reject(new LedgerRequestError(403, 'ledger query failed: 403')),
+    }
+    const app = createServer({ ledger, config, logger })
+    const res = await request(app).get('/registry/metadata/v1/instruments')
+    expect(res.status).toBe(500)
+    expect(entries).toHaveLength(1)
   })
 })

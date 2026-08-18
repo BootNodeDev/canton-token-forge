@@ -3,6 +3,30 @@ import type { Config } from './config.js'
 import type { DisclosedContract } from './disclose.js'
 import { createLogger, type Logger } from './logger.js'
 
+// The participant's answer to a party lookup. `isLocal` is what separates a
+// party this participant hosts, and can therefore read as, from one it merely
+// knows about.
+export interface PartyDetails {
+  party: string
+  isLocal: boolean
+}
+
+// Carries the participant's status code, because a caller's response depends on
+// which failure it was: an authorization refusal is a configuration fault, and
+// anything else is the ledger being the ledger. The field is deliberately not
+// named `status`: the terminal error handler answers a request with any status
+// it finds on the error, and the participant's own status is never the one a
+// client should be told (an expired ledger token is not the caller's 403).
+export class LedgerRequestError extends Error {
+  constructor(
+    readonly ledgerStatus: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'LedgerRequestError'
+  }
+}
+
 export interface ContractEntry<P = unknown> {
   templateId: string
   contractId: string
@@ -34,6 +58,12 @@ export interface LedgerClient {
   // whose cost does not move with what the admin is a stakeholder of. The
   // readiness probe uses it for that reason.
   ledgerEnd(): Promise<number>
+  // The participant's view of a single party, used by the startup check. Its
+  // cost does not move with the ledger, and unlike every other read here it can
+  // tell a party the participant does not know from one that simply has no
+  // contracts: the participant answers the first with an empty list rather than
+  // an error.
+  partyDetails(party: string): Promise<PartyDetails[]>
   // The service answers reads only: an instrument is registered by an admin
   // creating the contract directly, so no route submits and nothing calls this
   // today. It stays on the client because it encodes the participant's
@@ -136,8 +166,20 @@ export class HttpLedgerClient implements LedgerClient {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/state/ledger-end`, {
       headers: this.headers(),
     })
-    if (!res.ok) throw new Error(`ledger end query failed: ${res.status}`)
+    if (!res.ok) throw new LedgerRequestError(res.status, `ledger end query failed: ${res.status}`)
     return ((await res.json()) as { offset: number }).offset
+  }
+
+  // A party id contains characters (`::`, and whatever the hint carries) that
+  // must survive the path segment, so it is encoded rather than interpolated.
+  async partyDetails(party: string): Promise<PartyDetails[]> {
+    const res = await this.fetchFn(
+      `${this.config.ledgerApiUrl}/v2/parties/${encodeURIComponent(party)}`,
+      { headers: this.headers() },
+    )
+    if (!res.ok) throw new LedgerRequestError(res.status, `party lookup failed: ${res.status}`)
+    const body = (await res.json()) as { partyDetails?: PartyDetails[] }
+    return (body.partyDetails ?? []).map(({ party, isLocal }) => ({ party, isLocal }))
   }
 
   async activeContracts(templateId: string, party: string): Promise<ContractEntry[]> {
@@ -151,7 +193,7 @@ export class HttpLedgerClient implements LedgerClient {
         activeAtOffset,
       }),
     })
-    if (!res.ok) throw new Error(`ledger query failed: ${res.status}`)
+    if (!res.ok) throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`)
     const rows = (await res.json()) as ActiveContractsRow[]
     return rows.flatMap((r) => {
       const ac = r?.contractEntry?.JsActiveContract
@@ -195,7 +237,7 @@ export class HttpLedgerClient implements LedgerClient {
       }
       return undefined
     }
-    if (!res.ok) throw new Error(`ledger query failed: ${res.status}`)
+    if (!res.ok) throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`)
     const body = (await res.json()) as EventsByContractIdResponse
     // An archived contract is still answered with its created event, so the
     // archive event is the only thing separating it from a live one.
@@ -236,7 +278,9 @@ export class HttpLedgerClient implements LedgerClient {
         }),
       },
     )
-    if (!res.ok) throw new Error(`ledger command submission failed: ${res.status}`)
+    if (!res.ok) {
+      throw new LedgerRequestError(res.status, `ledger command submission failed: ${res.status}`)
+    }
     return res.json()
   }
 }

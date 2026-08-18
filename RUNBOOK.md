@@ -233,6 +233,21 @@ reason the seed script looks the way it does.
 
 ## What the service configuration has to match
 
+- `ADMIN_PARTY` is checked against the participant at boot, because every read
+  runs as it and a party the participant does not know reads as an empty active
+  set rather than an error: without the check a typo'd fingerprint booted green,
+  advertised the typo as `adminId`, and answered an empty instrument list with a
+  404 on everything else. The service now logs
+  `ADMIN_PARTY names a party this participant does not know` and exits 1. A
+  participant that is unreachable, or that refuses the party lookup because
+  party management is admin-only, is logged as a warning and the service starts:
+  `/readyz` remains the signal for a ledger that is down. The lookup is scoped
+  to the caller's identity provider, so an empty answer is fatal only when
+  reading as the party also returns no instrument configs: a party that owns
+  configs exists and is readable whatever the lookup could see. A check that has
+  not answered within five seconds warns and the boot continues, and a verdict
+  landing after that is logged as a warning, because the service is by then
+  serving and nothing can still stop it starting.
 - All five template ids are package-name form, and the service refuses to start
   otherwise rather than serving empty results from a filter that matches nothing.
   They are concrete template ids, never interface ids: the choice-context

@@ -51,7 +51,8 @@ daml/                                    Container of dpm packages (mirrors upst
 registry/                                Read-only TypeScript HTTP service serving the CN Token Standard registry API
   src/
     config.ts                            Env-var config, validated at boot (see Environment Variables)
-    ledger.ts                            JSON Ledger API client: ledger end, active contracts, one contract by id, disclosures
+    ledger.ts                            JSON Ledger API client: ledger end, active contracts, one contract by id, party lookup, disclosures
+    startup.ts                           Boot check: the admin party exists on the participant and the token can read as it
     payloads.ts                          JSON shapes of the on-ledger payloads the service reads
     mapping.ts                           ACS payload -> API shapes; resolveConfig picks the (admin, instrumentId) config
     disclose.ts                          The single AnyValue encoding site + the two choice-context keys
@@ -233,8 +234,9 @@ error, since from the submitting party's side the contract simply does not exist
 | `LANG` | Must be `C.UTF-8` for `dpm`/`damlc` (otherwise data-dependency interface regeneration throws a UTF-8 decoding error). The npm scripts set it. |
 
 These two cover the Daml build only. The registry service and `scripts/seed.mjs`
-are configured entirely by environment: the service requires eight variables and
-refuses to start without them (`registry/.env.example`), and the seed reads its
+are configured entirely by environment: the service requires eight variables,
+refuses to start without them, and additionally validates `ADMIN_PARTY` against
+the participant at boot (`registry/.env.example`), and the seed reads its
 overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 
 ## Scripts

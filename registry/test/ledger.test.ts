@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HttpLedgerClient } from '../src/ledger'
+import { HttpLedgerClient, LedgerRequestError } from '../src/ledger'
 import { recordingLogger } from './helpers/fixtures'
 
 interface FakeResponse {
@@ -295,6 +295,60 @@ describe('HttpLedgerClient.lookupByContractId', () => {
     await expect(
       client.lookupByContractId('pkg:Canton.TokenForge.Locked:LockedToken', '00locked', 'admin::1'),
     ).resolves.toBeUndefined()
+  })
+})
+
+const ADMIN = 'admin::1220620ff05a58be80fcc36c085660b788ec6380759d88f1ec72547ed38d3d6c7656'
+const PARTIES = `/v2/parties/${encodeURIComponent(ADMIN)}`
+
+describe('HttpLedgerClient.partyDetails', () => {
+  it('reads the party as a path segment and maps the participant answer', async () => {
+    const { fakeFetch, calls } = recordingFetch({
+      [PARTIES]: {
+        ok: true,
+        json: async () => ({
+          partyDetails: [
+            {
+              party: ADMIN,
+              isLocal: true,
+              localMetadata: { resourceVersion: '0', annotations: {} },
+              identityProviderId: '',
+            },
+          ],
+        }),
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(client.partyDetails(ADMIN)).resolves.toEqual([{ party: ADMIN, isLocal: true }])
+    // The `::` between hint and fingerprint would otherwise split the path.
+    expect(calls[0][0]).toBe(`http://ledger${PARTIES}`)
+  })
+
+  it('reports a party the participant does not know as an empty list, not an error', async () => {
+    const { fakeFetch } = recordingFetch({
+      [PARTIES]: { ok: true, json: async () => ({ partyDetails: [] }) },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(client.partyDetails(ADMIN)).resolves.toEqual([])
+  })
+
+  it('carries the status on a refusal, which is what tells a fault from a refusal', async () => {
+    const { fakeFetch } = recordingFetch({ [PARTIES]: { ok: false, status: 403 } })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(client.partyDetails(ADMIN)).rejects.toBeInstanceOf(LedgerRequestError)
+    await expect(client.partyDetails(ADMIN)).rejects.toMatchObject({ ledgerStatus: 403 })
   })
 })
 
