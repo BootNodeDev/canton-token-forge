@@ -37,10 +37,23 @@ describe('checkAdminParty', () => {
 
   it('refuses to start when the participant does not know the party', async () => {
     const { logger, errors } = recordingLogger()
-    const ledger = ledgerWith({ partyDetails: () => Promise.resolve([]) })
+    const ledger = { ...ledgerFrom({}), partyDetails: () => Promise.resolve([]) }
 
     expect(await checkAdminParty(ledger, config, logger)).toBe(false)
     expect(errors.join(' ')).toContain('ADMIN_PARTY')
+  })
+
+  it('starts with a warning when the lookup lists nothing but the party owns configs', async () => {
+    const { logger, warnings, errors } = recordingLogger()
+    // A party lookup is scoped to the caller's identity provider, so a service
+    // token issued under a non-default one can get an empty answer for a party
+    // the participant genuinely hosts. Owning instrument configs settles it:
+    // a party that does not exist owns nothing.
+    const ledger = ledgerWith({ partyDetails: () => Promise.resolve([]) })
+
+    expect(await checkAdminParty(ledger, config, logger)).toBe(true)
+    expect(warnings.join(' ')).toContain('ADMIN_PARTY')
+    expect(errors).toEqual([])
   })
 
   it('starts with a warning when the participant knows the party but does not host it', async () => {
@@ -117,6 +130,8 @@ describe('checkAdminParty', () => {
 })
 
 describe('checkAdminParty timeout', () => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
   it('starts with a warning rather than hanging the boot on a participant that never answers', async () => {
     const { logger, warnings, errors } = recordingLogger()
     const ledger = ledgerWith({ partyDetails: () => new Promise(() => {}) })
@@ -124,5 +139,36 @@ describe('checkAdminParty timeout', () => {
     expect(await checkAdminParty(ledger, config, logger, 5)).toBe(true)
     expect(warnings.length).toBe(1)
     expect(errors).toEqual([])
+  })
+
+  it('does not report a timeout on a check that answered in time', async () => {
+    const { logger, warnings, errors } = recordingLogger()
+
+    expect(await checkAdminParty(ledgerFrom(seeded), config, logger, 5)).toBe(true)
+    // The losing side of a race keeps running, so an uncancelled timer fires
+    // on every healthy boot and sends operators after a timeout that never
+    // happened.
+    await sleep(20)
+    expect(warnings).toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  it('reports a verdict that arrives after the timeout as a warning, not a fatal error', async () => {
+    const { logger, warnings, errors } = recordingLogger()
+    const ledger = {
+      ...ledgerFrom({}),
+      partyDetails: async () => {
+        await sleep(20)
+        return []
+      },
+    }
+
+    // The boot has already continued by the time this verdict lands, so
+    // logging it at error level would describe a service that refused to
+    // start while it is in fact serving traffic.
+    expect(await checkAdminParty(ledger, config, logger, 5)).toBe(true)
+    await sleep(40)
+    expect(errors).toEqual([])
+    expect(warnings.join(' ')).toContain('ADMIN_PARTY')
   })
 })
