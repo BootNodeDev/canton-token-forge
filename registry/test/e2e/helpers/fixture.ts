@@ -55,6 +55,7 @@ export async function setupInstrument(): Promise<LiveFixture> {
     allocationTemplateId: ids.allocation,
     port: 0,
     shutdownTimeoutMs: 8_000,
+    directTransferMarginMs: 30_000,
   }
   const ledger = new HttpLedgerClient(config)
 

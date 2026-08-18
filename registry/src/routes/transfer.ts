@@ -30,16 +30,17 @@ export function transferRouter(deps: ServerDeps): Router {
       // both up front: the common direct/offer path then costs one round-trip
       // instead of two, at the price of one wasted preapproval query on the
       // self and not-found paths.
-      const now = Date.now()
       const [cfgRows, preapprovalRows] = await Promise.all([
         activeConfigs(deps.ledger, deps.config),
         activePreapprovals(deps.ledger, deps.config),
       ])
+      const now = Date.now()
       const cfg = resolveOrRespond(res, resolveConfig(cfgRows, instrumentId.admin, instrumentId.id))
       if (!cfg) return
 
       // self and offer share the same empty context disclosing only the
-      // config; only a matched in-window preapproval upgrades to a direct one.
+      // config; only a matched preapproval with enough of its window left
+      // upgrades to a direct one.
       const baseContext = { choiceContextData: {}, disclosedContracts: [toDisclosed(cfg)] }
 
       if (sender === receiver) {
@@ -50,17 +51,19 @@ export function transferRouter(deps: ServerDeps): Router {
         })
       }
 
-      // Only a preapproval whose validity window covers now enables a direct
-      // transfer: TokenTransferPreapproval_Send asserts validFrom <= now <
-      // expiresAt on-ledger, and the direct path hard-fails (no offer
-      // fallback) against an out-of-window one, so an expired or
-      // not-yet-valid preapproval must fall through to "offer" here.
+      // Only expiresAt carries the margin. Latency alone argues for leaving
+      // validFrom bare, since waiting can only bring a not-yet-valid
+      // preapproval into its window; clock skew can push the other way, so a
+      // preapproval that opened moments ago may still be in the future at
+      // ledger time and abort. That exposure is accepted: it lasts only the
+      // opening moments of a window, whereas expiry is a boundary every
+      // preapproval eventually crosses while still being recommended.
       const pre = preapprovalRows.find(
         (p) =>
           matchesInstrument(p.payload, instrumentId) &&
           p.payload.receiver === receiver &&
           Date.parse(p.payload.validFrom) <= now &&
-          now < Date.parse(p.payload.expiresAt),
+          now + deps.config.directTransferMarginMs < Date.parse(p.payload.expiresAt),
       )
       if (pre) {
         return res.json({
