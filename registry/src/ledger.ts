@@ -13,10 +13,13 @@ export interface PartyDetails {
 
 // Carries the participant's status code, because a caller's response depends on
 // which failure it was: an authorization refusal is a configuration fault, and
-// anything else is the ledger being the ledger.
+// anything else is the ledger being the ledger. The field is deliberately not
+// named `status`: the terminal error handler answers a request with any status
+// it finds on the error, and the participant's own status is never the one a
+// client should be told (an expired ledger token is not the caller's 403).
 export class LedgerRequestError extends Error {
   constructor(
-    readonly status: number,
+    readonly ledgerStatus: number,
     message: string,
   ) {
     super(message)

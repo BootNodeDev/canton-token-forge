@@ -348,7 +348,7 @@ describe('HttpLedgerClient.partyDetails', () => {
     )
 
     await expect(client.partyDetails(ADMIN)).rejects.toBeInstanceOf(LedgerRequestError)
-    await expect(client.partyDetails(ADMIN)).rejects.toMatchObject({ status: 403 })
+    await expect(client.partyDetails(ADMIN)).rejects.toMatchObject({ ledgerStatus: 403 })
   })
 })
 
