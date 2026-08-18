@@ -13,8 +13,8 @@ addFormats(ajv)
 // and Ajv emits no "unknown format" warning.
 ajv.addFormat('int8', true)
 
-for (const [specId, fileName] of Object.entries(specFiles)) {
-  const doc = loadYaml(readFileSync(path.join(openapiDir, fileName), 'utf8'))
+for (const [specId, spec] of Object.entries(specFiles)) {
+  const doc = loadYaml(readFileSync(path.join(openapiDir, spec.file), 'utf8'))
   ajv.addSchema(doc as object, specId)
 }
 
