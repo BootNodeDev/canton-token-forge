@@ -1,5 +1,10 @@
 import { Router } from 'express'
-import { anyValueBool, EXPIRE_LOCK_CONTEXT_KEY, toDisclosed } from '../disclose.js'
+import {
+  anyValueBool,
+  ESCROW_RECLAIMED_CONTEXT_KEY,
+  EXPIRE_LOCK_CONTEXT_KEY,
+  toDisclosed,
+} from '../disclose.js'
 import { resolveConfig } from '../mapping.js'
 import type { AllocationPayload, InstrumentIdValue } from '../payloads.js'
 import type { ServerDeps } from '../server.js'
@@ -50,7 +55,19 @@ export function allocationRouter(deps: ServerDeps): Router {
         if (!alloc) return res.status(404).json({ error: 'allocation not found' })
 
         const escrow = await findEscrow(deps.ledger, deps.config, alloc.payload.lockedCid)
-        if (!escrow) return res.status(404).json({ error: 'escrow not found' })
+        if (!escrow) {
+          // execute-transfer settles the leg out of the escrow, so an absent one
+          // leaves it nothing to do. The two aborts only clear the record, and
+          // report the reclaim rather than the early-release signal: there is
+          // nothing left to release.
+          if (choice === 'execute-transfer') {
+            return res.status(404).json({ error: 'escrow not found' })
+          }
+          return res.json({
+            choiceContextData: { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) },
+            disclosedContracts: [],
+          })
+        }
 
         const choiceContextData =
           choice === 'cancel' ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {}

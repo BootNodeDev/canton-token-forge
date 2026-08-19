@@ -1,5 +1,11 @@
 import { Router } from 'express'
-import { anyValueContractId, PREAPPROVAL_CONTEXT_KEY, toDisclosed } from '../disclose.js'
+import {
+  anyValueBool,
+  anyValueContractId,
+  ESCROW_RECLAIMED_CONTEXT_KEY,
+  PREAPPROVAL_CONTEXT_KEY,
+  toDisclosed,
+} from '../disclose.js'
 import { matchesInstrument, resolveConfig } from '../mapping.js'
 import type { InstrumentIdValue, TransferInstructionPayload } from '../payloads.js'
 import type { ServerDeps } from '../server.js'
@@ -88,7 +94,8 @@ export function transferRouter(deps: ServerDeps): Router {
   // else: none of the three choice bodies fetches an InstrumentConfig, so
   // disclosing one would only add a lookup that can fail. None of them reads
   // the expire-lock signal either (reject unlocks unconditionally, withdraw is
-  // deadline-gated on-ledger), so choiceContextData is always empty here.
+  // deadline-gated on-ledger), so choiceContextData is empty whenever the
+  // escrow is there to disclose.
   for (const choice of ['accept', 'reject', 'withdraw']) {
     r.post(
       `/registry/transfer-instruction/v1/:transferInstructionId/choice-contexts/${choice}`,
@@ -102,7 +109,16 @@ export function transferRouter(deps: ServerDeps): Router {
         if (!instr) return res.status(404).json({ error: 'transfer instruction not found' })
 
         const escrow = await findEscrow(deps.ledger, deps.config, instr.payload.lockedCid)
-        if (!escrow) return res.status(404).json({ error: 'escrow not found' })
+        if (!escrow) {
+          // Accept settles out of the escrow, so an absent one leaves it
+          // nothing to do. The two aborts only clear the record, and report the
+          // reclaim so the choice does not reach for a contract that is gone.
+          if (choice === 'accept') return res.status(404).json({ error: 'escrow not found' })
+          return res.json({
+            choiceContextData: { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) },
+            disclosedContracts: [],
+          })
+        }
 
         res.json({ choiceContextData: {}, disclosedContracts: [toDisclosed(escrow)] })
       }),

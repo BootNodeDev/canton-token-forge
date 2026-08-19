@@ -1,6 +1,10 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { anyValueBool, EXPIRE_LOCK_CONTEXT_KEY } from '../src/disclose'
+import {
+  anyValueBool,
+  ESCROW_RECLAIMED_CONTEXT_KEY,
+  EXPIRE_LOCK_CONTEXT_KEY,
+} from '../src/disclose'
 import { createServer } from '../src/server'
 import {
   allocationEntry,
@@ -161,7 +165,42 @@ describe('allocation choice-contexts', () => {
     expect(ids).toEqual(['locked1'])
   })
 
-  it('404s instead of returning an empty context when the escrow LockedToken is gone', async () => {
+  it('404s the settlement context when the escrow LockedToken is gone', async () => {
+    const ledger = ledgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/allocations/v1/alloc1/choice-contexts/execute-transfer')
+      .send({ meta: {} })
+    // execute-transfer settles the leg out of the escrow, so an absent escrow
+    // is a dead end for it, unlike the two abort contexts below.
+    expect(res.status).toBe(404)
+    validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
+    // The allocation itself resolves here, so only the message separates a
+    // stale escrow from the not-found allocation below.
+    expect(res.body.error).toBe('escrow not found')
+  })
+
+  for (const choice of ['withdraw', 'cancel']) {
+    it(`reports a reclaimed escrow instead of refusing the ${choice} context`, async () => {
+      const ledger = ledgerFrom({
+        [config.allocationTemplateId]: [allocationEntry()],
+        [config.lockedTokenTemplateId]: [],
+      })
+      const app = createServer({ ledger, config })
+      const res = await request(app)
+        .post(`/registry/allocations/v1/alloc1/choice-contexts/${choice}`)
+        .send({ meta: {} })
+      expect(res.status).toBe(200)
+      validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
+      expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
+      expect(res.body.disclosedContracts).toEqual([])
+    })
+  }
+
+  it('drops the early-release signal from a cancel whose escrow is already gone', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [],
@@ -170,11 +209,9 @@ describe('allocation choice-contexts', () => {
     const res = await request(app)
       .post('/registry/allocations/v1/alloc1/choice-contexts/cancel')
       .send({ meta: {} })
-    expect(res.status).toBe(404)
-    validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
-    // The allocation itself resolves here, so only the message separates a
-    // stale escrow from the not-found allocation below.
-    expect(res.body.error).toBe('escrow not found')
+    // There is nothing left for the signal to release, and the choice reads the
+    // reclaimed report first, so sending both would only be misleading.
+    expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toBeUndefined()
   })
 
   it('404s when the allocation is not found', async () => {

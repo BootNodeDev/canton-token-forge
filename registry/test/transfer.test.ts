@@ -1,6 +1,10 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { PREAPPROVAL_CONTEXT_KEY } from '../src/disclose'
+import {
+  anyValueBool,
+  ESCROW_RECLAIMED_CONTEXT_KEY,
+  PREAPPROVAL_CONTEXT_KEY,
+} from '../src/disclose'
 import { createServer } from '../src/server'
 import {
   cfgEntry,
@@ -436,6 +440,39 @@ describe('transfer-instruction choice-contexts', () => {
     // The instruction resolves on this path, so only the message separates a
     // stale escrow from the route's other 404.
     expect(res.body.error).toBe('escrow not found')
+  })
+
+  for (const choice of ['reject', 'withdraw']) {
+    it(`reports a reclaimed escrow instead of refusing the ${choice} context`, async () => {
+      const ledger = ledgerFrom({
+        [config.transferInstructionTemplateId]: [instructionEntry()],
+        [config.lockedTokenTemplateId]: [],
+      })
+      const app = createServer({ ledger, config })
+      const res = await request(app)
+        .post(`/registry/transfer-instruction/v1/instr1/choice-contexts/${choice}`)
+        .send({ meta: {} })
+      expect(res.status).toBe(200)
+      validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
+      expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
+      // nothing to disclose: the contract the escrow disclosure would name is
+      // the one that is gone
+      expect(res.body.disclosedContracts).toEqual([])
+    })
+  }
+
+  it('names the reclaimed-escrow key exactly as the Daml choice reads it', async () => {
+    const ledger = ledgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/withdraw')
+      .send({ meta: {} })
+    // spelled out rather than imported, so renaming the constant cannot travel
+    // through both sides of this contract unnoticed
+    expect(Object.keys(res.body.choiceContextData)).toEqual(['canton-token-forge/escrow-reclaimed'])
   })
 
   it('serves a context for an instrument whose config is duplicated', async () => {
