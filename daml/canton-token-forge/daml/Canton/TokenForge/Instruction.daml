@@ -4,6 +4,7 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Token (mkToken)
+import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Locked (LockedToken(..), reclaimAtDeadline, unlockHolding)
 
 -- | Wrap an escrow holding returned to the sender as a failed (refunded)
@@ -32,9 +33,15 @@ template TokenTransferInstruction
         status = TransferPendingReceiverAcceptance
         meta = transfer.meta
 
+      -- Accept mints the receiver's holding instead of moving the escrow, so
+      -- nothing downstream re-checks that the escrow backs what is issued.
       transferInstruction_acceptImpl _self _arg = do
         now <- getTime
         assertMsg "transfer has expired (executeBefore reached)" (now < transfer.executeBefore)
+        locked <- fetch lockedCid
+        assertMsg "escrow must back the full transfer amount" (locked.amount == transfer.amount)
+        assertMsg "escrow must hold the transferred instrument"
+          (mkInstrumentId locked.admin locked.instrumentId == transfer.instrumentId)
         archive lockedCid
         receiverCid <- create (mkToken admin transfer.receiver transfer.instrumentId.id transfer.amount transfer.meta)
         pure TransferInstructionResult with

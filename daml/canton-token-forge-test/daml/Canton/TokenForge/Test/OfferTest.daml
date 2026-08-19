@@ -10,11 +10,20 @@ import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceCon
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
+import Canton.TokenForge.Locked (LockedToken)
+import Canton.TokenForge.Registry (InstrumentConfig, InstrumentConfig_LockHolding(..))
 import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs)
 
 -- No app-backend context is needed for accept/reject/withdraw in these tests.
 noContextArgs : ExtraArgs
 noContextArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+
+offerStart : Time
+offerStart = time (date 2026 Jan 1) 0 0 0
+
+-- Every offer below runs in the window [offerStart, offerDeadline).
+offerDeadline : Time
+offerDeadline = time (date 2026 Jan 2) 0 0 0
 
 -- Shared setup: mint 100 to alice, build a 40.0 transfer alice -> bob with no
 -- preapproval, and start the offer. Returns the pending instruction cid.
@@ -22,13 +31,11 @@ startOffer : Party -> Party -> Party -> Script (ContractId TransferInstruction)
 startOffer admin alice bob = do
   cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
-  let now = time (date 2026 Jan 1) 0 0 0
-      later = time (date 2026 Jan 2) 0 0 0
-  setTime now
+  setTime offerStart
   let factoryCid = toInterfaceContractId @TransferFactory cfg
       transfer = Transfer with
         sender = alice; receiver = bob; amount = 40.0; instrumentId = mkInstrumentId admin "CC"
-        requestedAt = now; executeBefore = later
+        requestedAt = offerStart; executeBefore = offerDeadline
         inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; meta = emptyMetadata
   Some cfgDisclosure <- queryDisclosure admin cfg
   res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd factoryCid TransferFactory_Transfer with
@@ -49,6 +56,91 @@ escrowDisclosure admin instrCid = do
   Some instr <- queryContractId admin (coerceContractId instrCid : ContractId TokenTransferInstruction)
   Some d <- queryDisclosure admin instr.lockedCid
   pure d
+
+-- Mint `amount` to `owner` and lock it, yielding an escrow the accept path can
+-- be pointed at.
+escrowFor : ContractId InstrumentConfig -> Party -> Party -> Decimal -> Script (ContractId LockedToken)
+escrowFor cfg admin owner amount = do
+  tok <- mintToken cfg admin owner amount
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  lock <- submit (actAs [owner, admin] <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_LockHolding with
+      owner; tokenCid = tok; holders = [admin]; expiresAt = offerDeadline
+  pure lock.lockedCid
+
+-- A 40.0 alice -> bob transfer of CC. Hand-built offers carry no input holdings:
+-- nothing on the accept path reads them.
+offerTransfer : Party -> Party -> Party -> Transfer
+offerTransfer admin sender receiver = Transfer with
+  sender; receiver; amount = 40.0
+  instrumentId = mkInstrumentId admin "CC"
+  requestedAt = offerStart; executeBefore = offerDeadline
+  inputHoldingCids = []; meta = emptyMetadata
+
+-- Pair an instruction with an escrow directly, which the transfer factory never
+-- does: it always builds the two together and consistently. The template is
+-- signatory admin and sender, so holding both authorities is enough to pair
+-- them arbitrarily, which is what the accept path's checks are there for.
+handBuiltOffer : Party -> Transfer -> ContractId LockedToken -> Script (ContractId TransferInstruction)
+handBuiltOffer admin transfer lockedCid = do
+  instr <- submit (actAs [admin, transfer.sender]) $ createCmd TokenTransferInstruction with
+    admin; transfer; lockedCid
+  pure (toInterfaceContractId @TransferInstruction instr)
+
+-- Accept mints the receiver's holding rather than moving the escrow, so an
+-- escrow smaller than the transfer would issue holdings nothing backs.
+acceptRejectsEscrowAmountMismatch : Script ()
+acceptRejectsEscrowAmountMismatch = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  setTime offerStart
+  escrow <- escrowFor cfg admin alice 10.0
+  instrCid <- handBuiltOffer admin (offerTransfer admin alice bob) escrow
+  Some lockedDisclosure <- queryDisclosure admin escrow
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $
+    exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
+
+-- One admin issues many instruments, so an escrow of the right amount can still
+-- belong to the wrong one; settling CC out of an XX escrow would issue CC that
+-- no CC holding backs.
+acceptRejectsForeignInstrumentEscrow : Script ()
+acceptRejectsForeignInstrumentEscrow = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  _ <- registerInstrument admin "CC" "CC" "CC" 10 None
+  xx <- registerInstrument admin "XX" "XX" "XX" 10 None
+  setTime offerStart
+  escrow <- escrowFor xx admin alice 40.0
+  instrCid <- handBuiltOffer admin (offerTransfer admin alice bob) escrow
+  Some lockedDisclosure <- queryDisclosure admin escrow
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $
+    exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
+
+-- The escrow's owner needs no assert of its own: amount and instrument both
+-- match here, and the submission is still refused, because archiving a
+-- LockedToken requires its owner's authority and charlie never granted it.
+acceptRefusesForeignOwnerEscrow : Script ()
+acceptRefusesForeignOwnerEscrow = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  charlie <- allocateParty "charlie"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  setTime offerStart
+  escrow <- escrowFor cfg admin charlie 40.0
+  instrCid <- handBuiltOffer admin (offerTransfer admin alice bob) escrow
+  Some lockedDisclosure <- queryDisclosure admin escrow
+  -- The reason is the point: a bare submitMustFail would also pass if an assert
+  -- above rejected it first, and then it would no longer show that the owner is
+  -- enforced without one.
+  res <- trySubmit (actAs bob <> disclose lockedDisclosure) $
+    exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
+  case res of
+    Left (AuthorizationError _) -> pure ()
+    _ -> abort ("expected an authorization failure, got: " <> show res)
 
 offerAcceptedCompletes : Script ()
 offerAcceptedCompletes = do
