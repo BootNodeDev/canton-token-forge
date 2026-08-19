@@ -39,9 +39,18 @@ template TokenTransferInstruction
         now <- getTime
         assertMsg "transfer has expired (executeBefore reached)" (now < transfer.executeBefore)
         locked <- fetch lockedCid
+        -- the holding minted below is signed by this template's admin, so it is
+        -- that field, not transfer.instrumentId.admin, that decides which
+        -- instrument gets issued; pinning the two together is what lets the
+        -- escrow checks cover what accept actually creates
+        assertMsg "instruction admin must be the instrument admin" (admin == transfer.instrumentId.admin)
         assertMsg "escrow must back the full transfer amount" (locked.amount == transfer.amount)
         assertMsg "escrow must hold the transferred instrument"
           (mkInstrumentId locked.admin locked.instrumentId == transfer.instrumentId)
+        -- archiving the escrow only proves its owner authorized this transaction,
+        -- and the receiver is one of its authorizers, so without this check the
+        -- receiver's own escrow could settle a transfer the sender never funded
+        assertMsg "escrow must be owned by the transfer sender" (locked.owner == transfer.sender)
         archive lockedCid
         receiverCid <- create (mkToken admin transfer.receiver transfer.instrumentId.id transfer.amount transfer.meta)
         pure TransferInstructionResult with

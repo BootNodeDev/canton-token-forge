@@ -119,28 +119,51 @@ acceptRejectsForeignInstrumentEscrow = do
   submitMustFail (actAs bob <> disclose lockedDisclosure) $
     exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
 
--- The escrow's owner needs no assert of its own: amount and instrument both
--- match here, and the submission is still refused, because archiving a
--- LockedToken requires its owner's authority and charlie never granted it.
-acceptRefusesForeignOwnerEscrow : Script ()
-acceptRefusesForeignOwnerEscrow = do
+-- Archiving the escrow proves only that its owner authorized this transaction,
+-- and every party accept runs under is such an authorizer, so the owner check
+-- is what actually ties the escrow to the sender.
+acceptRejectsEscrowNotOwnedBySender : Script ()
+acceptRejectsEscrowNotOwnedBySender = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   charlie <- allocateParty "charlie"
   cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   setTime offerStart
-  escrow <- escrowFor cfg admin charlie 40.0
-  instrCid <- handBuiltOffer admin (offerTransfer admin alice bob) escrow
-  Some lockedDisclosure <- queryDisclosure admin escrow
-  -- The reason is the point: a bare submitMustFail would also pass if an assert
-  -- above rejected it first, and then it would no longer show that the owner is
-  -- enforced without one.
-  res <- trySubmit (actAs bob <> disclose lockedDisclosure) $
+  -- The receiver's own escrow is the dangerous shape: bob controls accept, so
+  -- bob's authority is in scope for free, and settling it would burn bob's
+  -- locked holding to issue bob an unlocked one while alice never pays.
+  bobEscrow <- escrowFor cfg admin bob 40.0
+  bobInstr <- handBuiltOffer admin (offerTransfer admin alice bob) bobEscrow
+  Some bobDisclosure <- queryDisclosure admin bobEscrow
+  submitMustFail (actAs bob <> disclose bobDisclosure) $
+    exerciseCmd bobInstr TransferInstruction_Accept with extraArgs = noContextArgs
+  -- A third party's escrow, submitted with that party's authority, so the
+  -- refusal is the check itself and not a missing signature.
+  charlieEscrow <- escrowFor cfg admin charlie 40.0
+  charlieInstr <- handBuiltOffer admin (offerTransfer admin alice bob) charlieEscrow
+  Some charlieDisclosure <- queryDisclosure admin charlieEscrow
+  submitMustFail (actAs [bob, charlie] <> disclose charlieDisclosure) $
+    exerciseCmd charlieInstr TransferInstruction_Accept with extraArgs = noContextArgs
+
+-- Accept mints under the instruction's own admin field, so the escrow checks
+-- above only cover what is issued once that field and the transfer's instrument
+-- agree. Alice is the admin of her own CC here, which puts her authority over
+-- that escrow in scope as the sender, so without the check her worthless CC
+-- would back an issue of the admin's CC.
+acceptRejectsMismatchedInstructionAdmin : Script ()
+acceptRejectsMismatchedInstructionAdmin = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  _ <- registerInstrument admin "CC" "CC" "CC" 10 None
+  aliceCfg <- registerInstrument alice "CC" "CC" "CC" 10 None
+  setTime offerStart
+  escrow <- escrowFor aliceCfg alice alice 40.0
+  instrCid <- handBuiltOffer admin (offerTransfer alice alice bob) escrow
+  Some lockedDisclosure <- queryDisclosure alice escrow
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $
     exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
-  case res of
-    Left (AuthorizationError _) -> pure ()
-    _ -> abort ("expected an authorization failure, got: " <> show res)
 
 offerAcceptedCompletes : Script ()
 offerAcceptedCompletes = do
