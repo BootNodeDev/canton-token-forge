@@ -145,8 +145,11 @@ Registration and transfer move through the ledger as follows:
      `TokenTransferInstruction`, returning `TransferInstructionResult_Pending`.
 4. **Settle or unwind a pending transfer** - the receiver accepts
    (`TransferInstruction_Accept`, which archives the escrow and creates the
-   receiver's `Token`) or rejects it, and the sender may withdraw it. The two
-   unwind paths take different helpers from `Locked.daml`, and the split is
+   receiver's `Token`) or rejects it, and the sender may withdraw it. Accept
+   mints against the escrow rather than moving it, so it first checks that the
+   escrow carries the transfer's amount and instrument; the escrow's owner needs
+   no such check, because archiving it already requires that party's authority.
+   The two unwind paths take different helpers from `Locked.daml`, and the split is
    deliberate: reject returns the escrow to the sender immediately
    (`unlockHolding`), since a receiver declining delivery leaves nowhere else
    for the funds to go, while withdraw is the sender acting alone and so is
