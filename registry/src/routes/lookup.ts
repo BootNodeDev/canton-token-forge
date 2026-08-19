@@ -74,8 +74,10 @@ export async function findByContractId<P = unknown>(
 // a context that silently omits it would only fail later inside the choice.
 // Note the caller need not hold a stale id for this to happen: after expiry the
 // sender can reclaim the escrow through LockedToken_ExpireLock, which archives
-// it and leaves the instruction active but inert, so the cid the service itself
-// just read out of a live instruction can already be gone.
+// it while the record that names it stays active, so the cid the service itself
+// just read out of a live instruction can already be gone. The abort routes
+// report that back to the choice rather than refusing; only the settlement
+// routes treat it as a dead end.
 export async function findEscrow(
   ledger: LedgerClient,
   config: Pick<Config, 'lockedTokenTemplateId' | 'adminParty'>,

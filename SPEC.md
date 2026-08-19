@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `fa8d4dc`.
+checked against the tree at commit `02db200`.
 
 ---
 
@@ -46,13 +46,13 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `94f4b0a`, exit 0:
+All three suites were re-run at commit `02db200`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
-| Daml Script | **52 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **145 tests**, 10 files | nothing, in-process server with a stub ledger |
-| End-to-end | **10 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
+| Daml Script | **58 scenarios**, 11 modules | nothing, runs in-process |
+| Registry unit | **151 tests**, 10 files | nothing, in-process server with a stub ledger |
+| End-to-end | **11 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
 asks the service for the factory and each choice context, then submits the
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-703 lines of production Daml, 1453 lines of Daml tests, 1332 lines of TypeScript
-service, 2983 lines of TypeScript tests. MIT licensed. Pre-release: the package
+760 lines of production Daml, 1612 lines of Daml tests, 1370 lines of TypeScript
+service, 3122 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -326,6 +326,7 @@ Two context keys are ours rather than the standard's:
 |---|---|---|
 | `canton-token-forge/transfer-preapproval` | `AV_ContractId` of a `TokenTransferPreapproval` | the transfer factory, to take the direct path |
 | `canton-token-forge/expire-lock` | `AV_Bool true` | allocation cancel, to release an escrow before its deadline |
+| `canton-token-forge/escrow-reclaimed` | `AV_Bool true` | every abort, to clear a record whose escrow its owner already reclaimed |
 
 | Route | Context data | Discloses |
 |---|---|---|
@@ -335,6 +336,12 @@ Two context keys are ours rather than the standard's:
 | allocation factory | empty | `InstrumentConfig` |
 | allocation execute-transfer, withdraw | empty | the escrow `LockedToken` |
 | allocation cancel | the early-release signal | the escrow `LockedToken` |
+| any abort whose escrow is gone | the reclaimed-escrow report | nothing |
+
+The last row is what keeps a record clearable after its owner reclaims the
+escrow directly, which the settlement deadline lets them do. The choice then
+skips the escrow instead of reaching for a contract that is gone, and it still
+asserts the deadline, so the report cannot be forged into an early abort.
 
 Two asymmetries there are deliberate. The factory routes disclose the config
 because they must name one contract as `factoryId`, while the instruction and
@@ -357,9 +364,9 @@ exist.
 
 | Level | What it covers |
 |---|---|
-| Daml Script, 52 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 145 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
-| End-to-end, 10 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
+| Daml Script, 58 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
+| Registry unit, 151 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
+| End-to-end, 11 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
 neither reads nor disturbs seeded state, and it reports every test as skipped
@@ -375,12 +382,12 @@ instrument, then prints a ready-to-paste service configuration.
 
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
-npm test                          # builds the production DAR, runs 52 Daml scenarios
-cd registry && npm install && npm test   # 145 unit tests, no ledger needed
+npm test                          # builds the production DAR, runs 58 Daml scenarios
+cd registry && npm install && npm test   # 151 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
-cd registry && npm run test:e2e   # 10 tests against that sandbox
+cd registry && npm run test:e2e   # 11 tests against that sandbox
 ```
 
 The sandbox runs in the foreground, so the seed and the end-to-end suite go in a
@@ -416,11 +423,6 @@ Stated plainly, because they are what an evaluation turns on.
   `Numeric 10` whatever the instrument declares, so a `decimals = 0` instrument
   can still hold `42.5`. This matches the standard, which scopes the field to
   display, and Amulet, which has no such field at all.
-- **A reclaimed escrow can leave an inert instruction.** After `executeBefore`
-  the sender may reclaim an escrow directly via `LockedToken_ExpireLock` instead
-  of withdrawing. The funds are safe, already back with the sender, but the
-  pending `TokenTransferInstruction` is then not consumable. Documented at the
-  call site.
 - **Two active sets are still walked in full.** A contract named by id is
   resolved directly, but the instrument listing, get-by-id and both factory
   routes match on payload fields (an instrument id, a receiver), and the JSON
@@ -447,7 +449,7 @@ Stated plainly, because they are what an evaluation turns on.
 
 ```
 daml/                                Container of dpm packages; not a package itself
-  canton-token-forge/                Production package, 703 lines
+  canton-token-forge/                Production package, 760 lines
     daml/Canton/TokenForge/
       Registry.daml                  InstrumentConfig, preapproval, the three factory instances
       Token.daml                     Token holding, input fetch/consume/spend helpers

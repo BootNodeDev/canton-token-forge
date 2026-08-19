@@ -102,7 +102,11 @@ the `splice-api-token-*` DARs. The core module hierarchy:
 - **`LockedToken`** (`Locked.daml`) - the escrow holding behind a pending
   transfer or an allocation. Signed by `admin, owner, holders`, with `expiresAt`
   set from the transfer's `executeBefore` or the allocation's `settleBefore`.
-  `abortEscrow` is the one reject/withdraw/cancel path back to the owner.
+  Three helpers return it to its owner, and which one a caller takes is the
+  difference between the abort paths: `unlockHolding` (no deadline, transfer
+  reject), `reclaimAtDeadline` (both withdraws) and `abortEscrow` (the joint
+  allocation cancel alone). Its owner can also reclaim it directly through
+  `LockedToken_ExpireLock` once `expiresAt` has passed.
 - **`TokenTransferInstruction`** (`Instruction.daml`) - a pending two-step
   transfer, signed by `admin, transfer.sender` with the receiver as observer.
   Implements `TransferInstructionV1.TransferInstruction`.
@@ -155,7 +159,9 @@ Registration and transfer move through the ledger as follows:
    deliberate: reject returns the escrow to the sender immediately
    (`unlockHolding`), since a receiver declining delivery leaves nowhere else
    for the funds to go, while withdraw is the sender acting alone and so is
-   gated on `executeBefore` (`reclaimAtDeadline`).
+   gated on `executeBefore` (`reclaimAtDeadline`). Either path clears the
+   instruction with nothing to return when the choice context reports that the
+   sender already reclaimed the escrow.
 5. **Allocate for settlement** - `AllocationFactory_Allocate` escrows a
    `LockedToken` and creates a `TokenAllocation` holding one leg of a DvP.
    `Allocation_ExecuteTransfer` delivers it to the receiver,
@@ -184,18 +190,21 @@ contract up by identity, and the registry supplies the contract id instead. For 
 real client the registry service builds the context, and
 `registry/src/disclose.ts` is its single `AnyValue` encoding site. The Daml suite
 builds the same contexts directly, in two places: `Test/Util.daml`'s
-`expireLockArgs` for the expire-lock signal, and the preapproval context inline
-at each direct-transfer call site in `Test/TransferTest.daml`.
+`expireLockArgs` for the expire-lock signal and `escrowReclaimedArgs` for the
+reclaimed-escrow report, and the preapproval context inline at each
+direct-transfer call site in `Test/TransferTest.daml`.
 
-Two context keys are ours rather than the standard's, and each is a named
+Three context keys are ours rather than the standard's, and each is a named
 constant on both sides rather than a literal: `preapprovalContextKey`
-(`Registry.daml`) and `expireLockContextKey` (`Locked.daml`) in Daml,
-`PREAPPROVAL_CONTEXT_KEY` and `EXPIRE_LOCK_CONTEXT_KEY` in `disclose.ts`.
+(`Registry.daml`), `expireLockContextKey` and `escrowReclaimedContextKey`
+(`Locked.daml`) in Daml, `PREAPPROVAL_CONTEXT_KEY`, `EXPIRE_LOCK_CONTEXT_KEY`
+and `ESCROW_RECLAIMED_CONTEXT_KEY` in `disclose.ts`.
 
 | Key | Value | Read by |
 |-----|-------|---------|
 | `canton-token-forge/transfer-preapproval` | `AV_ContractId` of a `TokenTransferPreapproval` | `transferImpl`, to take the direct path |
 | `canton-token-forge/expire-lock` | `AV_Bool true` | `abortEscrow`, to release an escrow before its deadline |
+| `canton-token-forge/escrow-reclaimed` | `AV_Bool true` | `returnEscrowUnlessReclaimed`, to clear a record whose escrow is already gone |
 
 What each route returns:
 
@@ -207,6 +216,18 @@ What each route returns:
 | allocation factory | empty | `InstrumentConfig` |
 | allocation execute-transfer / withdraw | empty | the escrow `LockedToken` |
 | allocation cancel | the expire-lock signal | the escrow `LockedToken` |
+| any abort whose escrow is gone | the reclaimed-escrow report | nothing |
+
+The last row exists because the escrow has a second exit: after the settlement
+deadline its owner can reclaim it through `LockedToken_ExpireLock` without going
+near the record. `findEscrow` already resolves the escrow on every one of these
+routes, so the service reports what it found, and the choice skips the escrow
+rather than reaching for a contract that is gone. Both branches of
+`returnEscrowUnlessReclaimed` assert the deadline, which is what makes honoring a
+caller-supplied report safe on a single-party choice: forging it archives the
+caller's own record and leaves the escrow untouched and still reclaimable. The
+settlement routes (transfer accept, allocation execute-transfer) keep answering
+404 instead, since they have nothing to settle out of.
 
 Two asymmetries in that table are deliberate:
 
