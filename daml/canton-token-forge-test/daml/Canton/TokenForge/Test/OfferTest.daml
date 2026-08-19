@@ -167,6 +167,7 @@ offerRejectedRefunds = do
   instrCid <- startOffer admin alice bob
   lockedDisclosure <- escrowDisclosure admin instrCid
   rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
+  rej.output === TransferInstructionResult_Failed
   [refundCid] <- pure rej.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice
@@ -182,6 +183,7 @@ offerWithdrawnRefunds = do
   instrCid <- startOffer admin alice bob
   setTime (time (date 2026 Jan 3) 0 0 0)
   wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
+  wd.output === TransferInstructionResult_Failed
   [refundCid] <- pure wd.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice
