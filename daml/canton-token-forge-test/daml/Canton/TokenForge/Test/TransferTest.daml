@@ -144,8 +144,10 @@ transferRejectsBadInputs = do
   submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
     expectedAdmin = admin; transfer = lockedTransfer; extraArgs = xargs
 
--- A preapproval past its expiresAt cannot fund a direct transfer: the send
--- choice enforces the deadline, so the transfer is rejected.
+-- A preapproval that has reached its expiresAt cannot fund a direct transfer:
+-- the send choice enforces the deadline. The clock sits exactly on expiresAt,
+-- which is excluded, and is the only instant that distinguishes that from an
+-- inclusive comparison.
 directTransferRejectsExpiredPreapproval : Script ()
 directTransferRejectsExpiredPreapproval = do
   admin <- allocateParty "admin"
@@ -157,9 +159,8 @@ directTransferRejectsExpiredPreapproval = do
 
   let start = time (date 2026 Jan 1) 0 0 0
       preExpiry = time (date 2026 Jan 2) 0 0 0
-      afterExpiry = time (date 2026 Jan 3) 0 0 0
   pre <- preapprove cfg admin bob start preExpiry
-  setTime afterExpiry
+  setTime preExpiry
   let factoryCid = toInterfaceContractId @TransferFactory cfg
       transfer = Transfer with
         sender = alice; receiver = bob; amount = 30.0

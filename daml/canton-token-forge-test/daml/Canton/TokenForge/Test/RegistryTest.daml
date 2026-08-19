@@ -82,3 +82,20 @@ preapprovalNeedsOnlyTheReceiver = do
   Some cfgDisclosure <- queryDisclosure admin cfg
   submitMustFail (actAs admin <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob; validFrom; expiresAt
+
+-- validFrom is inclusive and expiresAt exclusive, so equal bounds describe a
+-- window no send could ever fall inside. The `ensure` rejects it at creation
+-- rather than leaving a preapproval that only ever fails.
+preapprovalRejectsEmptyWindow : Script ()
+preapprovalRejectsEmptyWindow = do
+  admin <- allocateParty "admin"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
+
+  let validFrom = time (date 2026 Jan 1) 0 0 0
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- trySubmit (actAs bob <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Preapprove with receiver = bob; validFrom; expiresAt = validFrom
+  case res of
+    Left (FailureStatusError fs) | "PreconditionFailed" `T.isInfixOf` fs.errorId -> pure ()
+    _ -> abort ("expected the preapproval window precondition to reject the create, got: " <> show res)
