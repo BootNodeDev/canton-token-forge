@@ -46,11 +46,11 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `fa8d4dc`, exit 0:
+All three suites were re-run at commit `94f4b0a`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
-| Daml Script | **49 scenarios**, 11 modules | nothing, runs in-process |
+| Daml Script | **52 scenarios**, 11 modules | nothing, runs in-process |
 | Registry unit | **145 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **10 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
@@ -61,7 +61,7 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-696 lines of production Daml, 1385 lines of Daml tests, 1332 lines of TypeScript
+703 lines of production Daml, 1453 lines of Daml tests, 1332 lines of TypeScript
 service, 2983 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
@@ -357,7 +357,7 @@ exist.
 
 | Level | What it covers |
 |---|---|
-| Daml Script, 49 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
+| Daml Script, 52 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
 | Registry unit, 145 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
 | End-to-end, 10 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
@@ -375,7 +375,7 @@ instrument, then prints a ready-to-paste service configuration.
 
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
-npm test                          # builds the production DAR, runs 49 Daml scenarios
+npm test                          # builds the production DAR, runs 52 Daml scenarios
 cd registry && npm install && npm test   # 145 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
@@ -447,7 +447,7 @@ Stated plainly, because they are what an evaluation turns on.
 
 ```
 daml/                                Container of dpm packages; not a package itself
-  canton-token-forge/                Production package, 696 lines
+  canton-token-forge/                Production package, 703 lines
     daml/Canton/TokenForge/
       Registry.daml                  InstrumentConfig, preapproval, the three factory instances
       Token.daml                     Token holding, input fetch/consume/spend helpers
