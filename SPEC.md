@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `67663cf`.
+checked against the tree at commit `fa8d4dc`.
 
 ---
 
@@ -46,12 +46,12 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `197eb8b`, exit 0:
+All three suites were re-run at commit `94f4b0a`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
-| Daml Script | **44 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **135 tests**, 10 files | nothing, in-process server with a stub ledger |
+| Daml Script | **52 scenarios**, 11 modules | nothing, runs in-process |
+| Registry unit | **145 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **10 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-687 lines of production Daml, 1239 lines of Daml tests, 1285 lines of TypeScript
-service, 2856 lines of TypeScript tests. MIT licensed. Pre-release: the package
+703 lines of production Daml, 1453 lines of Daml tests, 1332 lines of TypeScript
+service, 2983 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -226,7 +226,7 @@ flowchart TD
   E --> H[Result: Completed]
   F --> H
   G --> I[Result: Pending]
-  I --> J[Receiver accepts:<br/>archive escrow, create receiver Token]
+  I --> J[Receiver accepts: check the escrow<br/>backs the transfer, archive it,<br/>create receiver Token]
   I --> K[Receiver rejects:<br/>escrow returns immediately]
   I --> L[Sender withdraws:<br/>allowed only after executeBefore]
 ```
@@ -357,8 +357,8 @@ exist.
 
 | Level | What it covers |
 |---|---|
-| Daml Script, 44 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, deadline boundaries, missing authority, and the `decimals` bound |
-| Registry unit, 135 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
+| Daml Script, 52 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
+| Registry unit, 145 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
 | End-to-end, 10 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -375,8 +375,8 @@ instrument, then prints a ready-to-paste service configuration.
 
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
-npm test                          # builds the production DAR, runs 44 Daml scenarios
-cd registry && npm install && npm test   # 135 unit tests, no ledger needed
+npm test                          # builds the production DAR, runs 52 Daml scenarios
+cd registry && npm install && npm test   # 145 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
@@ -447,7 +447,7 @@ Stated plainly, because they are what an evaluation turns on.
 
 ```
 daml/                                Container of dpm packages; not a package itself
-  canton-token-forge/                Production package, 687 lines
+  canton-token-forge/                Production package, 703 lines
     daml/Canton/TokenForge/
       Registry.daml                  InstrumentConfig, preapproval, the three factory instances
       Token.daml                     Token holding, input fetch/consume/spend helpers

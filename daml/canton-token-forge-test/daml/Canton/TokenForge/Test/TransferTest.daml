@@ -7,7 +7,7 @@ import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
+import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata, emptyChoiceContext, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Registry (InstrumentConfig_LockHolding(..), preapprovalContextKey)
@@ -144,8 +144,10 @@ transferRejectsBadInputs = do
   submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
     expectedAdmin = admin; transfer = lockedTransfer; extraArgs = xargs
 
--- A preapproval past its expiresAt cannot fund a direct transfer: the send
--- choice enforces the deadline, so the transfer is rejected.
+-- A preapproval that has reached its expiresAt cannot fund a direct transfer:
+-- the send choice enforces the deadline. The clock sits exactly on expiresAt,
+-- which is excluded, and is the only instant that distinguishes that from an
+-- inclusive comparison.
 directTransferRejectsExpiredPreapproval : Script ()
 directTransferRejectsExpiredPreapproval = do
   admin <- allocateParty "admin"
@@ -157,9 +159,8 @@ directTransferRejectsExpiredPreapproval = do
 
   let start = time (date 2026 Jan 1) 0 0 0
       preExpiry = time (date 2026 Jan 2) 0 0 0
-      afterExpiry = time (date 2026 Jan 3) 0 0 0
   pre <- preapprove cfg admin bob start preExpiry
-  setTime afterExpiry
+  setTime preExpiry
   let factoryCid = toInterfaceContractId @TransferFactory cfg
       transfer = Transfer with
         sender = alice; receiver = bob; amount = 30.0
@@ -174,3 +175,39 @@ directTransferRejectsExpiredPreapproval = do
   submitMustFail (actAs alice <> disclose cfgDisclosure <> disclose preDisclosure) $
     exerciseCmd factoryCid TransferFactory_Transfer with
       expectedAdmin = admin; transfer; extraArgs = ExtraArgs with context = ctx; meta = emptyMetadata
+
+-- The transfer window is checked before any path is chosen, so these need no
+-- preapproval: with none in the context the transfer would take the offer path,
+-- and the window still closes it. executeBefore is exclusive, so the deadline
+-- instant itself is already too late, while requestedAt must not be in the
+-- future.
+transferRejectsClosedWindow : Script ()
+transferRejectsClosedWindow = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+
+  cfg <- registerInstrument admin "CC" "Canton Coin" "CC" 10 None
+  aliceToken <- mintToken cfg admin alice 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 2) 0 0 0
+      factoryCid = toInterfaceContractId @TransferFactory cfg
+      transfer = Transfer with
+        sender = alice; receiver = bob; amount = 30.0
+        instrumentId = mkInstrumentId admin "CC"
+        requestedAt = now; executeBefore = later
+        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding aliceToken]
+        meta = emptyMetadata
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+  Some cfgDisclosure <- queryDisclosure admin cfg
+
+  setTime later
+  submitMustFail (actAs alice <> disclose cfgDisclosure) $
+    exerciseCmd factoryCid TransferFactory_Transfer with
+      expectedAdmin = admin; transfer; extraArgs = xargs
+
+  setTime now
+  submitMustFail (actAs alice <> disclose cfgDisclosure) $
+    exerciseCmd factoryCid TransferFactory_Transfer with
+      expectedAdmin = admin; transfer = (transfer with requestedAt = later); extraArgs = xargs

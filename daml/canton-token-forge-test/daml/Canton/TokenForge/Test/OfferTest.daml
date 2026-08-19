@@ -10,11 +10,20 @@ import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceCon
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
+import Canton.TokenForge.Locked (LockedToken)
+import Canton.TokenForge.Registry (InstrumentConfig, InstrumentConfig_LockHolding(..))
 import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs)
 
 -- No app-backend context is needed for accept/reject/withdraw in these tests.
 noContextArgs : ExtraArgs
 noContextArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+
+offerStart : Time
+offerStart = time (date 2026 Jan 1) 0 0 0
+
+-- Every offer below runs in the window [offerStart, offerDeadline).
+offerDeadline : Time
+offerDeadline = time (date 2026 Jan 2) 0 0 0
 
 -- Shared setup: mint 100 to alice, build a 40.0 transfer alice -> bob with no
 -- preapproval, and start the offer. Returns the pending instruction cid.
@@ -22,13 +31,11 @@ startOffer : Party -> Party -> Party -> Script (ContractId TransferInstruction)
 startOffer admin alice bob = do
   cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
-  let now = time (date 2026 Jan 1) 0 0 0
-      later = time (date 2026 Jan 2) 0 0 0
-  setTime now
+  setTime offerStart
   let factoryCid = toInterfaceContractId @TransferFactory cfg
       transfer = Transfer with
         sender = alice; receiver = bob; amount = 40.0; instrumentId = mkInstrumentId admin "CC"
-        requestedAt = now; executeBefore = later
+        requestedAt = offerStart; executeBefore = offerDeadline
         inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; meta = emptyMetadata
   Some cfgDisclosure <- queryDisclosure admin cfg
   res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd factoryCid TransferFactory_Transfer with
@@ -49,6 +56,114 @@ escrowDisclosure admin instrCid = do
   Some instr <- queryContractId admin (coerceContractId instrCid : ContractId TokenTransferInstruction)
   Some d <- queryDisclosure admin instr.lockedCid
   pure d
+
+-- Mint `amount` to `owner` and lock it, yielding an escrow the accept path can
+-- be pointed at.
+escrowFor : ContractId InstrumentConfig -> Party -> Party -> Decimal -> Script (ContractId LockedToken)
+escrowFor cfg admin owner amount = do
+  tok <- mintToken cfg admin owner amount
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  lock <- submit (actAs [owner, admin] <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_LockHolding with
+      owner; tokenCid = tok; holders = [admin]; expiresAt = offerDeadline
+  pure lock.lockedCid
+
+-- A 40.0 alice -> bob transfer of CC. Hand-built offers carry no input holdings:
+-- nothing on the accept path reads them.
+offerTransfer : Party -> Party -> Party -> Transfer
+offerTransfer admin sender receiver = Transfer with
+  sender; receiver; amount = 40.0
+  instrumentId = mkInstrumentId admin "CC"
+  requestedAt = offerStart; executeBefore = offerDeadline
+  inputHoldingCids = []; meta = emptyMetadata
+
+-- Pair an instruction with an escrow directly, which the transfer factory never
+-- does: it always builds the two together and consistently. The template is
+-- signatory admin and sender, so holding both authorities is enough to pair
+-- them arbitrarily, which is what the accept path's checks are there for.
+handBuiltOffer : Party -> Transfer -> ContractId LockedToken -> Script (ContractId TransferInstruction)
+handBuiltOffer admin transfer lockedCid = do
+  instr <- submit (actAs [admin, transfer.sender]) $ createCmd TokenTransferInstruction with
+    admin; transfer; lockedCid
+  pure (toInterfaceContractId @TransferInstruction instr)
+
+-- Accept mints the receiver's holding rather than moving the escrow, so an
+-- escrow smaller than the transfer would issue holdings nothing backs.
+acceptRejectsEscrowAmountMismatch : Script ()
+acceptRejectsEscrowAmountMismatch = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  setTime offerStart
+  escrow <- escrowFor cfg admin alice 10.0
+  instrCid <- handBuiltOffer admin (offerTransfer admin alice bob) escrow
+  Some lockedDisclosure <- queryDisclosure admin escrow
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $
+    exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
+
+-- One admin issues many instruments, so an escrow of the right amount can still
+-- belong to the wrong one; settling CC out of an XX escrow would issue CC that
+-- no CC holding backs.
+acceptRejectsForeignInstrumentEscrow : Script ()
+acceptRejectsForeignInstrumentEscrow = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  _ <- registerInstrument admin "CC" "CC" "CC" 10 None
+  xx <- registerInstrument admin "XX" "XX" "XX" 10 None
+  setTime offerStart
+  escrow <- escrowFor xx admin alice 40.0
+  instrCid <- handBuiltOffer admin (offerTransfer admin alice bob) escrow
+  Some lockedDisclosure <- queryDisclosure admin escrow
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $
+    exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
+
+-- Archiving the escrow proves only that its owner authorized this transaction,
+-- and every party accept runs under is such an authorizer, so the owner check
+-- is what actually ties the escrow to the sender.
+acceptRejectsEscrowNotOwnedBySender : Script ()
+acceptRejectsEscrowNotOwnedBySender = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  charlie <- allocateParty "charlie"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  setTime offerStart
+  -- The receiver's own escrow is the dangerous shape: bob controls accept, so
+  -- bob's authority is in scope for free, and settling it would burn bob's
+  -- locked holding to issue bob an unlocked one while alice never pays.
+  bobEscrow <- escrowFor cfg admin bob 40.0
+  bobInstr <- handBuiltOffer admin (offerTransfer admin alice bob) bobEscrow
+  Some bobDisclosure <- queryDisclosure admin bobEscrow
+  submitMustFail (actAs bob <> disclose bobDisclosure) $
+    exerciseCmd bobInstr TransferInstruction_Accept with extraArgs = noContextArgs
+  -- A third party's escrow, submitted with that party's authority, so the
+  -- refusal is the check itself and not a missing signature.
+  charlieEscrow <- escrowFor cfg admin charlie 40.0
+  charlieInstr <- handBuiltOffer admin (offerTransfer admin alice bob) charlieEscrow
+  Some charlieDisclosure <- queryDisclosure admin charlieEscrow
+  submitMustFail (actAs [bob, charlie] <> disclose charlieDisclosure) $
+    exerciseCmd charlieInstr TransferInstruction_Accept with extraArgs = noContextArgs
+
+-- Accept mints under the instruction's own admin field, so the escrow checks
+-- above only cover what is issued once that field and the transfer's instrument
+-- agree. Alice is the admin of her own CC here, which puts her authority over
+-- that escrow in scope as the sender, so without the check her worthless CC
+-- would back an issue of the admin's CC.
+acceptRejectsMismatchedInstructionAdmin : Script ()
+acceptRejectsMismatchedInstructionAdmin = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  _ <- registerInstrument admin "CC" "CC" "CC" 10 None
+  aliceCfg <- registerInstrument alice "CC" "CC" "CC" 10 None
+  setTime offerStart
+  escrow <- escrowFor aliceCfg alice alice 40.0
+  instrCid <- handBuiltOffer admin (offerTransfer alice alice bob) escrow
+  Some lockedDisclosure <- queryDisclosure alice escrow
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $
+    exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
 
 offerAcceptedCompletes : Script ()
 offerAcceptedCompletes = do
@@ -75,21 +190,25 @@ offerRejectedRefunds = do
   instrCid <- startOffer admin alice bob
   lockedDisclosure <- escrowDisclosure admin instrCid
   rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
+  rej.output === TransferInstructionResult_Failed
   [refundCid] <- pure rej.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice
   rv.amount === 40.0
 
--- Once the deadline (executeBefore) has passed the sender can withdraw the
--- unaccepted offer and reclaim the escrow.
+-- Once the deadline (executeBefore) has been reached the sender can withdraw
+-- the unaccepted offer and reclaim the escrow. The clock sits exactly on the
+-- deadline, which is the earliest instant the reclaim is allowed and the only
+-- one that distinguishes it from a strictly-after comparison.
 offerWithdrawnRefunds : Script ()
 offerWithdrawnRefunds = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer admin alice bob
-  setTime (time (date 2026 Jan 3) 0 0 0)
+  setTime offerDeadline
   wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
+  wd.output === TransferInstructionResult_Failed
   [refundCid] <- pure wd.senderChangeCids
   Some rv <- queryInterfaceContractId alice refundCid
   rv.owner === alice
@@ -107,3 +226,16 @@ offerWithdrawBeforeExpiryFails = do
   instrCid <- startOffer admin alice bob
   submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
   submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = expireLockArgs
+
+-- The same instant closes the offer to the receiver: accept is exclusive of
+-- executeBefore, so the moment withdrawal opens, acceptance is over.
+offerAcceptRefusedAtDeadline : Script ()
+offerAcceptRefusedAtDeadline = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer admin alice bob
+  lockedDisclosure <- escrowDisclosure admin instrCid
+  setTime offerDeadline
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $
+    exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs

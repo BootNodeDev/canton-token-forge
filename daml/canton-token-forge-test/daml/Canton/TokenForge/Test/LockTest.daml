@@ -48,8 +48,9 @@ lockRejectsAndExpires = do
   submitMustFail alice $ exerciseCmd lock.lockedCid LockedToken_Unlock
   -- owner cannot reclaim before expiry (ledger time is still 1970)
   submitMustFail alice $ exerciseCmd lock.lockedCid LockedToken_ExpireLock
-  -- after expiry the owner reclaims a Token
-  setTime (time (date 2026 Jan 3) 0 0 0)
+  -- at expiry the owner reclaims a Token; expiresAt itself is the earliest
+  -- instant that works, and the only one a strictly-after check would refuse
+  setTime expiresAt
   back <- submit alice $ exerciseCmd lock.lockedCid LockedToken_ExpireLock
   Some hv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding back.tokenCid)
   hv.owner === alice

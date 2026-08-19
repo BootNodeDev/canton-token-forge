@@ -53,7 +53,9 @@ allocateThenExecute = do
     _ -> abort "expected one receiver holding"
 
 -- Once the settlement window has closed the sender can withdraw the unsettled
--- allocation and get their escrowed funds back.
+-- allocation and get their escrowed funds back. settleBefore itself is the
+-- earliest instant that works, and the only one a strictly-after check would
+-- refuse.
 allocationWithdrawRefunds : Script ()
 allocationWithdrawRefunds = do
   admin <- allocateParty "admin"
@@ -65,7 +67,6 @@ allocationWithdrawRefunds = do
 
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 3) 0 0 0
-      afterSettle = time (date 2026 Jan 4) 0 0 0
       xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
       leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
       settlement = SettlementInfo with
@@ -80,7 +81,7 @@ allocationWithdrawRefunds = do
   allocCid <- case res.output of
     AllocationInstructionResult_Completed cid -> pure cid
     _ -> abort "expected completed allocation"
-  setTime afterSettle
+  setTime later
   wd <- submit alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = xargs
   case wd.senderHoldingCids of
     [rcid] -> do
@@ -143,10 +144,11 @@ allocationRejectsDuplicateInputs = do
       ]
     extraArgs = xargs
 
--- Once settleBefore has passed the escrow is only sender-reclaimable; the
--- executor can no longer settle the leg even with full authorization.
-allocationExecuteAfterSettleBeforeFails : Script ()
-allocationExecuteAfterSettleBeforeFails = do
+-- From settleBefore on, the escrow is only sender-reclaimable; the executor can
+-- no longer settle the leg even with full authorization. The same instant opens
+-- the withdrawal above, so settlement is over the moment reclaim begins.
+allocationExecuteAtSettleBeforeFails : Script ()
+allocationExecuteAtSettleBeforeFails = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
@@ -156,7 +158,6 @@ allocationExecuteAfterSettleBeforeFails = do
 
   let now = time (date 2026 Jan 1) 0 0 0
       later = time (date 2026 Jan 3) 0 0 0
-      afterSettle = time (date 2026 Jan 4) 0 0 0
       xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
       leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
       settlement = SettlementInfo with
@@ -171,7 +172,7 @@ allocationExecuteAfterSettleBeforeFails = do
   allocCid <- case res.output of
     AllocationInstructionResult_Completed cid -> pure cid
     _ -> abort "expected completed allocation"
-  setTime afterSettle
+  setTime later
   submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_ExecuteTransfer with extraArgs = xargs
 
 -- An allocation whose settleBefore is not strictly after requestedAt is rejected
@@ -295,3 +296,29 @@ allocationCancelBeforeSettleWithoutSignalFails = do
     AllocationInstructionResult_Completed cid -> pure cid
     _ -> abort "expected completed allocation"
   submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = xargs
+
+-- allocateBefore is exclusive, so an allocation cannot be created at the instant
+-- its window closes. settleBefore is the same instant here, which the up-front
+-- reachability check still accepts because requestedAt precedes it.
+allocationRejectsAtAllocateBefore : Script ()
+allocationRejectsAtAllocateBefore = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      later = time (date 2026 Jan 3) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime later
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = now
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
