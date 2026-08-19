@@ -5,7 +5,7 @@ import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.AllocationInstructionV1
 import Canton.TokenForge.Token (mkToken, spendInputs)
-import Canton.TokenForge.Locked (LockedToken(..), abortEscrow, reclaimAtDeadline)
+import Canton.TokenForge.Locked (LockedToken(..), abortEscrow, reclaimAtDeadline, returnEscrowUnlessReclaimed)
 import Canton.TokenForge.Types (mkInstrumentId)
 
 -- | An escrowed allocation for one transfer leg. Admin-signed; sender is a
@@ -39,21 +39,28 @@ template TokenAllocation
           receiverHoldingCids = [toInterfaceContractId @HoldingV1.Holding receiverCid]
           meta = emptyMetadata
 
-      -- The sender withdraws alone, so this path is strictly deadline-gated: the
-      -- escrow is reclaimable only once the settlement window (settleBefore) has
-      -- closed. The forgeable early-release signal is not honored here, so a
+      -- The sender withdraws alone, so this path is strictly deadline-gated
+      -- whether or not an escrow comes back: the escrow is reclaimable only once
+      -- the settlement window (settleBefore) has closed. The forgeable early-release signal is not honored here, so a
       -- unilateral withdraw cannot break an in-flight settlement; early,
       -- coordinated release goes through the jointly-authorized cancel below.
-      allocation_withdrawImpl _self _arg = do
-        backCid <- reclaimAtDeadline lockedCid allocation.settlement.settleBefore
-        pure Allocation_WithdrawResult with senderHoldingCids = [backCid]; meta = emptyMetadata
+      allocation_withdrawImpl _self arg = do
+        let settleBefore = allocation.settlement.settleBefore
+        senderHoldingCids <- returnEscrowUnlessReclaimed settleBefore arg.extraArgs.context
+          (reclaimAtDeadline lockedCid settleBefore)
+        pure Allocation_WithdrawResult with senderHoldingCids; meta = emptyMetadata
 
       -- Joint cancel: executor, sender, and receiver together supply the
       -- early-release signal to return the escrow before settleBefore. Their
-      -- joint co-authorization is what makes honoring the signal safe here.
+      -- joint co-authorization is what makes honoring the signal safe here. A
+      -- report that the escrow is already gone takes precedence, since there is
+      -- then nothing for the signal to release.
       allocation_cancelImpl _self arg = do
-        backCid <- abortEscrow lockedCid allocation.settlement.settleBefore arg.extraArgs.context
-        pure Allocation_CancelResult with senderHoldingCids = [backCid]; meta = emptyMetadata
+        let settleBefore = allocation.settlement.settleBefore
+            ctx = arg.extraArgs.context
+        senderHoldingCids <- returnEscrowUnlessReclaimed settleBefore ctx
+          (abortEscrow lockedCid settleBefore ctx)
+        pure Allocation_CancelResult with senderHoldingCids; meta = emptyMetadata
 
 -- | Escrow the sender's funds and create a completed allocation. No pending
 -- AllocationInstruction step: there are no economics/approvals to wait on.

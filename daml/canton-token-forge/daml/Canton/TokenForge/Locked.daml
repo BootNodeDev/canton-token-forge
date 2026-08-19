@@ -90,6 +90,21 @@ lookupExpireLock ctx =
     Some (AV_Bool b) -> b
     _ -> False
 
+-- | Well-known choice-context key under which the app backend reports that the
+-- escrow behind a transfer instruction or an allocation is already gone,
+-- because its owner reclaimed it through LockedToken_ExpireLock. It says only
+-- that there is nothing left to return, never that a deadline may be skipped.
+escrowReclaimedContextKey : Text
+escrowReclaimedContextKey = "canton-token-forge/escrow-reclaimed"
+
+-- | Read the reclaimed-escrow report from the choice context; absent or
+-- non-bool means the escrow is still there.
+lookupEscrowReclaimed : ChoiceContext -> Bool
+lookupEscrowReclaimed ctx =
+  case TextMap.lookup escrowReclaimedContextKey ctx.values of
+    Some (AV_Bool b) -> b
+    _ -> False
+
 -- | Reclaim an escrowed LockedToken back to its owner, but only once the
 -- settlement deadline has passed. The early-release signal is deliberately NOT
 -- honored here: it is a bare caller-supplied boolean with nothing on-ledger
@@ -100,9 +115,16 @@ lookupExpireLock ctx =
 -- jointly-authorized cancel path (abortEscrow below).
 reclaimAtDeadline : ContractId LockedToken -> Time -> Update (ContractId HoldingV1.Holding)
 reclaimAtDeadline lockedCid expiresAt = do
+  assertPastSettlementDeadline expiresAt
+  unlockHolding lockedCid
+
+-- | The settlement deadline gate. Extracted so that an abort skipping the
+-- escrow enforces the very same rule, with the same message, as one returning
+-- it.
+assertPastSettlementDeadline : Time -> Update ()
+assertPastSettlementDeadline expiresAt = do
   now <- getTime
   assertMsg "escrow cannot be reclaimed before the settlement deadline" (now >= expiresAt)
-  unlockHolding lockedCid
 
 -- | Release an escrowed LockedToken back to its owner (Amulet
 -- abortTwoStepTransfer). With the early-release signal the escrow returns
@@ -116,3 +138,25 @@ abortEscrow lockedCid expiresAt ctx =
   if lookupExpireLock ctx
     then unlockHolding lockedCid
     else reclaimAtDeadline lockedCid expiresAt
+
+-- | Run an abort's escrow return, unless the app backend reports that the owner
+-- already reclaimed the escrow through LockedToken_ExpireLock, in which case
+-- there is nothing to return and the record is simply cleared.
+--
+-- The deadline is asserted on BOTH branches, which is what makes honoring a
+-- bare caller-supplied report safe here even on a single-party choice: the
+-- report can never release an escrow earlier than the escrow's own deadline
+-- would. Forging it only archives the caller's own record while leaving the
+-- escrow untouched and still reclaimable.
+returnEscrowUnlessReclaimed
+  : Time
+  -> ChoiceContext
+  -> Update (ContractId HoldingV1.Holding)
+  -> Update [ContractId HoldingV1.Holding]
+returnEscrowUnlessReclaimed expiresAt ctx returnEscrow
+  | lookupEscrowReclaimed ctx = do
+      assertPastSettlementDeadline expiresAt
+      pure []
+  | otherwise = do
+      backCid <- returnEscrow
+      pure [backCid]

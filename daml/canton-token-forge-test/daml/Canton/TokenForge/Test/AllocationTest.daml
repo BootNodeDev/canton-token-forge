@@ -2,14 +2,18 @@ module Canton.TokenForge.Test.AllocationTest where
 
 import Daml.Script
 import DA.Assert ((===))
+import DA.Optional (isNone)
+import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceContext)
+import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..), emptyChoiceContext)
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.AllocationInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs)
+import Canton.TokenForge.Allocation (TokenAllocation(..))
+import Canton.TokenForge.Locked (LockedToken, LockedToken_ExpireLock(..), expireLockContextKey, escrowReclaimedContextKey)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs, escrowReclaimedArgs)
 
 -- Shared setup: register CC, mint 100 to alice, and build an allocation spec
 -- for a 25.0 leg alice -> bob executed by venue.
@@ -322,3 +326,92 @@ allocationRejectsAtAllocateBefore = do
   submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
     expectedAdmin = admin; allocation = spec; requestedAt = now
     inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+
+allocStart : Time
+allocStart = time (date 2026 Jan 1) 0 0 0
+
+-- Both the allocation and the settlement windows close here, matching the
+-- single deadline the scenarios above share.
+allocSettle : Time
+allocSettle = time (date 2026 Jan 3) 0 0 0
+
+-- Shared setup for the reclaimed-escrow scenarios: allocate 25.0 of CC from
+-- alice to bob through venue, and hand back the allocation with the escrow
+-- behind it, which no other scenario needs to name.
+startAllocation : Party -> Party -> Party -> Party -> Script (ContractId Allocation, ContractId LockedToken)
+startAllocation admin alice bob venue = do
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 100.0
+  let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = allocStart; allocateBefore = allocSettle; settleBefore = allocSettle; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime allocStart
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = allocStart
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+  allocCid <- case res.output of
+    AllocationInstructionResult_Completed cid -> pure cid
+    _ -> abort "expected completed allocation"
+  Some alloc <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
+  pure (allocCid, alloc.lockedCid)
+
+-- The sender withdrawing an allocation whose escrow they already reclaimed
+-- still clears the record: there is nothing to refund, so no holding comes back
+-- and the allocation is archived rather than left unconsumable.
+allocationWithdrawClearsRecordAfterEscrowReclaim : Script ()
+allocationWithdrawClearsRecordAfterEscrowReclaim = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  (allocCid, lockedCid) <- startAllocation admin alice bob venue
+  setTime allocSettle
+  _ <- submit alice $ exerciseCmd lockedCid LockedToken_ExpireLock
+  wd <- submit alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = escrowReclaimedArgs
+  wd.senderHoldingCids === []
+  gone <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
+  assertMsg "the withdrawn allocation is archived" (isNone gone)
+
+-- The same through the jointly-authorized cancel, which is the other abort the
+-- executor and counterparties can reach.
+allocationCancelClearsRecordAfterEscrowReclaim : Script ()
+allocationCancelClearsRecordAfterEscrowReclaim = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  (allocCid, lockedCid) <- startAllocation admin alice bob venue
+  setTime allocSettle
+  _ <- submit alice $ exerciseCmd lockedCid LockedToken_ExpireLock
+  cancel <- submit (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = escrowReclaimedArgs
+  cancel.senderHoldingCids === []
+  gone <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
+  assertMsg "the cancelled allocation is archived" (isNone gone)
+
+-- Both signals at once, which is the only way the two can disagree: the report
+-- that the escrow is gone wins, so a cancel carrying it is deadline-gated like
+-- any other abort and cannot release a live escrow early.
+bothSignalArgs : ExtraArgs
+bothSignalArgs = ExtraArgs with
+  context = ChoiceContext with
+    values = TextMap.fromList
+      [ (expireLockContextKey, AV_Bool True)
+      , (escrowReclaimedContextKey, AV_Bool True)
+      ]
+  meta = emptyMetadata
+
+-- Reporting a reclaimed escrow must not buy an early abort while the escrow is
+-- still sitting there, on either the single-party withdraw or the joint cancel.
+allocationAbortWithoutEscrowStillNeedsTheDeadline : Script ()
+allocationAbortWithoutEscrowStillNeedsTheDeadline = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  (allocCid, _) <- startAllocation admin alice bob venue
+  submitMustFail alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = escrowReclaimedArgs
+  submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = bothSignalArgs
