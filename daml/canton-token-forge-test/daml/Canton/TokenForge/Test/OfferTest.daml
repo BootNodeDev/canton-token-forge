@@ -173,15 +173,17 @@ offerRejectedRefunds = do
   rv.owner === alice
   rv.amount === 40.0
 
--- Once the deadline (executeBefore) has passed the sender can withdraw the
--- unaccepted offer and reclaim the escrow.
+-- Once the deadline (executeBefore) has been reached the sender can withdraw
+-- the unaccepted offer and reclaim the escrow. The clock sits exactly on the
+-- deadline, which is the earliest instant the reclaim is allowed and the only
+-- one that distinguishes it from a strictly-after comparison.
 offerWithdrawnRefunds : Script ()
 offerWithdrawnRefunds = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer admin alice bob
-  setTime (time (date 2026 Jan 3) 0 0 0)
+  setTime offerDeadline
   wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
   wd.output === TransferInstructionResult_Failed
   [refundCid] <- pure wd.senderChangeCids
@@ -201,3 +203,16 @@ offerWithdrawBeforeExpiryFails = do
   instrCid <- startOffer admin alice bob
   submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = noContextArgs
   submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = expireLockArgs
+
+-- The same instant closes the offer to the receiver: accept is exclusive of
+-- executeBefore, so the moment withdrawal opens, acceptance is over.
+offerAcceptRefusedAtDeadline : Script ()
+offerAcceptRefusedAtDeadline = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer admin alice bob
+  lockedDisclosure <- escrowDisclosure admin instrCid
+  setTime offerDeadline
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $
+    exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
