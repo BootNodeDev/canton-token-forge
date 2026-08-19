@@ -71,4 +71,59 @@ describe.skipIf(!live)('live offer transfer', () => {
     expect(await fx.ledger.activeContracts(fx.ids.lockedToken, fx.admin)).toEqual([])
     expect(await fx.ledger.activeContracts(fx.ids.transferInstruction, fx.admin)).toEqual([])
   })
+
+  // The sender can reclaim an escrow directly once the offer window closes,
+  // which leaves the instruction pointing at a contract that is gone. This is
+  // the only path in the suite that puts an AV_Bool choice-context value on the
+  // wire, so it is also where that encoding is exercised against a real
+  // participant.
+  it('withdraws an instruction whose escrow the sender already reclaimed', async () => {
+    const fx = await setupInstrument()
+    const suffix = uniqueSuffix()
+    const dan = await allocateParty(`e2e-dan-${suffix}`)
+    const erin = await allocateParty(`e2e-erin-${suffix}`)
+
+    // Short enough to wait out, since both the reclaim and the withdraw are
+    // gated on this instant having passed.
+    const executeBefore = new Date(Date.now() + 4_000).toISOString()
+    const { instructionCid, escrowCid } = await createOfferInstruction(
+      fx,
+      dan,
+      erin,
+      '40.0',
+      executeBefore,
+    )
+    await new Promise((resolve) => setTimeout(resolve, 5_000))
+
+    await fx.ledger.submitAndWait(
+      [dan],
+      [
+        {
+          templateId: fx.ids.lockedToken,
+          contractId: escrowCid,
+          choice: 'LockedToken_ExpireLock',
+          choiceArgument: {},
+        },
+      ],
+    )
+    expect(await fx.ledger.activeContracts(fx.ids.lockedToken, fx.admin)).toEqual([])
+
+    const ctx = await request(fx.app)
+      .post(`/registry/transfer-instruction/v1/${instructionCid}/choice-contexts/withdraw`)
+      .send({ meta: {} })
+    expect(ctx.status).toBe(200)
+    expect(ctx.body.choiceContextData).toEqual({
+      'canton-token-forge/escrow-reclaimed': { tag: 'AV_Bool', value: true },
+    })
+    expect(ctx.body.disclosedContracts).toEqual([])
+
+    await submitInstructionChoice(fx, instructionCid, 'TransferInstruction_Withdraw', dan, ctx.body)
+
+    expect(await fx.ledger.activeContracts(fx.ids.transferInstruction, fx.admin)).toEqual([])
+    // 60 change plus the 40 the reclaim returned, so the withdraw cleared the
+    // record without paying anything a second time
+    expect((await holdingsOf(fx, dan)).map((h) => Number(h.payload.amount)).sort()).toEqual([
+      40, 60,
+    ])
+  })
 })

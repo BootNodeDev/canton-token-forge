@@ -201,7 +201,15 @@ export interface FactoryResponse {
 export async function submitTransfer(
   fx: LiveFixture,
   factory: FactoryResponse,
-  transfer: { sender: string; receiver: string; amount: string; inputHoldingCids: string[] },
+  transfer: {
+    sender: string
+    receiver: string
+    amount: string
+    inputHoldingCids: string[]
+    // A caller that means to wait the offer out sets this; the escrow expires
+    // with it, so the default hour of slack would make such a test unrunnable.
+    executeBefore?: string
+  },
 ): Promise<unknown> {
   const now = Date.now()
   return fx.ledger.submitAndWait(
@@ -219,7 +227,7 @@ export async function submitTransfer(
             amount: transfer.amount,
             instrumentId: { admin: fx.admin, id: fx.instrumentId },
             requestedAt: new Date(now - WINDOW_MS).toISOString(),
-            executeBefore: new Date(now + WINDOW_MS).toISOString(),
+            executeBefore: transfer.executeBefore ?? new Date(now + WINDOW_MS).toISOString(),
             inputHoldingCids: transfer.inputHoldingCids,
             meta: { values: {} },
           },
@@ -260,6 +268,7 @@ export async function createOfferInstruction(
   sender: string,
   receiver: string,
   amount: string,
+  executeBefore?: string,
 ): Promise<{ instructionCid: string; escrowCid: string }> {
   const inputCid = await tapFaucet(fx, sender, '100.0')
   const factory = (await requestTransferFactory(fx, sender, receiver)).body as FactoryResponse
@@ -272,6 +281,7 @@ export async function createOfferInstruction(
     receiver,
     amount,
     inputHoldingCids: [inputCid],
+    executeBefore,
   })
 
   const instructions = (await fx.ledger.activeContracts(
