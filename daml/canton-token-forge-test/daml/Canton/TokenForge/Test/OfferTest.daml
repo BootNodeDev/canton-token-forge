@@ -277,10 +277,16 @@ offerRejectRefusesAfterEscrowReclaim = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer admin alice bob
+  -- Captured while the escrow is still live, and passed to both submissions
+  -- below. Bob is not a stakeholder of the sender-owned escrow, so without it
+  -- each submission fails for want of the disclosure alone, which is a refusal
+  -- this test would report as success without ever exercising the reclaim it is
+  -- named for.
+  lockedDisclosure <- escrowDisclosure admin instrCid
   setTime offerDeadline
   reclaimEscrow admin alice instrCid
-  submitMustFail bob $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = escrowReclaimedArgs
-  submitMustFail bob $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = escrowReclaimedArgs
+  submitMustFail (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
 
 -- The sender withdrawing after reclaiming the escrow directly is the path that
 -- produced the unconsumable record.
