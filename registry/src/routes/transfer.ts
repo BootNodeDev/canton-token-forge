@@ -110,10 +110,12 @@ export function transferRouter(deps: ServerDeps): Router {
 
         const escrow = await findEscrow(deps.ledger, deps.config, instr.payload.lockedCid)
         if (!escrow) {
-          // Accept settles out of the escrow, so an absent one leaves it
-          // nothing to do. The two aborts only clear the record, and report the
-          // reclaim so the choice does not reach for a contract that is gone.
-          if (choice === 'accept') return res.status(404).json({ error: 'escrow not found' })
+          // Only the sender's withdraw can act on an escrow that is gone. It is
+          // the one choice here the escrow's owner authorizes, so it is the only
+          // one the on-ledger side lets a reclaim report clear: accept has
+          // nothing left to settle out of, and reject, controlled by the
+          // receiver alone, has nothing left to refund.
+          if (choice !== 'withdraw') return res.status(404).json({ error: 'escrow not found' })
           return res.json({
             choiceContextData: { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) },
             disclosedContracts: [],

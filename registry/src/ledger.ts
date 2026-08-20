@@ -223,17 +223,18 @@ export class HttpLedgerClient implements LedgerClient {
       const detail = await res.text()
       // Both statuses also carry faults that are not a missing contract at all:
       // a participant that does not serve this endpoint answers a path-level
-      // 404, and a party or event format it refuses answers 400. Those would
-      // otherwise 404 every choice-context route indefinitely with nothing in
-      // the log, which is the one failure the active-set query could not have.
-      // The participant names a genuine miss, so anything else is worth an
-      // operator's attention; the check picks the log level only, never the
-      // answer, so a drift in that code costs noise and not behaviour.
+      // 404, and a party or event format it refuses answers 400. A genuine miss
+      // is the one the participant names, so anything else is a fault of ours
+      // and is raised rather than answered as an absent contract: the abort
+      // choice-contexts turn an absent escrow into a positive report that its
+      // owner reclaimed it, and a misconfigured template id must not be able to
+      // manufacture that report for an escrow that is sitting right there.
       if (!detail.includes('CONTRACT_EVENTS_NOT_FOUND')) {
         this.logger.error(
           { status: res.status, templateId, contractId, detail },
           'contract lookup rejected',
         )
+        throw new LedgerRequestError(res.status, `contract lookup rejected: ${res.status}`)
       }
       return undefined
     }

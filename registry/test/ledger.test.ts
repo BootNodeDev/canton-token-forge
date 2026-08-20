@@ -200,10 +200,12 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   })
 
   // The service cannot tell this apart from a missing contract by status alone,
-  // and answering "not found" forever with nothing in the log is what made the
-  // whole class invisible: a participant that does not serve this endpoint
-  // returns a path-level 404, and a rejected event format or party returns 400.
-  it('logs a rejection that is not the participant reporting a missing contract', async () => {
+  // so it goes by what the participant named: a participant that does not serve
+  // this endpoint returns a path-level 404, and a rejected event format or party
+  // returns 400. Neither is an absent contract, and answering one as absent is
+  // what lets a fault of ours reach an abort choice-context as a positive report
+  // that the escrow's owner reclaimed it.
+  it('throws on a rejection that is not the participant reporting a missing contract', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
@@ -218,9 +220,9 @@ describe('HttpLedgerClient.lookupByContractId', () => {
       logger,
     )
 
-    await expect(
-      client.lookupByContractId('pkg:M:T', '00locked', 'admin::1'),
-    ).resolves.toBeUndefined()
+    await expect(client.lookupByContractId('pkg:M:T', '00locked', 'admin::1')).rejects.toThrow(
+      /404/,
+    )
     expect(entries).toHaveLength(1)
     expect(entries[0]).toMatchObject({
       status: 404,
@@ -247,9 +249,12 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   })
 
   // A contract id the participant cannot parse comes back 400 INVALID_FIELD.
-  // It is still a path parameter naming no contract, and the routes answer
-  // their own "not found" for it, as they did when this was an in-memory scan.
-  it('returns undefined when the participant rejects the contract id as unparseable', async () => {
+  // Telling that apart from an event format or party the participant refuses
+  // needs the message text, which no run against a live participant has pinned
+  // down, so the whole status is treated as a fault. A caller that put a
+  // malformed id in the path is answered 500 rather than 404, which is the
+  // price of never turning a refused read into a reclaimed-escrow report.
+  it('throws when the participant rejects the contract id as unparseable', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
@@ -264,12 +269,9 @@ describe('HttpLedgerClient.lookupByContractId', () => {
       logger,
     )
 
-    await expect(
-      client.lookupByContractId('pkg:M:T', 'not-a-cid', 'admin::1'),
-    ).resolves.toBeUndefined()
-    // A 400 is logged with the rest: telling a malformed contract id apart from
-    // an event format the participant refuses needs the message text, which no
-    // run against a live participant has pinned down.
+    await expect(client.lookupByContractId('pkg:M:T', 'not-a-cid', 'admin::1')).rejects.toThrow(
+      /400/,
+    )
     expect(entries).toHaveLength(1)
   })
 

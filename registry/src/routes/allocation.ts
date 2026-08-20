@@ -57,14 +57,20 @@ export function allocationRouter(deps: ServerDeps): Router {
         const escrow = await findEscrow(deps.ledger, deps.config, alloc.payload.lockedCid)
         if (!escrow) {
           // execute-transfer settles the leg out of the escrow, so an absent one
-          // leaves it nothing to do. The two aborts only clear the record, and
-          // report the reclaim rather than the early-release signal: there is
-          // nothing left to release.
+          // leaves it nothing to do. The two aborts only clear the record and
+          // report the reclaim. Cancel keeps its early-release signal alongside
+          // that report: the signal is what authorizes acting before
+          // settleBefore, and the record still has to be cleared then whether or
+          // not there is an escrow left to release.
           if (choice === 'execute-transfer') {
             return res.status(404).json({ error: 'escrow not found' })
           }
+          const reclaimed = { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) }
           return res.json({
-            choiceContextData: { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) },
+            choiceContextData:
+              choice === 'cancel'
+                ? { ...reclaimed, [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) }
+                : reclaimed,
             disclosedContracts: [],
           })
         }

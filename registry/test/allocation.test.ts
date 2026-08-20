@@ -200,7 +200,7 @@ describe('allocation choice-contexts', () => {
     })
   }
 
-  it('drops the early-release signal from a cancel whose escrow is already gone', async () => {
+  it('keeps the early-release signal on a cancel whose escrow is already gone', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [],
@@ -209,8 +209,24 @@ describe('allocation choice-contexts', () => {
     const res = await request(app)
       .post('/registry/allocations/v1/alloc1/choice-contexts/cancel')
       .send({ meta: {} })
-    // There is nothing left for the signal to release, and the choice reads the
-    // reclaimed report first, so sending both would only be misleading.
+    // The two answer different questions: the report says there is nothing to
+    // return, the signal is the three parties' joint authority to act before
+    // settleBefore. Dropping the signal would leave the record uncancellable
+    // until the deadline, which is the one thing cancel exists to avoid.
+    expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toEqual(anyValueBool(true))
+  })
+
+  // The single-party withdraw is deadline-gated on-ledger either way, so it
+  // never carries the signal, gone escrow or not.
+  it('sends no early-release signal on a withdraw whose escrow is already gone', async () => {
+    const ledger = ledgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/allocations/v1/alloc1/choice-contexts/withdraw')
+      .send({ meta: {} })
     expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toBeUndefined()
   })
 

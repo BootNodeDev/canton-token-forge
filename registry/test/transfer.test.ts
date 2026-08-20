@@ -5,6 +5,7 @@ import {
   ESCROW_RECLAIMED_CONTEXT_KEY,
   PREAPPROVAL_CONTEXT_KEY,
 } from '../src/disclose'
+import { LedgerRequestError } from '../src/ledger'
 import { createServer } from '../src/server'
 import {
   cfgEntry,
@@ -17,6 +18,7 @@ import {
   otherInstrumentId,
   preapprovalEntry,
   recordingLedgerFrom,
+  recordingLogger,
 } from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
 
@@ -426,24 +428,11 @@ describe('transfer-instruction choice-contexts', () => {
     validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
-  it('404s instead of returning a context that omits the escrow when the LockedToken is gone', async () => {
-    const ledger = ledgerFrom({
-      [config.transferInstructionTemplateId]: [instructionEntry()],
-      [config.lockedTokenTemplateId]: [],
-    })
-    const app = createServer({ ledger, config })
-    const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
-      .send({ meta: {} })
-    expect(res.status).toBe(404)
-    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
-    // The instruction resolves on this path, so only the message separates a
-    // stale escrow from the route's other 404.
-    expect(res.body.error).toBe('escrow not found')
-  })
-
-  for (const choice of ['reject', 'withdraw']) {
-    it(`reports a reclaimed escrow instead of refusing the ${choice} context`, async () => {
+  // Accept has nothing left to settle out of, and reject, controlled by the
+  // receiver alone, is the one abort the Daml side refuses to let a reclaim
+  // report clear, so it has nothing left to do either.
+  for (const choice of ['accept', 'reject']) {
+    it(`404s instead of returning a ${choice} context that omits the escrow when the LockedToken is gone`, async () => {
       const ledger = ledgerFrom({
         [config.transferInstructionTemplateId]: [instructionEntry()],
         [config.lockedTokenTemplateId]: [],
@@ -452,14 +441,55 @@ describe('transfer-instruction choice-contexts', () => {
       const res = await request(app)
         .post(`/registry/transfer-instruction/v1/instr1/choice-contexts/${choice}`)
         .send({ meta: {} })
-      expect(res.status).toBe(200)
-      validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
-      expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
-      // nothing to disclose: the contract the escrow disclosure would name is
-      // the one that is gone
-      expect(res.body.disclosedContracts).toEqual([])
+      expect(res.status).toBe(404)
+      validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+      // The instruction resolves on this path, so only the message separates a
+      // stale escrow from the route's other 404.
+      expect(res.body.error).toBe('escrow not found')
     })
   }
+
+  it('reports a reclaimed escrow instead of refusing the withdraw context', async () => {
+    const ledger = ledgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/withdraw')
+      .send({ meta: {} })
+    expect(res.status).toBe(200)
+    validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
+    expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
+    // nothing to disclose: the contract the escrow disclosure would name is
+    // the one that is gone
+    expect(res.body.disclosedContracts).toEqual([])
+  })
+
+  // A refused escrow read is a fault of ours, and the withdraw context turns an
+  // absent escrow into a positive report that the sender reclaimed it. The
+  // client would archive the record on that report while the escrow it names is
+  // sitting on the ledger untouched, so the read has to fail loudly instead.
+  it('fails the withdraw context rather than reporting a reclaim when the escrow read is refused', async () => {
+    const base = ledgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+    })
+    const ledger = {
+      ...base,
+      lookupByContractId: (templateId: string, contractId: string, party: string) =>
+        templateId === config.lockedTokenTemplateId
+          ? Promise.reject(new LedgerRequestError(400, 'contract lookup rejected: 400'))
+          : base.lookupByContractId(templateId, contractId, party),
+    }
+    const { logger } = recordingLogger()
+    const app = createServer({ ledger, config, logger })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/withdraw')
+      .send({ meta: {} })
+    expect(res.status).toBe(500)
+    expect(res.body.choiceContextData).toBeUndefined()
+  })
 
   it('names the reclaimed-escrow key exactly as the Daml choice reads it', async () => {
     const ledger = ledgerFrom({
