@@ -1,10 +1,22 @@
 import { Router } from 'express'
-import { anyValueContractId, PREAPPROVAL_CONTEXT_KEY, toDisclosed } from '../disclose.js'
+import {
+  anyValueBool,
+  anyValueContractId,
+  ESCROW_RECLAIMED_CONTEXT_KEY,
+  PREAPPROVAL_CONTEXT_KEY,
+  toDisclosed,
+} from '../disclose.js'
 import { matchesInstrument, resolveConfig } from '../mapping.js'
 import type { InstrumentIdValue, TransferInstructionPayload } from '../payloads.js'
 import type { ServerDeps } from '../server.js'
 import { asyncHandler } from './async-handler.js'
-import { activeConfigs, activePreapprovals, findByContractId, findEscrow } from './lookup.js'
+import {
+  activeConfigs,
+  activePreapprovals,
+  findByContractId,
+  findEscrow,
+  isContractId,
+} from './lookup.js'
 import { resolveOrRespond } from './respond.js'
 
 interface TransferFactoryBody {
@@ -88,21 +100,38 @@ export function transferRouter(deps: ServerDeps): Router {
   // else: none of the three choice bodies fetches an InstrumentConfig, so
   // disclosing one would only add a lookup that can fail. None of them reads
   // the expire-lock signal either (reject unlocks unconditionally, withdraw is
-  // deadline-gated on-ledger), so choiceContextData is always empty here.
+  // deadline-gated on-ledger), so choiceContextData is empty whenever the
+  // escrow is there to disclose.
   for (const choice of ['accept', 'reject', 'withdraw']) {
     r.post(
       `/registry/transfer-instruction/v1/:transferInstructionId/choice-contexts/${choice}`,
       asyncHandler(async (req, res) => {
+        const notFound = { error: 'transfer instruction not found' }
+        if (!isContractId(req.params.transferInstructionId)) {
+          return res.status(404).json(notFound)
+        }
+
         const instr = await findByContractId<TransferInstructionPayload>(
           deps.ledger,
           deps.config.transferInstructionTemplateId,
           deps.config.adminParty,
           req.params.transferInstructionId,
         )
-        if (!instr) return res.status(404).json({ error: 'transfer instruction not found' })
+        if (!instr) return res.status(404).json(notFound)
 
         const escrow = await findEscrow(deps.ledger, deps.config, instr.payload.lockedCid)
-        if (!escrow) return res.status(404).json({ error: 'escrow not found' })
+        if (!escrow) {
+          // Only the sender's withdraw can act on an escrow that is gone. It is
+          // the one choice here the escrow's owner authorizes, so it is the only
+          // one the on-ledger side lets a reclaim report clear: accept has
+          // nothing left to settle out of, and reject, controlled by the
+          // receiver alone, has nothing left to refund.
+          if (choice !== 'withdraw') return res.status(404).json({ error: 'escrow not found' })
+          return res.json({
+            choiceContextData: { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) },
+            disclosedContracts: [],
+          })
+        }
 
         res.json({ choiceContextData: {}, disclosedContracts: [toDisclosed(escrow)] })
       }),

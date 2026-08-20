@@ -46,9 +46,24 @@ export function activePreapprovals(
   )
 }
 
-// Resolve a single active contract by its id. Several handlers resolve a path
-// parameter (an allocation, a transfer instruction) this way before acting on
-// it, so the one cast from the client's unknown payload lives here.
+// Screen a contract id that arrived as a path parameter. An id that cannot name
+// a contract names no contract, so the routes answer it as they answer any other
+// id they cannot resolve, without spending a participant round-trip on it.
+//
+// Deliberately a character check alone: the length and the version prefix are
+// the participant's business, and pinning them here would start refusing ids it
+// still accepts. That leaves the ids that are hex but still unparseable, a
+// truncated paste being the likely one, for the participant to reject; the
+// ledger client reads that particular rejection as a miss so it reaches the
+// client as the same 404 this screen produces.
+export function isContractId(value: string): boolean {
+  return /^[0-9a-fA-F]+$/.test(value)
+}
+
+// Resolve a single active contract by the id a client named in the path (an
+// allocation, a transfer instruction), so the one cast from the participant's
+// unknown payload lives here. The id is the client's, so one the participant
+// cannot parse is answered as a miss rather than as a fault of ours.
 //
 // This is the only lookup the JSON Ledger API can answer in bounded time: the
 // active-set queries above are matched on payload fields (an instrumentId, a
@@ -62,7 +77,7 @@ export async function findByContractId<P = unknown>(
   party: string,
   contractId: string,
 ): Promise<ContractEntry<P> | undefined> {
-  return ledger.lookupByContractId(templateId, contractId, party) as Promise<
+  return ledger.lookupByContractId(templateId, contractId, party, true) as Promise<
     ContractEntry<P> | undefined
   >
 }
@@ -74,17 +89,26 @@ export async function findByContractId<P = unknown>(
 // a context that silently omits it would only fail later inside the choice.
 // Note the caller need not hold a stale id for this to happen: after expiry the
 // sender can reclaim the escrow through LockedToken_ExpireLock, which archives
-// it and leaves the instruction active but inert, so the cid the service itself
-// just read out of a live instruction can already be gone.
+// it while the record that names it stays active, so the cid the service itself
+// just read out of a live instruction can already be gone. The aborts whose
+// controller owns the escrow report that back to the choice; the settlement
+// routes and the receiver-controlled reject treat it as a dead end.
 export async function findEscrow(
   ledger: LedgerClient,
   config: Pick<Config, 'lockedTokenTemplateId' | 'adminParty'>,
   lockedCid: string,
 ): Promise<ContractEntry<LockedTokenPayload> | undefined> {
-  return findByContractId<LockedTokenPayload>(
-    ledger,
+  // Deliberately not routed through findByContractId: this is the one lookup
+  // whose id the service read out of a record's own payload rather than off a
+  // client, and the only one whose absent contract the abort contexts turn into
+  // a positive report that the escrow's owner already reclaimed it. The payload
+  // is an unchecked cast, so a lockedCid that is missing or malformed says the
+  // contract is not the template it was read as. Withholding the client-id flag
+  // is what makes the participant's refusal raise there instead of becoming
+  // that report for an escrow that is still live.
+  return ledger.lookupByContractId(
     config.lockedTokenTemplateId,
-    config.adminParty,
     lockedCid,
-  )
+    config.adminParty,
+  ) as Promise<ContractEntry<LockedTokenPayload> | undefined>
 }

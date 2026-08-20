@@ -1,6 +1,11 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { PREAPPROVAL_CONTEXT_KEY } from '../src/disclose'
+import {
+  anyValueBool,
+  ESCROW_RECLAIMED_CONTEXT_KEY,
+  PREAPPROVAL_CONTEXT_KEY,
+} from '../src/disclose'
+import { LedgerRequestError } from '../src/ledger'
 import { createServer } from '../src/server'
 import {
   cfgEntry,
@@ -13,6 +18,7 @@ import {
   otherInstrumentId,
   preapprovalEntry,
   recordingLedgerFrom,
+  recordingLogger,
 } from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
 
@@ -382,7 +388,7 @@ describe('transfer-instruction choice-contexts', () => {
       })
       const app = createServer({ ledger, config })
       const res = await request(app)
-        .post(`/registry/transfer-instruction/v1/instr1/choice-contexts/${choice}`)
+        .post(`/registry/transfer-instruction/v1/00cafe01/choice-contexts/${choice}`)
         .send({ meta: {} })
       expect(res.status).toBe(200)
       validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
@@ -402,11 +408,11 @@ describe('transfer-instruction choice-contexts', () => {
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const res = await request(createServer({ ledger, config }))
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/accept')
       .send({ meta: {} })
     expect(res.status).toBe(200)
     expect(lookups).toEqual([
-      [config.transferInstructionTemplateId, 'instr1', config.adminParty],
+      [config.transferInstructionTemplateId, '00cafe01', config.adminParty],
       [config.lockedTokenTemplateId, 'locked1', config.adminParty],
     ])
     expect(queries).toEqual([])
@@ -416,26 +422,135 @@ describe('transfer-instruction choice-contexts', () => {
     const ledger = ledgerFrom({ [config.transferInstructionTemplateId]: [] })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/transfer-instruction/v1/nope/choice-contexts/accept')
+      .post('/registry/transfer-instruction/v1/00cafe99/choice-contexts/accept')
       .send({ meta: {} })
     expect(res.status).toBe(404)
     validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
-  it('404s instead of returning a context that omits the escrow when the LockedToken is gone', async () => {
+  // An id that is not hex at all cannot name a contract, so the route answers it
+  // without a participant round-trip: the assertions on lookups and queries are
+  // what pin that it never asks. A hex id the participant cannot parse is the
+  // other half, and the ledger client reads that rejection as the same miss.
+  it('404s on a contract id no participant could parse, without asking one', async () => {
+    const { ledger, lookups, queries } = recordingLedgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+    })
+    const res = await request(createServer({ ledger, config }))
+      .post('/registry/transfer-instruction/v1/not-a-cid/choice-contexts/accept')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    expect(lookups).toEqual([])
+    expect(queries).toEqual([])
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+  })
+
+  // Accept has nothing left to settle out of, and reject, controlled by the
+  // receiver alone, is the one abort the Daml side refuses to let a reclaim
+  // report clear, so it has nothing left to do either.
+  for (const choice of ['accept', 'reject']) {
+    it(`404s instead of returning a ${choice} context that omits the escrow when the LockedToken is gone`, async () => {
+      const ledger = ledgerFrom({
+        [config.transferInstructionTemplateId]: [instructionEntry()],
+        [config.lockedTokenTemplateId]: [],
+      })
+      const app = createServer({ ledger, config })
+      const res = await request(app)
+        .post(`/registry/transfer-instruction/v1/00cafe01/choice-contexts/${choice}`)
+        .send({ meta: {} })
+      expect(res.status).toBe(404)
+      validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+      // The instruction resolves on this path, so only the message separates a
+      // stale escrow from the route's other 404.
+      expect(res.body.error).toBe('escrow not found')
+    })
+  }
+
+  it('reports a reclaimed escrow instead of refusing the withdraw context', async () => {
     const ledger = ledgerFrom({
       [config.transferInstructionTemplateId]: [instructionEntry()],
       [config.lockedTokenTemplateId]: [],
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
       .send({ meta: {} })
-    expect(res.status).toBe(404)
-    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
-    // The instruction resolves on this path, so only the message separates a
-    // stale escrow from the route's other 404.
-    expect(res.body.error).toBe('escrow not found')
+    expect(res.status).toBe(200)
+    validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
+    expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
+    // nothing to disclose: the contract the escrow disclosure would name is
+    // the one that is gone
+    expect(res.body.disclosedContracts).toEqual([])
+  })
+
+  // A refused escrow read is a fault of ours, and the withdraw context turns an
+  // absent escrow into a positive report that the sender reclaimed it. The
+  // client would archive the record on that report while the escrow it names is
+  // sitting on the ledger untouched, so the read has to fail loudly instead.
+  it('fails the withdraw context rather than reporting a reclaim when the escrow read is refused', async () => {
+    const base = ledgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+    })
+    const ledger = {
+      ...base,
+      lookupByContractId: (templateId: string, contractId: string, party: string) =>
+        templateId === config.lockedTokenTemplateId
+          ? Promise.reject(new LedgerRequestError(400, 'contract lookup rejected: 400'))
+          : base.lookupByContractId(templateId, contractId, party),
+    }
+    const { logger } = recordingLogger()
+    const app = createServer({ ledger, config, logger })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
+      .send({ meta: {} })
+    expect(res.status).toBe(500)
+    expect(res.body.choiceContextData).toBeUndefined()
+  })
+
+  // The two lookups a choice-context makes differ in where their id came from,
+  // and only the client's may be forgiven an id the participant cannot parse.
+  // Flagging the escrow lookup as well would let a malformed lockedCid read as
+  // an absent escrow, which this route reports as a positive reclaim.
+  it("marks only the client's path parameter as a client-supplied contract id", async () => {
+    const base = ledgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+    })
+    const flags: Record<string, boolean | undefined> = {}
+    const ledger = {
+      ...base,
+      lookupByContractId: (
+        templateId: string,
+        contractId: string,
+        party: string,
+        clientSuppliedId?: boolean,
+      ) => {
+        flags[templateId] = clientSuppliedId
+        return base.lookupByContractId(templateId, contractId, party)
+      },
+    }
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
+      .send({ meta: {} })
+    expect(res.status).toBe(200)
+    expect(flags[config.transferInstructionTemplateId]).toBe(true)
+    expect(flags[config.lockedTokenTemplateId]).toBeFalsy()
+  })
+
+  it('names the reclaimed-escrow key exactly as the Daml choice reads it', async () => {
+    const ledger = ledgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
+      .send({ meta: {} })
+    // spelled out rather than imported, so renaming the constant cannot travel
+    // through both sides of this contract unnoticed
+    expect(Object.keys(res.body.choiceContextData)).toEqual(['canton-token-forge/escrow-reclaimed'])
   })
 
   it('serves a context for an instrument whose config is duplicated', async () => {
@@ -448,7 +563,7 @@ describe('transfer-instruction choice-contexts', () => {
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/accept')
       .send({ meta: {} })
     // A duplicate config 409s the factory route, which has to name one config
     // as the factory. These three choices never read one, so an accept that is

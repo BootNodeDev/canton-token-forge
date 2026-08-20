@@ -1,8 +1,10 @@
 module Canton.TokenForge.Test.OfferTest where
 
 import Daml.Script
+import Daml.Script.Internal (isNotActive)
 import DA.Assert ((===))
 import DA.List (head)
+import DA.Optional (isNone, isSome)
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
@@ -10,9 +12,9 @@ import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceCon
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
-import Canton.TokenForge.Locked (LockedToken)
+import Canton.TokenForge.Locked (LockedToken, LockedToken_ExpireLock(..))
 import Canton.TokenForge.Registry (InstrumentConfig, InstrumentConfig_LockHolding(..))
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs, escrowReclaimedArgs)
 
 -- No app-backend context is needed for accept/reject/withdraw in these tests.
 noContextArgs : ExtraArgs
@@ -239,3 +241,91 @@ offerAcceptRefusedAtDeadline = do
   setTime offerDeadline
   submitMustFail (actAs bob <> disclose lockedDisclosure) $
     exerciseCmd instrCid TransferInstruction_Accept with extraArgs = noContextArgs
+
+-- Reclaim an offer's escrow the way its owner can once the deadline has passed,
+-- bypassing the instruction entirely and leaving it pointing at a contract that
+-- no longer exists.
+reclaimEscrow : Party -> Party -> ContractId TransferInstruction -> Script ()
+reclaimEscrow admin sender instrCid = do
+  Some instr <- queryContractId admin (coerceContractId instrCid : ContractId TokenTransferInstruction)
+  _ <- submit sender $ exerciseCmd instr.lockedCid LockedToken_ExpireLock
+  pure ()
+
+-- Reject is the one abort the escrow's owner does not authorize, so it never
+-- reads the reclaimed-escrow report: a receiver carrying one against a live
+-- escrow still refunds the sender in full, exactly as a bare reject would.
+offerRejectIgnoresEscrowReclaimedReport : Script ()
+offerRejectIgnoresEscrowReclaimedReport = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer admin alice bob
+  lockedDisclosure <- escrowDisclosure admin instrCid
+  rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = escrowReclaimedArgs
+  rej.output === TransferInstructionResult_Failed
+  [refundCid] <- pure rej.senderChangeCids
+  Some rv <- queryInterfaceContractId alice refundCid
+  rv.owner === alice
+  rv.amount === 40.0
+
+-- Assert that a reject failed on the archived escrow rather than on the
+-- receiver's inability to see it. Bob is never a stakeholder of the
+-- sender-owned escrow, so every reject he submits without a disclosure fails
+-- one way or the other, and a bare submitMustFail cannot tell the two reasons
+-- apart: a reject that skipped the escrow on a forged report would fail for
+-- want of visibility and read as a pass. The IDE ledger fills in the debugging
+-- info a real participant leaves empty, so against Canton this fails loudly
+-- rather than passing silently.
+rejectMustFailOnArchivedEscrow : Party -> ContractId TransferInstruction -> ExtraArgs -> Script ()
+rejectMustFailOnArchivedEscrow receiver instrCid extraArgs = do
+  res <- trySubmit receiver $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs
+  case res of
+    Left ContractNotFound{additionalDebuggingInfo = Some info} | isSome (isNotActive info) -> pure ()
+    Left e -> abort ("expected the reject to fail on the archived escrow, got: " <> show e)
+    Right _ -> abort "expected the reject to fail once the escrow was reclaimed"
+
+-- Because reject ignores the report, it has nothing left to do once the sender
+-- has reclaimed the escrow, and refuses. The record is not stranded: the same
+-- instant that unlocked the reclaim opens the sender's own withdraw, which
+-- clears it (offerWithdrawClearsRecordAfterEscrowReclaim below).
+offerRejectRefusesAfterEscrowReclaim : Script ()
+offerRejectRefusesAfterEscrowReclaim = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer admin alice bob
+  setTime offerDeadline
+  reclaimEscrow admin alice instrCid
+  -- Nothing is disclosed to bob here: a disclosure captured while the escrow
+  -- was live is stale the moment it is reclaimed, and submitting a stale one
+  -- fails the transaction before the choice body runs, which would mask a
+  -- reject that had started honoring the report.
+  rejectMustFailOnArchivedEscrow bob instrCid escrowReclaimedArgs
+  rejectMustFailOnArchivedEscrow bob instrCid noContextArgs
+
+-- The sender withdrawing after reclaiming the escrow directly is the path that
+-- produced the unconsumable record.
+offerWithdrawClearsRecordAfterEscrowReclaim : Script ()
+offerWithdrawClearsRecordAfterEscrowReclaim = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer admin alice bob
+  setTime offerDeadline
+  reclaimEscrow admin alice instrCid
+  wd <- submit alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = escrowReclaimedArgs
+  wd.output === TransferInstructionResult_Failed
+  wd.senderChangeCids === []
+  gone <- queryContractId admin (coerceContractId instrCid : ContractId TokenTransferInstruction)
+  assertMsg "the withdrawn instruction is archived" (isNone gone)
+
+-- The reclaimed-escrow report is a bare caller-supplied boolean, so it must buy
+-- nobody an early abort: withdraw enforces the deadline on the reported branch
+-- exactly as it does when the escrow comes back.
+offerWithdrawWithoutEscrowStillNeedsTheDeadline : Script ()
+offerWithdrawWithoutEscrowStillNeedsTheDeadline = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer admin alice bob
+  submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = escrowReclaimedArgs

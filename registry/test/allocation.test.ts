@@ -1,6 +1,10 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { anyValueBool, EXPIRE_LOCK_CONTEXT_KEY } from '../src/disclose'
+import {
+  anyValueBool,
+  ESCROW_RECLAIMED_CONTEXT_KEY,
+  EXPIRE_LOCK_CONTEXT_KEY,
+} from '../src/disclose'
 import { createServer } from '../src/server'
 import {
   allocationEntry,
@@ -97,11 +101,11 @@ describe('allocation choice-contexts', () => {
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const res = await request(createServer({ ledger, config }))
-      .post('/registry/allocations/v1/alloc1/choice-contexts/withdraw')
+      .post('/registry/allocations/v1/00cafe02/choice-contexts/withdraw')
       .send({ meta: {} })
     expect(res.status).toBe(200)
     expect(lookups).toEqual([
-      [config.allocationTemplateId, 'alloc1', config.adminParty],
+      [config.allocationTemplateId, '00cafe02', config.adminParty],
       [config.lockedTokenTemplateId, 'locked1', config.adminParty],
     ])
     expect(queries).toEqual([])
@@ -114,7 +118,7 @@ describe('allocation choice-contexts', () => {
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/allocations/v1/alloc1/choice-contexts/cancel')
+      .post('/registry/allocations/v1/00cafe02/choice-contexts/cancel')
       .send({ meta: {} })
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
@@ -132,7 +136,7 @@ describe('allocation choice-contexts', () => {
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/allocations/v1/alloc1/choice-contexts/withdraw')
+      .post('/registry/allocations/v1/00cafe02/choice-contexts/withdraw')
       .send({ meta: {} })
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
@@ -150,7 +154,7 @@ describe('allocation choice-contexts', () => {
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/allocations/v1/alloc1/choice-contexts/execute-transfer')
+      .post('/registry/allocations/v1/00cafe02/choice-contexts/execute-transfer')
       .send({ meta: {} })
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
@@ -161,15 +165,17 @@ describe('allocation choice-contexts', () => {
     expect(ids).toEqual(['locked1'])
   })
 
-  it('404s instead of returning an empty context when the escrow LockedToken is gone', async () => {
+  it('404s the settlement context when the escrow LockedToken is gone', async () => {
     const ledger = ledgerFrom({
       [config.allocationTemplateId]: [allocationEntry()],
       [config.lockedTokenTemplateId]: [],
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/allocations/v1/alloc1/choice-contexts/cancel')
+      .post('/registry/allocations/v1/00cafe02/choice-contexts/execute-transfer')
       .send({ meta: {} })
+    // execute-transfer settles the leg out of the escrow, so an absent escrow
+    // is a dead end for it, unlike the two abort contexts below.
     expect(res.status).toBe(404)
     validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
     // The allocation itself resolves here, so only the message separates a
@@ -177,11 +183,74 @@ describe('allocation choice-contexts', () => {
     expect(res.body.error).toBe('escrow not found')
   })
 
+  for (const choice of ['withdraw', 'cancel']) {
+    it(`reports a reclaimed escrow instead of refusing the ${choice} context`, async () => {
+      const ledger = ledgerFrom({
+        [config.allocationTemplateId]: [allocationEntry()],
+        [config.lockedTokenTemplateId]: [],
+      })
+      const app = createServer({ ledger, config })
+      const res = await request(app)
+        .post(`/registry/allocations/v1/00cafe02/choice-contexts/${choice}`)
+        .send({ meta: {} })
+      expect(res.status).toBe(200)
+      validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
+      expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
+      expect(res.body.disclosedContracts).toEqual([])
+    })
+  }
+
+  it('keeps the early-release signal on a cancel whose escrow is already gone', async () => {
+    const ledger = ledgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/allocations/v1/00cafe02/choice-contexts/cancel')
+      .send({ meta: {} })
+    // The two answer different questions: the report says there is nothing to
+    // return, the signal is the three parties' joint authority to act before
+    // settleBefore. Dropping the signal would leave the record uncancellable
+    // until the deadline, which is the one thing cancel exists to avoid.
+    expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toEqual(anyValueBool(true))
+  })
+
+  // The single-party withdraw is deadline-gated on-ledger either way, so it
+  // never carries the signal, gone escrow or not.
+  it('sends no early-release signal on a withdraw whose escrow is already gone', async () => {
+    const ledger = ledgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/allocations/v1/00cafe02/choice-contexts/withdraw')
+      .send({ meta: {} })
+    expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toBeUndefined()
+  })
+
+  // Same screen as the transfer instruction route: an id the participant would
+  // refuse never reaches it, so a client's typo is answered as the miss it is
+  // rather than as a fault of the service.
+  it('404s on a contract id no participant could parse, without asking one', async () => {
+    const { ledger, lookups, queries } = recordingLedgerFrom({
+      [config.allocationTemplateId]: [allocationEntry()],
+    })
+    const res = await request(createServer({ ledger, config }))
+      .post('/registry/allocations/v1/not-a-cid/choice-contexts/cancel')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    expect(lookups).toEqual([])
+    expect(queries).toEqual([])
+    validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
+  })
+
   it('404s when the allocation is not found', async () => {
     const ledger = ledgerFrom({ [config.allocationTemplateId]: [] })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/allocations/v1/nope/choice-contexts/cancel')
+      .post('/registry/allocations/v1/00cafe99/choice-contexts/cancel')
       .send({ meta: {} })
     expect(res.status).toBe(404)
     validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)

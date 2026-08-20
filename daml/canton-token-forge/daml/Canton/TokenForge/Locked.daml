@@ -1,5 +1,6 @@
 module Canton.TokenForge.Locked where
 
+import DA.Action (unless)
 import DA.TextMap qualified as TextMap
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, ChoiceContext(..), AnyValue(..))
@@ -90,6 +91,21 @@ lookupExpireLock ctx =
     Some (AV_Bool b) -> b
     _ -> False
 
+-- | Well-known choice-context key under which the app backend reports that the
+-- escrow behind a transfer instruction or an allocation is already gone,
+-- because its owner reclaimed it through LockedToken_ExpireLock. It says only
+-- that there is nothing left to return, never that a deadline may be skipped.
+escrowReclaimedContextKey : Text
+escrowReclaimedContextKey = "canton-token-forge/escrow-reclaimed"
+
+-- | Read the reclaimed-escrow report from the choice context; absent or
+-- non-bool means the escrow is still there.
+lookupEscrowReclaimed : ChoiceContext -> Bool
+lookupEscrowReclaimed ctx =
+  case TextMap.lookup escrowReclaimedContextKey ctx.values of
+    Some (AV_Bool b) -> b
+    _ -> False
+
 -- | Reclaim an escrowed LockedToken back to its owner, but only once the
 -- settlement deadline has passed. The early-release signal is deliberately NOT
 -- honored here: it is a bare caller-supplied boolean with nothing on-ledger
@@ -100,9 +116,22 @@ lookupExpireLock ctx =
 -- jointly-authorized cancel path (abortEscrow below).
 reclaimAtDeadline : ContractId LockedToken -> Time -> Update (ContractId HoldingV1.Holding)
 reclaimAtDeadline lockedCid expiresAt = do
+  assertPastSettlementDeadline expiresAt
+  unlockHolding lockedCid
+
+-- | The settlement deadline gate. Extracted so that an abort skipping the
+-- escrow enforces the very same rule, with the same message, as one returning
+-- it.
+assertPastSettlementDeadline : Time -> Update ()
+assertPastSettlementDeadline expiresAt = do
   now <- getTime
   assertMsg "escrow cannot be reclaimed before the settlement deadline" (now >= expiresAt)
-  unlockHolding lockedCid
+
+-- | The gate abortEscrow enforces before releasing the escrow: the settlement
+-- deadline, waived by the early-release signal. Named separately so an abort
+-- that has no escrow left to release can enforce the very same rule.
+abortEscrowGate : Time -> ChoiceContext -> Update ()
+abortEscrowGate expiresAt ctx = unless (lookupExpireLock ctx) (assertPastSettlementDeadline expiresAt)
 
 -- | Release an escrowed LockedToken back to its owner (Amulet
 -- abortTwoStepTransfer). With the early-release signal the escrow returns
@@ -112,7 +141,39 @@ reclaimAtDeadline lockedCid expiresAt = do
 -- ARE the authorization for an early release, so the signal cannot be forged
 -- unilaterally. Never use it on a single-party choice - see reclaimAtDeadline.
 abortEscrow : ContractId LockedToken -> Time -> ChoiceContext -> Update (ContractId HoldingV1.Holding)
-abortEscrow lockedCid expiresAt ctx =
-  if lookupExpireLock ctx
-    then unlockHolding lockedCid
-    else reclaimAtDeadline lockedCid expiresAt
+abortEscrow lockedCid expiresAt ctx = do
+  abortEscrowGate expiresAt ctx
+  unlockHolding lockedCid
+
+-- | Run an abort's escrow return, unless the app backend reports that the owner
+-- already reclaimed the escrow through LockedToken_ExpireLock, in which case
+-- there is nothing to return and the record is simply cleared.
+--
+-- The report is a bare caller-supplied boolean with nothing on-ledger backing
+-- it, so two rules keep honoring it safe. First, the caller passes in the very
+-- gate its escrow-returning branch enforces, so a report can never buy an abort
+-- the honest path would have refused. Second, and because a report can always
+-- be forged, use this ONLY on a choice the escrow's owner authorizes: forging
+-- it then archives a record the owner is party to and strands the owner's own
+-- funds in a lock they can still reclaim. A choice controlled by a counterparty
+-- alone (the transfer reject) must return the escrow unconditionally instead.
+--
+-- Where that authority is delegated, as sender and receiver typically delegate
+-- the allocation cancel to the executor (AllocationV1.daml), the second rule
+-- buys less: an executor reporting a live escrow as gone archives the allocation
+-- without releasing it, so the sender waits for settleBefore and
+-- LockedToken_ExpireLock instead of being refunded on the spot. That is delay
+-- rather than loss, and refusing the report on cancel would instead leave an
+-- allocation whose sender reclaimed the escrow unclearable by anyone.
+returnEscrowUnlessReclaimed
+  : ChoiceContext
+  -> Update ()                                     -- ^ the escrow branch's own gate
+  -> Update (ContractId HoldingV1.Holding)         -- ^ the escrow return
+  -> Update [ContractId HoldingV1.Holding]
+returnEscrowUnlessReclaimed ctx gate returnEscrow
+  | lookupEscrowReclaimed ctx = do
+      gate
+      pure []
+  | otherwise = do
+      backCid <- returnEscrow
+      pure [backCid]

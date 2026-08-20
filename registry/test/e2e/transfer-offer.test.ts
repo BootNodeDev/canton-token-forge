@@ -10,10 +10,51 @@ import {
 } from './helpers/fixture'
 import { allocateParty, LEDGER_API_URL, probeSandbox, uniqueSuffix } from './helpers/sandbox'
 
+// The reclaim below is submitted once this process's clock passes the offer
+// deadline, but the choice asserts that deadline against the participant's
+// ledger time. This covers a participant whose clock trails ours, which would
+// otherwise refuse the reclaim as premature and read as a defect in the code
+// under test rather than as skew.
+const LEDGER_CLOCK_MARGIN_MS = 5_000
+
 const live = await probeSandbox()
 if (!live) console.warn(`no participant on ${LEDGER_API_URL}: skipping the end-to-end suite.`)
 
 describe.skipIf(!live)('live offer transfer', () => {
+  // The service tells a contract the participant has never seen from a read the
+  // participant refused by one literal in the error body, and answers the first
+  // as a 404 and the second as a 500. Nothing else pins that literal to what a
+  // real participant sends, so a rewording would silently turn every miss on
+  // these routes into a server error. This is the assertion that catches it:
+  // the id below is well-formed, so the only thing standing between it and a
+  // 404 is the wording.
+  it('404s on a well-formed contract id no participant has ever issued', async () => {
+    const fx = await setupInstrument()
+    const unknownCid = `00${'a'.repeat(64)}ca121220${'a'.repeat(64)}`
+
+    const res = await request(fx.app)
+      .post(`/registry/transfer-instruction/v1/${unknownCid}/choice-contexts/accept`)
+      .send({ meta: {} })
+
+    expect(res.status).toBe(404)
+  })
+
+  // The other literal the service reads out of an error body. A hex id short
+  // enough that no participant could parse it passes the route's character
+  // screen, so the participant is the one that rejects it, and it is told from a
+  // refused read by the wording alone ("cannot parse ContractId"). Without that,
+  // the likeliest client mistake there is, a truncated paste, comes back as a
+  // 500 and an error-level log line for what is the client's own typo.
+  it('404s on a hex contract id too short for the participant to parse', async () => {
+    const fx = await setupInstrument()
+
+    const res = await request(fx.app)
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/accept')
+      .send({ meta: {} })
+
+    expect(res.status).toBe(404)
+  })
+
   // A receiver with no preapproval is the whole difference from the direct
   // path.
   it('answers transferKind offer for a receiver with no preapproval', async () => {
@@ -70,5 +111,71 @@ describe.skipIf(!live)('live offer transfer', () => {
     expect((await holdingsOf(fx, dan)).map((h) => Number(h.payload.amount))).toEqual([60])
     expect(await fx.ledger.activeContracts(fx.ids.lockedToken, fx.admin)).toEqual([])
     expect(await fx.ledger.activeContracts(fx.ids.transferInstruction, fx.admin)).toEqual([])
+  })
+
+  // The sender can reclaim an escrow directly once the offer window closes,
+  // which leaves the instruction pointing at a contract that is gone. This is
+  // the only path in the suite that puts an AV_Bool choice-context value on the
+  // wire, so it is also where that encoding is exercised against a real
+  // participant.
+  it('withdraws an instruction whose escrow the sender already reclaimed', async () => {
+    const fx = await setupInstrument()
+    const suffix = uniqueSuffix()
+    const dan = await allocateParty(`e2e-dan-${suffix}`)
+    const erin = await allocateParty(`e2e-erin-${suffix}`)
+
+    // Short enough to wait out, since both the reclaim and the withdraw are
+    // gated on this instant having passed. The helper measures the window from
+    // just before it submits the transfer, so only that submission has to land
+    // inside it, and the wait below runs to the deadline the offer actually
+    // carries rather than to a duration guessed alongside it. Still generous
+    // for a single submission: it is set from this process's clock and spent
+    // against the participant's, so a window trimmed to the round-trip would
+    // fail on clock skew as an expired transfer rather than on a real defect.
+    // The wait past it covers the same skew in the opposite direction.
+    const { instructionCid, escrowCid, executeBefore } = await createOfferInstruction(
+      fx,
+      dan,
+      erin,
+      '40.0',
+      20_000,
+    )
+    await new Promise((resolve) =>
+      setTimeout(
+        resolve,
+        Math.max(0, Date.parse(executeBefore) - Date.now()) + LEDGER_CLOCK_MARGIN_MS,
+      ),
+    )
+
+    await fx.ledger.submitAndWait(
+      [dan],
+      [
+        {
+          templateId: fx.ids.lockedToken,
+          contractId: escrowCid,
+          choice: 'LockedToken_ExpireLock',
+          choiceArgument: {},
+        },
+      ],
+    )
+    expect(await fx.ledger.activeContracts(fx.ids.lockedToken, fx.admin)).toEqual([])
+
+    const ctx = await request(fx.app)
+      .post(`/registry/transfer-instruction/v1/${instructionCid}/choice-contexts/withdraw`)
+      .send({ meta: {} })
+    expect(ctx.status).toBe(200)
+    expect(ctx.body.choiceContextData).toEqual({
+      'canton-token-forge/escrow-reclaimed': { tag: 'AV_Bool', value: true },
+    })
+    expect(ctx.body.disclosedContracts).toEqual([])
+
+    await submitInstructionChoice(fx, instructionCid, 'TransferInstruction_Withdraw', dan, ctx.body)
+
+    expect(await fx.ledger.activeContracts(fx.ids.transferInstruction, fx.admin)).toEqual([])
+    // 60 change plus the 40 the reclaim returned, so the withdraw cleared the
+    // record without paying anything a second time
+    expect((await holdingsOf(fx, dan)).map((h) => Number(h.payload.amount)).sort()).toEqual([
+      40, 60,
+    ])
   })
 })

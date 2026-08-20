@@ -201,7 +201,15 @@ export interface FactoryResponse {
 export async function submitTransfer(
   fx: LiveFixture,
   factory: FactoryResponse,
-  transfer: { sender: string; receiver: string; amount: string; inputHoldingCids: string[] },
+  transfer: {
+    sender: string
+    receiver: string
+    amount: string
+    inputHoldingCids: string[]
+    // A caller that means to wait the offer out sets this; the escrow expires
+    // with it, so the default hour of slack would make such a test unrunnable.
+    executeBefore?: string
+  },
 ): Promise<unknown> {
   const now = Date.now()
   return fx.ledger.submitAndWait(
@@ -219,7 +227,7 @@ export async function submitTransfer(
             amount: transfer.amount,
             instrumentId: { admin: fx.admin, id: fx.instrumentId },
             requestedAt: new Date(now - WINDOW_MS).toISOString(),
-            executeBefore: new Date(now + WINDOW_MS).toISOString(),
+            executeBefore: transfer.executeBefore ?? new Date(now + WINDOW_MS).toISOString(),
             inputHoldingCids: transfer.inputHoldingCids,
             meta: { values: {} },
           },
@@ -260,18 +268,26 @@ export async function createOfferInstruction(
   sender: string,
   receiver: string,
   amount: string,
-): Promise<{ instructionCid: string; escrowCid: string }> {
+  windowMs: number = WINDOW_MS,
+): Promise<{ instructionCid: string; escrowCid: string; executeBefore: string }> {
   const inputCid = await tapFaucet(fx, sender, '100.0')
   const factory = (await requestTransferFactory(fx, sender, receiver)).body as FactoryResponse
   if (factory.transferKind !== 'offer') {
     throw new Error(`expected an offer transfer for ${receiver}, got ${factory.transferKind}`)
   }
 
+  // Resolved here rather than by the caller: a caller that means to wait the
+  // offer out asks for a window of seconds, and the faucet tap and factory
+  // round-trip above are the slow part of this setup. Measured from before
+  // them, such a window can be spent before the transfer is even submitted,
+  // which the factory choice rejects as an expired transfer.
+  const executeBefore = new Date(Date.now() + windowMs).toISOString()
   await submitTransfer(fx, factory, {
     sender,
     receiver,
     amount,
     inputHoldingCids: [inputCid],
+    executeBefore,
   })
 
   const instructions = (await fx.ledger.activeContracts(
@@ -283,7 +299,11 @@ export async function createOfferInstruction(
   )
   if (!instruction) throw new Error(`no pending instruction from ${sender} to ${receiver}`)
 
-  return { instructionCid: instruction.contractId, escrowCid: instruction.payload.lockedCid }
+  return {
+    instructionCid: instruction.contractId,
+    escrowCid: instruction.payload.lockedCid,
+    executeBefore,
+  }
 }
 
 // Every TransferInstruction choice takes only extraArgs, so one helper covers

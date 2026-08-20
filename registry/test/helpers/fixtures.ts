@@ -182,10 +182,15 @@ export const rejectingLedger: LedgerClient = {
 export function recordingLogger(): {
   logger: Logger
   entries: object[]
+  warnEntries: object[]
   warnings: string[]
   errors: string[]
 } {
   const entries: object[] = []
+  // Structured objects logged at warn, kept apart from the error ones so a test
+  // can assert both that a fault carried its diagnostic detail and that it
+  // raised no second alarm of its own.
+  const warnEntries: object[] = []
   // The messages, kept apart from the structured objects above: a startup
   // check is asserted on which variable it named, which lives in the message.
   const warnings: string[] = []
@@ -193,6 +198,7 @@ export function recordingLogger(): {
   const logger: Logger = {
     info: () => {},
     warn: (obj: object | string, msg?: string) => {
+      if (typeof obj === 'object') warnEntries.push(obj)
       warnings.push(typeof obj === 'string' ? obj : (msg ?? ''))
     },
     error: (obj: object | string, msg?: string) => {
@@ -200,7 +206,7 @@ export function recordingLogger(): {
       errors.push(typeof obj === 'string' ? obj : (msg ?? ''))
     },
   }
-  return { logger, entries, warnings, errors }
+  return { logger, entries, warnEntries, warnings, errors }
 }
 
 // TokenTransferPreapproval is signatory admin, receiver.
@@ -233,7 +239,7 @@ export function instructionEntry(
 ): StubEntry<TransferInstructionPayload> {
   return {
     templateId: config.transferInstructionTemplateId,
-    contractId: 'instr1',
+    contractId: '00cafe01',
     createdEventBlob: 'BLOB-INSTR',
     synchronizerId: 's',
     stakeholders,
@@ -259,7 +265,7 @@ export function allocationEntry(
 ): StubEntry<AllocationPayload> {
   return {
     templateId: config.allocationTemplateId,
-    contractId: 'alloc1',
+    contractId: '00cafe02',
     createdEventBlob: 'BLOB-ALLOC',
     synchronizerId: 's',
     stakeholders,

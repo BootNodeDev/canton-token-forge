@@ -102,7 +102,11 @@ the `splice-api-token-*` DARs. The core module hierarchy:
 - **`LockedToken`** (`Locked.daml`) - the escrow holding behind a pending
   transfer or an allocation. Signed by `admin, owner, holders`, with `expiresAt`
   set from the transfer's `executeBefore` or the allocation's `settleBefore`.
-  `abortEscrow` is the one reject/withdraw/cancel path back to the owner.
+  Three helpers return it to its owner, and which one a caller takes is the
+  difference between the abort paths: `unlockHolding` (no deadline, transfer
+  reject), `reclaimAtDeadline` (both withdraws) and `abortEscrow` (the joint
+  allocation cancel alone). Its owner can also reclaim it directly through
+  `LockedToken_ExpireLock` once `expiresAt` has passed.
 - **`TokenTransferInstruction`** (`Instruction.daml`) - a pending two-step
   transfer, signed by `admin, transfer.sender` with the receiver as observer.
   Implements `TransferInstructionV1.TransferInstruction`.
@@ -155,7 +159,11 @@ Registration and transfer move through the ledger as follows:
    deliberate: reject returns the escrow to the sender immediately
    (`unlockHolding`), since a receiver declining delivery leaves nowhere else
    for the funds to go, while withdraw is the sender acting alone and so is
-   gated on `executeBefore` (`reclaimAtDeadline`).
+   gated on `executeBefore` (`reclaimAtDeadline`). Only withdraw can clear the
+   instruction with nothing to return when the choice context reports that the
+   sender already reclaimed the escrow: reject is controlled by the receiver,
+   who could otherwise report a live escrow as gone and archive the record
+   without refunding it.
 5. **Allocate for settlement** - `AllocationFactory_Allocate` escrows a
    `LockedToken` and creates a `TokenAllocation` holding one leg of a DvP.
    `Allocation_ExecuteTransfer` delivers it to the receiver,
@@ -183,19 +191,23 @@ about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look 
 contract up by identity, and the registry supplies the contract id instead. For a
 real client the registry service builds the context, and
 `registry/src/disclose.ts` is its single `AnyValue` encoding site. The Daml suite
-builds the same contexts directly, in two places: `Test/Util.daml`'s
-`expireLockArgs` for the expire-lock signal, and the preapproval context inline
-at each direct-transfer call site in `Test/TransferTest.daml`.
+builds the same contexts directly, in three places: `Test/Util.daml`'s
+`expireLockArgs` for the expire-lock signal and `escrowReclaimedArgs` for the
+reclaimed-escrow report, `Test/AllocationTest.daml`'s `bothSignalArgs` for the
+two together, and the preapproval context inline at each direct-transfer call
+site in `Test/TransferTest.daml`.
 
-Two context keys are ours rather than the standard's, and each is a named
+Three context keys are ours rather than the standard's, and each is a named
 constant on both sides rather than a literal: `preapprovalContextKey`
-(`Registry.daml`) and `expireLockContextKey` (`Locked.daml`) in Daml,
-`PREAPPROVAL_CONTEXT_KEY` and `EXPIRE_LOCK_CONTEXT_KEY` in `disclose.ts`.
+(`Registry.daml`), `expireLockContextKey` and `escrowReclaimedContextKey`
+(`Locked.daml`) in Daml, `PREAPPROVAL_CONTEXT_KEY`, `EXPIRE_LOCK_CONTEXT_KEY`
+and `ESCROW_RECLAIMED_CONTEXT_KEY` in `disclose.ts`.
 
 | Key | Value | Read by |
 |-----|-------|---------|
 | `canton-token-forge/transfer-preapproval` | `AV_ContractId` of a `TokenTransferPreapproval` | `transferImpl`, to take the direct path |
 | `canton-token-forge/expire-lock` | `AV_Bool true` | `abortEscrow`, to release an escrow before its deadline |
+| `canton-token-forge/escrow-reclaimed` | `AV_Bool true` | `returnEscrowUnlessReclaimed`, to clear a record whose escrow is already gone |
 
 What each route returns:
 
@@ -207,6 +219,34 @@ What each route returns:
 | allocation factory | empty | `InstrumentConfig` |
 | allocation execute-transfer / withdraw | empty | the escrow `LockedToken` |
 | allocation cancel | the expire-lock signal | the escrow `LockedToken` |
+| transfer withdraw / allocation withdraw whose escrow is gone | the reclaimed-escrow report | nothing |
+| allocation cancel whose escrow is gone | the report + the expire-lock signal | nothing |
+
+The last two rows exist because the escrow has a second exit: after the
+settlement deadline its owner can reclaim it through `LockedToken_ExpireLock`
+without going near the record. `findEscrow` already resolves the escrow on every
+one of these routes, so the service reports what it found, and the choice skips
+the escrow rather than reaching for a contract that is gone.
+
+Honoring a report nothing on-ledger backs is safe under two rules, both enforced
+by `returnEscrowUnlessReclaimed` and its callers. First, the reported branch runs
+the same gate the escrow-returning branch would, so a report can never buy an
+abort the honest path would have refused; that is why `cancel` still sends its
+expire-lock signal when the escrow is gone, since without it the gate is the
+settlement deadline. Second, the report is honored only on a choice the escrow's
+owner authorizes: forging it then archives a record the owner is party to and
+strands the owner's own funds in a lock they can still reclaim. Where that
+authority is delegated, as sender and receiver typically delegate the allocation
+cancel to the executor, that rule buys less: an executor reporting a live escrow
+as gone archives the allocation without releasing it, so the sender waits for
+`settleBefore` and `LockedToken_ExpireLock` instead of being refunded on the
+spot. That is delay rather than loss. Transfer `reject` is the exception to the
+second, being controlled by the receiver alone, and the first cannot stand in
+for it: reject's escrow-returning branch runs no gate at all, so honoring the
+report there would buy an abort that refunds nothing rather than one that comes
+early. It returns the escrow unconditionally, and its route answers 404 like the
+settlement routes (transfer accept, allocation execute-transfer), which answer
+404 because they have nothing to settle out of.
 
 Two asymmetries in that table are deliberate:
 

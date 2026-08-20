@@ -200,10 +200,12 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   })
 
   // The service cannot tell this apart from a missing contract by status alone,
-  // and answering "not found" forever with nothing in the log is what made the
-  // whole class invisible: a participant that does not serve this endpoint
-  // returns a path-level 404, and a rejected event format or party returns 400.
-  it('logs a rejection that is not the participant reporting a missing contract', async () => {
+  // so it goes by what the participant named: a participant that does not serve
+  // this endpoint returns a path-level 404, and a rejected event format or party
+  // returns 400. Neither is an absent contract, and answering one as absent is
+  // what lets a fault of ours reach an abort choice-context as a positive report
+  // that the escrow's owner reclaimed it.
+  it('throws on a rejection that is not the participant reporting a missing contract', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
@@ -211,18 +213,22 @@ describe('HttpLedgerClient.lookupByContractId', () => {
         text: async () => '<html><body>404 Not Found</body></html>',
       },
     })
-    const { logger, entries } = recordingLogger()
+    const { logger, entries, warnEntries } = recordingLogger()
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
       fakeFetch,
       logger,
     )
 
-    await expect(
-      client.lookupByContractId('pkg:M:T', '00locked', 'admin::1'),
-    ).resolves.toBeUndefined()
-    expect(entries).toHaveLength(1)
-    expect(entries[0]).toMatchObject({
+    await expect(client.lookupByContractId('pkg:M:T', '00locked', 'admin::1')).rejects.toThrow(
+      /404/,
+    )
+    // The detail the operator needs, at warn: the request is answered 500 and
+    // the terminal handler logs that at error, so raising a second error-level
+    // line here would double every refused lookup in the operator's alerts.
+    expect(entries).toEqual([])
+    expect(warnEntries).toHaveLength(1)
+    expect(warnEntries[0]).toMatchObject({
       status: 404,
       templateId: 'pkg:M:T',
       contractId: '00locked',
@@ -246,15 +252,48 @@ describe('HttpLedgerClient.lookupByContractId', () => {
     )
   })
 
-  // A contract id the participant cannot parse comes back 400 INVALID_FIELD.
-  // It is still a path parameter naming no contract, and the routes answer
-  // their own "not found" for it, as they did when this was an in-memory scan.
-  it('returns undefined when the participant rejects the contract id as unparseable', async () => {
+  // A 400 that names no field the service recognizes is an event format or a
+  // party the participant refused, which is a fault of ours: reading it as an
+  // absent contract is what would let it reach an abort choice-context as a
+  // positive report that the escrow's owner reclaimed it.
+  it('throws when the participant refuses the request without naming the id', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
         status: 400,
         text: async () => JSON.stringify({ code: 'INVALID_FIELD' }),
+      },
+    })
+    const { logger, entries, warnEntries } = recordingLogger()
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+      logger,
+    )
+
+    await expect(client.lookupByContractId('pkg:M:T', 'not-a-cid', 'admin::1')).rejects.toThrow(
+      /400/,
+    )
+    expect(entries).toEqual([])
+    expect(warnEntries).toHaveLength(1)
+  })
+
+  // A contract id the participant cannot parse names no contract, so a client's
+  // own id is a miss and not a fault of ours: the routes screen the characters
+  // of a path parameter but not its length, so a truncated id reaches the
+  // participant and must come back as the 404 any other unresolvable id gets.
+  // The caller has to say so, which is what keeps this off the escrow lookups.
+  it("returns undefined when the participant cannot parse a client's contract id", async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({
+            code: 'INVALID_FIELD',
+            cause:
+              'INVALID_FIELD(8,0f1c3a): Invalid field contract_id: cannot parse ContractId "00cafe01"',
+          }),
       },
     })
     const { logger, entries } = recordingLogger()
@@ -265,12 +304,43 @@ describe('HttpLedgerClient.lookupByContractId', () => {
     )
 
     await expect(
-      client.lookupByContractId('pkg:M:T', 'not-a-cid', 'admin::1'),
+      client.lookupByContractId('pkg:M:T', '00cafe01', 'admin::1', true),
     ).resolves.toBeUndefined()
-    // A 400 is logged with the rest: telling a malformed contract id apart from
-    // an event format the participant refuses needs the message text, which no
-    // run against a live participant has pinned down.
-    expect(entries).toHaveLength(1)
+    expect(entries).toEqual([])
+  })
+
+  // The same answer on a lookup the service itself sourced is a fault, not a
+  // miss. Only one caller passes an id it did not get from a client: the escrow
+  // lookup, which reads the cid out of a record's own payload, and whose absent
+  // escrow the abort contexts turn into a positive report that the owner
+  // already reclaimed it. An unparseable payload field means the payload is not
+  // what we think it is, so reading it as a miss would manufacture that report
+  // for an escrow sitting live on the ledger. It has to raise instead.
+  it('throws when the participant cannot parse a contract id the service sourced', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({
+            code: 'INVALID_FIELD',
+            cause:
+              'INVALID_FIELD(8,0f1c3a): Invalid field contract_id: cannot parse ContractId "00cafe01"',
+          }),
+      },
+    })
+    const { logger, entries, warnEntries } = recordingLogger()
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+      logger,
+    )
+
+    await expect(client.lookupByContractId('pkg:M:T', '00cafe01', 'admin::1')).rejects.toThrow(
+      /400/,
+    )
+    expect(entries).toEqual([])
+    expect(warnEntries).toHaveLength(1)
   })
 
   // An archived contract still answers 200 with its created event; only

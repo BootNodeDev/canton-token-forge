@@ -261,9 +261,9 @@ transferImpl admin instrumentId arg = do
         meta = emptyMetadata
     None -> do
       -- Escrow is sender-owned so reject/withdraw can return it. After expiry the
-      -- sender can also reclaim it directly via LockedToken_ExpireLock, which
-      -- leaves this instruction inert: the funds are safe (already returned) but
-      -- the pending offer is not cleared.
+      -- sender can also reclaim it directly via LockedToken_ExpireLock, in which
+      -- case an abort clears this instruction without returning anything, on the
+      -- app backend's report that the escrow is already gone.
       locked <- create LockedToken with
         admin; owner = transfer.sender; instrumentId; amount = transfer.amount
         holders = [admin]; expiresAt = transfer.executeBefore; meta = transfer.meta

@@ -1,10 +1,15 @@
 import { Router } from 'express'
-import { anyValueBool, EXPIRE_LOCK_CONTEXT_KEY, toDisclosed } from '../disclose.js'
+import {
+  anyValueBool,
+  ESCROW_RECLAIMED_CONTEXT_KEY,
+  EXPIRE_LOCK_CONTEXT_KEY,
+  toDisclosed,
+} from '../disclose.js'
 import { resolveConfig } from '../mapping.js'
 import type { AllocationPayload, InstrumentIdValue } from '../payloads.js'
 import type { ServerDeps } from '../server.js'
 import { asyncHandler } from './async-handler.js'
-import { activeConfigs, findByContractId, findEscrow } from './lookup.js'
+import { activeConfigs, findByContractId, findEscrow, isContractId } from './lookup.js'
 import { resolveOrRespond } from './respond.js'
 
 interface AllocationFactoryBody {
@@ -35,22 +40,44 @@ export function allocationRouter(deps: ServerDeps): Router {
   // Only cancel is jointly authorized (executor + sender + receiver), so
   // only it may release the escrow before settleBefore, and it does so by
   // reading the early-release signal from the context. execute-transfer
-  // never needs it, and withdraw is deadline-gated on-ledger and ignores
-  // it, so both send empty context data.
+  // never needs that signal, and withdraw is deadline-gated on-ledger and
+  // ignores it, so neither is ever sent it: with the escrow there to disclose,
+  // those two send empty context data and cancel sends the signal alone.
   for (const choice of ['execute-transfer', 'withdraw', 'cancel']) {
     r.post(
       `/registry/allocations/v1/:allocationId/choice-contexts/${choice}`,
       asyncHandler(async (req, res) => {
+        const notFound = { error: 'allocation not found' }
+        if (!isContractId(req.params.allocationId)) return res.status(404).json(notFound)
+
         const alloc = await findByContractId<AllocationPayload>(
           deps.ledger,
           deps.config.allocationTemplateId,
           deps.config.adminParty,
           req.params.allocationId,
         )
-        if (!alloc) return res.status(404).json({ error: 'allocation not found' })
+        if (!alloc) return res.status(404).json(notFound)
 
         const escrow = await findEscrow(deps.ledger, deps.config, alloc.payload.lockedCid)
-        if (!escrow) return res.status(404).json({ error: 'escrow not found' })
+        if (!escrow) {
+          // execute-transfer settles the leg out of the escrow, so an absent one
+          // leaves it nothing to do. The two aborts only clear the record and
+          // report the reclaim. Cancel keeps its early-release signal alongside
+          // that report: the signal is what authorizes acting before
+          // settleBefore, and the record still has to be cleared then whether or
+          // not there is an escrow left to release.
+          if (choice === 'execute-transfer') {
+            return res.status(404).json({ error: 'escrow not found' })
+          }
+          const reclaimed = { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) }
+          return res.json({
+            choiceContextData:
+              choice === 'cancel'
+                ? { ...reclaimed, [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) }
+                : reclaimed,
+            disclosedContracts: [],
+          })
+        }
 
         const choiceContextData =
           choice === 'cancel' ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {}

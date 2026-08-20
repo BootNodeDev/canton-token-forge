@@ -53,6 +53,7 @@ export interface LedgerClient {
     templateId: string,
     contractId: string,
     party: string,
+    clientSuppliedId?: boolean,
   ): Promise<ContractEntry | undefined>
   // The cheapest round-trip the participant offers, and the only ledger call
   // whose cost does not move with what the admin is a stakeholder of. The
@@ -206,6 +207,7 @@ export class HttpLedgerClient implements LedgerClient {
     templateId: string,
     contractId: string,
     party: string,
+    clientSuppliedId = false,
   ): Promise<ContractEntry | undefined> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/events/events-by-contract-id`, {
       method: 'POST',
@@ -215,25 +217,54 @@ export class HttpLedgerClient implements LedgerClient {
         eventFormat: { ...templateFilter(templateId, party), verbose: false },
       }),
     })
-    // 404 covers all three ways a lookup misses: no such contract, one this
-    // party cannot see, and one of a different template. 400 is a contract id
-    // the participant cannot parse. Every other failure is the ledger's, and
-    // must not be reported to a caller as an absent contract.
+    // A lookup misses in four ways, and the participant names each one: no such
+    // contract, one this party cannot see and one of a different template all
+    // answer 404 CONTRACT_EVENTS_NOT_FOUND, and an id it cannot parse answers
+    // 400 naming the contract_id field. Every other failure is a fault of ours
+    // or the ledger's and must not be reported to a caller as an absent
+    // contract: the abort choice-contexts turn an absent escrow into a positive
+    // report that its owner reclaimed it, and a request the participant would
+    // not even process must not manufacture that report for an escrow that is
+    // sitting right there. So both statuses are matched on what the participant
+    // named, never on the status alone: a participant that does not serve this
+    // endpoint answers a path-level 404, one that does not host the package or
+    // the qualified name answers 404 too (PACKAGE_NAMES_NOT_FOUND,
+    // NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME), and a party or event
+    // format it refuses answers 400. All of those raise.
+    //
+    // Reading an unparseable id as a miss is safe only for an id a client
+    // supplied, which is why the caller has to say so. Such an id names no
+    // contract at all, so nothing of ours can be sitting behind it, and the
+    // routes screen a path parameter's characters but deliberately not its
+    // length, so a truncated id arrives here and raising it would answer a
+    // client's own typo with a 500. An id the service sourced is the opposite
+    // case: the only one is the escrow lookup, which reads the cid out of a
+    // record's payload, and an unparseable payload field means the payload is
+    // not the shape it was cast to. Reading that as a miss would manufacture a
+    // reclaim report for an escrow sitting live on the ledger, so it raises.
+    // Matching on the participant's wording fails safe either way: if it is
+    // ever reworded, the id is raised again rather than read as a miss.
+    //
+    // What none of this screens is a template id the participant does resolve
+    // but that names a different template than the contract's. That comes back
+    // as a genuine miss, and no answer to this request tells it apart from an
+    // absent contract.
     if (res.status === 404 || res.status === 400) {
       const detail = await res.text()
-      // Both statuses also carry faults that are not a missing contract at all:
-      // a participant that does not serve this endpoint answers a path-level
-      // 404, and a party or event format it refuses answers 400. Those would
-      // otherwise 404 every choice-context route indefinitely with nothing in
-      // the log, which is the one failure the active-set query could not have.
-      // The participant names a genuine miss, so anything else is worth an
-      // operator's attention; the check picks the log level only, never the
-      // answer, so a drift in that code costs noise and not behaviour.
-      if (!detail.includes('CONTRACT_EVENTS_NOT_FOUND')) {
-        this.logger.error(
+      if (
+        !detail.includes('CONTRACT_EVENTS_NOT_FOUND') &&
+        !(clientSuppliedId && detail.includes('cannot parse ContractId'))
+      ) {
+        // Warn, not error: the request is answered 500 and the terminal error
+        // handler logs that, so this is the detail behind that line rather than
+        // a second alarm for the same fault. It carries the participant's own
+        // wording, which is the only thing that names which configured template
+        // id or which party the fault is in, and which never reaches the client.
+        this.logger.warn(
           { status: res.status, templateId, contractId, detail },
           'contract lookup rejected',
         )
+        throw new LedgerRequestError(res.status, `contract lookup rejected: ${res.status}`)
       }
       return undefined
     }

@@ -5,7 +5,7 @@ import DA.TextMap qualified as TextMap
 import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
 import Canton.TokenForge.Registry (InstrumentConfig(..), InstrumentConfig_Mint(..), InstrumentConfig_Preapprove(..), TokenTransferPreapproval, FaucetConfig)
 import Canton.TokenForge.Token (Token)
-import Canton.TokenForge.Locked (expireLockContextKey)
+import Canton.TokenForge.Locked (expireLockContextKey, escrowReclaimedContextKey)
 
 -- | Create an instrument. The admin signs its own config, so registration is a
 -- single create with no counterparty.
@@ -50,4 +50,11 @@ preapprove cfg admin receiver validFrom expiresAt = do
 expireLockArgs : ExtraArgs
 expireLockArgs = ExtraArgs with
   context = ChoiceContext with values = TextMap.fromList [(expireLockContextKey, AV_Bool True)]
+  meta = emptyMetadata
+
+-- | Choice-context args reporting that the escrow behind a record is already
+-- gone, which is what the registry answers once its owner has reclaimed it.
+escrowReclaimedArgs : ExtraArgs
+escrowReclaimedArgs = ExtraArgs with
+  context = ChoiceContext with values = TextMap.fromList [(escrowReclaimedContextKey, AV_Bool True)]
   meta = emptyMetadata
