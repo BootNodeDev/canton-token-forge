@@ -223,12 +223,21 @@ export class HttpLedgerClient implements LedgerClient {
       const detail = await res.text()
       // Both statuses also carry faults that are not a missing contract at all:
       // a participant that does not serve this endpoint answers a path-level
-      // 404, and a party or event format it refuses answers 400. A genuine miss
-      // is the one the participant names, so anything else is a fault of ours
-      // and is raised rather than answered as an absent contract: the abort
+      // 404, one that does not host the package or the qualified name answers
+      // 404 too (PACKAGE_NAMES_NOT_FOUND,
+      // NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME), and a party, event
+      // format or contract id it cannot parse answers 400. A genuine miss is
+      // the one the participant names, so anything else is a fault of ours and
+      // is raised rather than answered as an absent contract: the abort
       // choice-contexts turn an absent escrow into a positive report that its
-      // owner reclaimed it, and a misconfigured template id must not be able to
-      // manufacture that report for an escrow that is sitting right there.
+      // owner reclaimed it, and a request the participant would not even
+      // process must not manufacture that report for an escrow that is sitting
+      // right there.
+      //
+      // What this cannot screen is a template id the participant does resolve
+      // but that names a different template than the contract's. That comes
+      // back as a genuine miss, and no answer to this request tells it apart
+      // from an absent contract.
       if (!detail.includes('CONTRACT_EVENTS_NOT_FOUND')) {
         this.logger.error(
           { status: res.status, templateId, contractId, detail },
