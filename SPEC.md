@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `db3b94b`.
+checked against the tree at commit `cd5518e`.
 
 ---
 
@@ -46,13 +46,13 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `db3b94b`, exit 0:
+All three suites were re-run at commit `cd5518e`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **155 tests**, 10 files | nothing, in-process server with a stub ledger |
-| End-to-end | **12 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
+| Registry unit | **156 tests**, 10 files | nothing, in-process server with a stub ledger |
+| End-to-end | **13 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
 asks the service for the factory and each choice context, then submits the
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-779 lines of production Daml, 1644 lines of Daml tests, 1381 lines of TypeScript
-service, 3184 lines of TypeScript tests. MIT licensed. Pre-release: the package
+779 lines of production Daml, 1650 lines of Daml tests, 1430 lines of TypeScript
+service, 3284 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -371,8 +371,8 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 155 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
-| End-to-end, 12 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
+| Registry unit, 156 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
+| End-to-end, 13 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
 neither reads nor disturbs seeded state, and it reports every test as skipped
@@ -389,11 +389,11 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 60 Daml scenarios
-cd registry && npm install && npm test   # 155 unit tests, no ledger needed
+cd registry && npm install && npm test   # 156 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
-cd registry && npm run test:e2e   # 12 tests against that sandbox
+cd registry && npm run test:e2e   # 13 tests against that sandbox
 ```
 
 The sandbox runs in the foreground, so the seed and the end-to-end suite go in a
