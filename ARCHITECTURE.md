@@ -234,12 +234,16 @@ abort the honest path would have refused; that is why `cancel` still sends its
 expire-lock signal when the escrow is gone, since without it the gate is the
 settlement deadline. Second, the report is honored only on a choice the escrow's
 owner authorizes: forging it then archives a record the owner is party to and
-strands the owner's own funds in a lock they can still reclaim, harming nobody
-else. Transfer `reject` is the exception on both counts, being controlled by the
-receiver alone, so it returns the escrow unconditionally and its route answers
-404 like the settlement routes. The settlement routes (transfer accept,
-allocation execute-transfer) answer 404 because they have nothing to settle out
-of.
+strands the owner's own funds in a lock they can still reclaim. Where that
+authority is delegated, as sender and receiver typically delegate the allocation
+cancel to the executor, that rule buys less: an executor reporting a live escrow
+as gone archives the allocation without releasing it, so the sender waits for
+`settleBefore` and `LockedToken_ExpireLock` instead of being refunded on the
+spot. That is delay rather than loss. Transfer `reject` is the exception on both
+counts, being controlled by the receiver alone, so it returns the escrow
+unconditionally and its route answers 404 like the settlement routes. The
+settlement routes (transfer accept, allocation execute-transfer) answer 404
+because they have nothing to settle out of.
 
 Two asymmetries in that table are deliberate:
 
