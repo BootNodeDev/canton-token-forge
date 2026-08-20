@@ -213,7 +213,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
         text: async () => '<html><body>404 Not Found</body></html>',
       },
     })
-    const { logger, entries } = recordingLogger()
+    const { logger, entries, warnEntries } = recordingLogger()
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
       fakeFetch,
@@ -223,8 +223,12 @@ describe('HttpLedgerClient.lookupByContractId', () => {
     await expect(client.lookupByContractId('pkg:M:T', '00locked', 'admin::1')).rejects.toThrow(
       /404/,
     )
-    expect(entries).toHaveLength(1)
-    expect(entries[0]).toMatchObject({
+    // The detail the operator needs, at warn: the request is answered 500 and
+    // the terminal handler logs that at error, so raising a second error-level
+    // line here would double every refused lookup in the operator's alerts.
+    expect(entries).toEqual([])
+    expect(warnEntries).toHaveLength(1)
+    expect(warnEntries[0]).toMatchObject({
       status: 404,
       templateId: 'pkg:M:T',
       contractId: '00locked',
@@ -260,7 +264,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
         text: async () => JSON.stringify({ code: 'INVALID_FIELD' }),
       },
     })
-    const { logger, entries } = recordingLogger()
+    const { logger, entries, warnEntries } = recordingLogger()
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
       fakeFetch,
@@ -270,7 +274,8 @@ describe('HttpLedgerClient.lookupByContractId', () => {
     await expect(client.lookupByContractId('pkg:M:T', 'not-a-cid', 'admin::1')).rejects.toThrow(
       /400/,
     )
-    expect(entries).toHaveLength(1)
+    expect(entries).toEqual([])
+    expect(warnEntries).toHaveLength(1)
   })
 
   // A contract id the participant cannot parse names no contract, so a client's
@@ -324,7 +329,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
           }),
       },
     })
-    const { logger, entries } = recordingLogger()
+    const { logger, entries, warnEntries } = recordingLogger()
     const client = new HttpLedgerClient(
       { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
       fakeFetch,
@@ -334,7 +339,8 @@ describe('HttpLedgerClient.lookupByContractId', () => {
     await expect(client.lookupByContractId('pkg:M:T', '00cafe01', 'admin::1')).rejects.toThrow(
       /400/,
     )
-    expect(entries).toHaveLength(1)
+    expect(entries).toEqual([])
+    expect(warnEntries).toHaveLength(1)
   })
 
   // An archived contract still answers 200 with its created event; only

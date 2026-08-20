@@ -255,7 +255,12 @@ export class HttpLedgerClient implements LedgerClient {
         !detail.includes('CONTRACT_EVENTS_NOT_FOUND') &&
         !(clientSuppliedId && detail.includes('cannot parse ContractId'))
       ) {
-        this.logger.error(
+        // Warn, not error: the request is answered 500 and the terminal error
+        // handler logs that, so this is the detail behind that line rather than
+        // a second alarm for the same fault. It carries the participant's own
+        // wording, which is the only thing that names which configured template
+        // id or which party the fault is in, and which never reaches the client.
+        this.logger.warn(
           { status: res.status, templateId, contractId, detail },
           'contract lookup rejected',
         )
