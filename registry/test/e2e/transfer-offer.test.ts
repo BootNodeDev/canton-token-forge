@@ -10,6 +10,13 @@ import {
 } from './helpers/fixture'
 import { allocateParty, LEDGER_API_URL, probeSandbox, uniqueSuffix } from './helpers/sandbox'
 
+// The reclaim below is submitted once this process's clock passes the offer
+// deadline, but the choice asserts that deadline against the participant's
+// ledger time. This covers a participant whose clock trails ours, which would
+// otherwise refuse the reclaim as premature and read as a defect in the code
+// under test rather than as skew.
+const LEDGER_CLOCK_MARGIN_MS = 5_000
+
 const live = await probeSandbox()
 if (!live) console.warn(`no participant on ${LEDGER_API_URL}: skipping the end-to-end suite.`)
 
@@ -125,6 +132,7 @@ describe.skipIf(!live)('live offer transfer', () => {
     // for a single submission: it is set from this process's clock and spent
     // against the participant's, so a window trimmed to the round-trip would
     // fail on clock skew as an expired transfer rather than on a real defect.
+    // The wait past it covers the same skew in the opposite direction.
     const { instructionCid, escrowCid, executeBefore } = await createOfferInstruction(
       fx,
       dan,
@@ -133,7 +141,10 @@ describe.skipIf(!live)('live offer transfer', () => {
       20_000,
     )
     await new Promise((resolve) =>
-      setTimeout(resolve, Math.max(0, Date.parse(executeBefore) - Date.now()) + 1_000),
+      setTimeout(
+        resolve,
+        Math.max(0, Date.parse(executeBefore) - Date.now()) + LEDGER_CLOCK_MARGIN_MS,
+      ),
     )
 
     await fx.ledger.submitAndWait(
