@@ -191,10 +191,11 @@ about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look 
 contract up by identity, and the registry supplies the contract id instead. For a
 real client the registry service builds the context, and
 `registry/src/disclose.ts` is its single `AnyValue` encoding site. The Daml suite
-builds the same contexts directly, in two places: `Test/Util.daml`'s
+builds the same contexts directly, in three places: `Test/Util.daml`'s
 `expireLockArgs` for the expire-lock signal and `escrowReclaimedArgs` for the
-reclaimed-escrow report, and the preapproval context inline at each
-direct-transfer call site in `Test/TransferTest.daml`.
+reclaimed-escrow report, `Test/AllocationTest.daml`'s `bothSignalArgs` for the
+two together, and the preapproval context inline at each direct-transfer call
+site in `Test/TransferTest.daml`.
 
 Three context keys are ours rather than the standard's, and each is a named
 constant on both sides rather than a literal: `preapprovalContextKey`
