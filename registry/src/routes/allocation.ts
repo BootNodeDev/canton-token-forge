@@ -41,8 +41,8 @@ export function allocationRouter(deps: ServerDeps): Router {
   // only it may release the escrow before settleBefore, and it does so by
   // reading the early-release signal from the context. execute-transfer
   // never needs that signal, and withdraw is deadline-gated on-ledger and
-  // ignores it, so neither is ever sent it. Whenever the escrow is there to
-  // disclose, all three carry the disclosure and no context data at all.
+  // ignores it, so neither is ever sent it: with the escrow there to disclose,
+  // those two send empty context data and cancel sends the signal alone.
   for (const choice of ['execute-transfer', 'withdraw', 'cancel']) {
     r.post(
       `/registry/allocations/v1/:allocationId/choice-contexts/${choice}`,
