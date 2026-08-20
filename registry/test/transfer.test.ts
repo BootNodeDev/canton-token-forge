@@ -508,6 +508,37 @@ describe('transfer-instruction choice-contexts', () => {
     expect(res.body.choiceContextData).toBeUndefined()
   })
 
+  // The two lookups a choice-context makes differ in where their id came from,
+  // and only the client's may be forgiven an id the participant cannot parse.
+  // Flagging the escrow lookup as well would let a malformed lockedCid read as
+  // an absent escrow, which this route reports as a positive reclaim.
+  it("marks only the client's path parameter as a client-supplied contract id", async () => {
+    const base = ledgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [lockedTokenEntry()],
+    })
+    const flags: Record<string, boolean | undefined> = {}
+    const ledger = {
+      ...base,
+      lookupByContractId: (
+        templateId: string,
+        contractId: string,
+        party: string,
+        clientSuppliedId?: boolean,
+      ) => {
+        flags[templateId] = clientSuppliedId
+        return base.lookupByContractId(templateId, contractId, party)
+      },
+    }
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
+      .send({ meta: {} })
+    expect(res.status).toBe(200)
+    expect(flags[config.transferInstructionTemplateId]).toBe(true)
+    expect(flags[config.lockedTokenTemplateId]).toBeFalsy()
+  })
+
   it('names the reclaimed-escrow key exactly as the Daml choice reads it', async () => {
     const ledger = ledgerFrom({
       [config.transferInstructionTemplateId]: [instructionEntry()],

@@ -53,6 +53,7 @@ export interface LedgerClient {
     templateId: string,
     contractId: string,
     party: string,
+    clientSuppliedId?: boolean,
   ): Promise<ContractEntry | undefined>
   // The cheapest round-trip the participant offers, and the only ledger call
   // whose cost does not move with what the admin is a stakeholder of. The
@@ -206,6 +207,7 @@ export class HttpLedgerClient implements LedgerClient {
     templateId: string,
     contractId: string,
     party: string,
+    clientSuppliedId = false,
   ): Promise<ContractEntry | undefined> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/events/events-by-contract-id`, {
       method: 'POST',
@@ -230,15 +232,18 @@ export class HttpLedgerClient implements LedgerClient {
     // NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME), and a party or event
     // format it refuses answers 400. All of those raise.
     //
-    // Reading an unparseable id as a miss is safe in a way those are not: it
-    // names no contract at all, so nothing of ours can be sitting behind it.
-    // The routes screen a path parameter's characters but deliberately not its
-    // length, so a client's truncated id arrives here, and raising it would
-    // answer a client's own typo with a 500. The escrow lookups cannot reach
-    // this branch against a live escrow, because the cid they pass was read out
-    // of the ledger's own payload. Matching on the participant's wording fails
-    // safe: if it is ever reworded, the id is raised again rather than silently
-    // read as a miss.
+    // Reading an unparseable id as a miss is safe only for an id a client
+    // supplied, which is why the caller has to say so. Such an id names no
+    // contract at all, so nothing of ours can be sitting behind it, and the
+    // routes screen a path parameter's characters but deliberately not its
+    // length, so a truncated id arrives here and raising it would answer a
+    // client's own typo with a 500. An id the service sourced is the opposite
+    // case: the only one is the escrow lookup, which reads the cid out of a
+    // record's payload, and an unparseable payload field means the payload is
+    // not the shape it was cast to. Reading that as a miss would manufacture a
+    // reclaim report for an escrow sitting live on the ledger, so it raises.
+    // Matching on the participant's wording fails safe either way: if it is
+    // ever reworded, the id is raised again rather than read as a miss.
     //
     // What none of this screens is a template id the participant does resolve
     // but that names a different template than the contract's. That comes back
@@ -248,7 +253,7 @@ export class HttpLedgerClient implements LedgerClient {
       const detail = await res.text()
       if (
         !detail.includes('CONTRACT_EVENTS_NOT_FOUND') &&
-        !detail.includes('cannot parse ContractId')
+        !(clientSuppliedId && detail.includes('cannot parse ContractId'))
       ) {
         this.logger.error(
           { status: res.status, templateId, contractId, detail },
