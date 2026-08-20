@@ -2,7 +2,7 @@ module Canton.TokenForge.Test.AllocationTest where
 
 import Daml.Script
 import DA.Assert ((===))
-import DA.Optional (isNone)
+import DA.Optional (isNone, isSome)
 import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
@@ -392,9 +392,10 @@ allocationCancelClearsRecordAfterEscrowReclaim = do
   gone <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
   assertMsg "the cancelled allocation is archived" (isNone gone)
 
--- Both signals at once, which is the only way the two can disagree: the report
--- that the escrow is gone wins, so a cancel carrying it is deadline-gated like
--- any other abort and cannot release a live escrow early.
+-- Both signals at once, which is how a cancel clears a record whose escrow is
+-- already gone before settleBefore: the report says there is nothing to return,
+-- the early-release signal is the joint authorization to act before the
+-- deadline. The two answer different questions, so neither overrides the other.
 bothSignalArgs : ExtraArgs
 bothSignalArgs = ExtraArgs with
   context = ChoiceContext with
@@ -405,7 +406,10 @@ bothSignalArgs = ExtraArgs with
   meta = emptyMetadata
 
 -- Reporting a reclaimed escrow must not buy an early abort while the escrow is
--- still sitting there, on either the single-party withdraw or the joint cancel.
+-- still sitting there: each abort applies to the reported branch the same gate
+-- its escrow-returning branch enforces. The single-party withdraw is
+-- deadline-gated either way, and so is a cancel that carries no early-release
+-- signal.
 allocationAbortWithoutEscrowStillNeedsTheDeadline : Script ()
 allocationAbortWithoutEscrowStillNeedsTheDeadline = do
   admin <- allocateParty "admin"
@@ -414,4 +418,22 @@ allocationAbortWithoutEscrowStillNeedsTheDeadline = do
   venue <- allocateParty "venue"
   (allocCid, _) <- startAllocation admin alice bob venue
   submitMustFail alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = escrowReclaimedArgs
-  submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = bothSignalArgs
+  submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = escrowReclaimedArgs
+
+-- A cancel carrying both signals may clear the record before settleBefore,
+-- because the same three parties could have released the escrow outright. When
+-- the report is wrong the escrow simply stays locked until its own deadline,
+-- and the funds are the sender's own: she is one of the three authorizing it.
+allocationCancelClearsRecordEarlyWithBothSignals : Script ()
+allocationCancelClearsRecordEarlyWithBothSignals = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  (allocCid, lockedCid) <- startAllocation admin alice bob venue
+  cancel <- submit (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = bothSignalArgs
+  cancel.senderHoldingCids === []
+  gone <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
+  assertMsg "the cancelled allocation is archived" (isNone gone)
+  stillLocked <- queryContractId admin lockedCid
+  assertMsg "a report against a live escrow leaves it locked" (isSome stillLocked)

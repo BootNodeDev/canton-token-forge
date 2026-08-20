@@ -1,5 +1,6 @@
 module Canton.TokenForge.Locked where
 
+import DA.Action (unless)
 import DA.TextMap qualified as TextMap
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, ChoiceContext(..), AnyValue(..))
@@ -126,6 +127,12 @@ assertPastSettlementDeadline expiresAt = do
   now <- getTime
   assertMsg "escrow cannot be reclaimed before the settlement deadline" (now >= expiresAt)
 
+-- | The gate abortEscrow enforces before releasing the escrow: the settlement
+-- deadline, waived by the early-release signal. Named separately so an abort
+-- that has no escrow left to release can enforce the very same rule.
+abortEscrowGate : Time -> ChoiceContext -> Update ()
+abortEscrowGate expiresAt ctx = unless (lookupExpireLock ctx) (assertPastSettlementDeadline expiresAt)
+
 -- | Release an escrowed LockedToken back to its owner (Amulet
 -- abortTwoStepTransfer). With the early-release signal the escrow returns
 -- immediately; otherwise the settlement deadline must have passed. Use this
@@ -134,28 +141,31 @@ assertPastSettlementDeadline expiresAt = do
 -- ARE the authorization for an early release, so the signal cannot be forged
 -- unilaterally. Never use it on a single-party choice - see reclaimAtDeadline.
 abortEscrow : ContractId LockedToken -> Time -> ChoiceContext -> Update (ContractId HoldingV1.Holding)
-abortEscrow lockedCid expiresAt ctx =
-  if lookupExpireLock ctx
-    then unlockHolding lockedCid
-    else reclaimAtDeadline lockedCid expiresAt
+abortEscrow lockedCid expiresAt ctx = do
+  abortEscrowGate expiresAt ctx
+  unlockHolding lockedCid
 
 -- | Run an abort's escrow return, unless the app backend reports that the owner
 -- already reclaimed the escrow through LockedToken_ExpireLock, in which case
 -- there is nothing to return and the record is simply cleared.
 --
--- The deadline is asserted on BOTH branches, which is what makes honoring a
--- bare caller-supplied report safe here even on a single-party choice: the
--- report can never release an escrow earlier than the escrow's own deadline
--- would. Forging it only archives the caller's own record while leaving the
--- escrow untouched and still reclaimable.
+-- The report is a bare caller-supplied boolean with nothing on-ledger backing
+-- it, so two rules keep honoring it safe. First, the caller passes in the very
+-- gate its escrow-returning branch enforces, so a report can never buy an abort
+-- the honest path would have refused. Second, and because a report can always
+-- be forged, use this ONLY on a choice the escrow's owner authorizes: forging
+-- it then archives a record the owner is party to and strands the owner's own
+-- funds in a lock they can still reclaim, harming nobody else. A choice
+-- controlled by a counterparty alone (the transfer reject) must return the
+-- escrow unconditionally instead.
 returnEscrowUnlessReclaimed
-  : Time
-  -> ChoiceContext
-  -> Update (ContractId HoldingV1.Holding)
+  : ChoiceContext
+  -> Update ()                                     -- ^ the escrow branch's own gate
+  -> Update (ContractId HoldingV1.Holding)         -- ^ the escrow return
   -> Update [ContractId HoldingV1.Holding]
-returnEscrowUnlessReclaimed expiresAt ctx returnEscrow
+returnEscrowUnlessReclaimed ctx gate returnEscrow
   | lookupEscrowReclaimed ctx = do
-      assertPastSettlementDeadline expiresAt
+      gate
       pure []
   | otherwise = do
       backCid <- returnEscrow

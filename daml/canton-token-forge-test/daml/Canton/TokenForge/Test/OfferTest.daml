@@ -250,25 +250,40 @@ reclaimEscrow admin sender instrCid = do
   _ <- submit sender $ exerciseCmd instr.lockedCid LockedToken_ExpireLock
   pure ()
 
--- A receiver declining an offer whose escrow the sender already reclaimed still
--- clears the record. There is nothing to return and nothing to disclose, so the
--- reject reports no sender change and the instruction is archived.
-offerRejectClearsRecordAfterEscrowReclaim : Script ()
-offerRejectClearsRecordAfterEscrowReclaim = do
+-- Reject is the one abort the escrow's owner does not authorize, so it never
+-- reads the reclaimed-escrow report: a receiver carrying one against a live
+-- escrow still refunds the sender in full, exactly as a bare reject would.
+offerRejectIgnoresEscrowReclaimedReport : Script ()
+offerRejectIgnoresEscrowReclaimedReport = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  instrCid <- startOffer admin alice bob
+  lockedDisclosure <- escrowDisclosure admin instrCid
+  rej <- submit (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = escrowReclaimedArgs
+  rej.output === TransferInstructionResult_Failed
+  [refundCid] <- pure rej.senderChangeCids
+  Some rv <- queryInterfaceContractId alice refundCid
+  rv.owner === alice
+  rv.amount === 40.0
+
+-- Because reject ignores the report, it has nothing left to do once the sender
+-- has reclaimed the escrow, and refuses. The record is not stranded: the same
+-- instant that unlocked the reclaim opens the sender's own withdraw, which
+-- clears it (offerWithdrawClearsRecordAfterEscrowReclaim below).
+offerRejectRefusesAfterEscrowReclaim : Script ()
+offerRejectRefusesAfterEscrowReclaim = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer admin alice bob
   setTime offerDeadline
   reclaimEscrow admin alice instrCid
-  rej <- submit bob $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = escrowReclaimedArgs
-  rej.output === TransferInstructionResult_Failed
-  rej.senderChangeCids === []
-  gone <- queryContractId admin (coerceContractId instrCid : ContractId TokenTransferInstruction)
-  assertMsg "the rejected instruction is archived" (isNone gone)
+  submitMustFail bob $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = escrowReclaimedArgs
+  submitMustFail bob $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
 
--- The same for the sender withdrawing after reclaiming the escrow directly,
--- which is the path that produced the unconsumable record.
+-- The sender withdrawing after reclaiming the escrow directly is the path that
+-- produced the unconsumable record.
 offerWithdrawClearsRecordAfterEscrowReclaim : Script ()
 offerWithdrawClearsRecordAfterEscrowReclaim = do
   admin <- allocateParty "admin"
@@ -284,17 +299,12 @@ offerWithdrawClearsRecordAfterEscrowReclaim = do
   assertMsg "the withdrawn instruction is archived" (isNone gone)
 
 -- The reclaimed-escrow report is a bare caller-supplied boolean, so it must buy
--- nobody an early abort: both aborts still refuse before the deadline while the
--- escrow is sitting there untouched.
-offerAbortWithoutEscrowStillNeedsTheDeadline : Script ()
-offerAbortWithoutEscrowStillNeedsTheDeadline = do
+-- nobody an early abort: withdraw enforces the deadline on the reported branch
+-- exactly as it does when the escrow comes back.
+offerWithdrawWithoutEscrowStillNeedsTheDeadline : Script ()
+offerWithdrawWithoutEscrowStillNeedsTheDeadline = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer admin alice bob
-  -- the escrow is disclosed to bob so that a refusal can only come from the
-  -- deadline, not from the receiver being unable to see the contract
-  lockedDisclosure <- escrowDisclosure admin instrCid
   submitMustFail alice $ exerciseCmd instrCid TransferInstruction_Withdraw with extraArgs = escrowReclaimedArgs
-  submitMustFail (actAs bob <> disclose lockedDisclosure) $
-    exerciseCmd instrCid TransferInstruction_Reject with extraArgs = escrowReclaimedArgs
