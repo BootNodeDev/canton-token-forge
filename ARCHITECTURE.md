@@ -159,9 +159,11 @@ Registration and transfer move through the ledger as follows:
    deliberate: reject returns the escrow to the sender immediately
    (`unlockHolding`), since a receiver declining delivery leaves nowhere else
    for the funds to go, while withdraw is the sender acting alone and so is
-   gated on `executeBefore` (`reclaimAtDeadline`). Either path clears the
+   gated on `executeBefore` (`reclaimAtDeadline`). Only withdraw can clear the
    instruction with nothing to return when the choice context reports that the
-   sender already reclaimed the escrow.
+   sender already reclaimed the escrow: reject is controlled by the receiver,
+   who could otherwise report a live escrow as gone and archive the record
+   without refunding it.
 5. **Allocate for settlement** - `AllocationFactory_Allocate` escrows a
    `LockedToken` and creates a `TokenAllocation` holding one leg of a DvP.
    `Allocation_ExecuteTransfer` delivers it to the receiver,
@@ -216,18 +218,28 @@ What each route returns:
 | allocation factory | empty | `InstrumentConfig` |
 | allocation execute-transfer / withdraw | empty | the escrow `LockedToken` |
 | allocation cancel | the expire-lock signal | the escrow `LockedToken` |
-| any abort whose escrow is gone | the reclaimed-escrow report | nothing |
+| transfer withdraw / allocation withdraw whose escrow is gone | the reclaimed-escrow report | nothing |
+| allocation cancel whose escrow is gone | the report + the expire-lock signal | nothing |
 
-The last row exists because the escrow has a second exit: after the settlement
-deadline its owner can reclaim it through `LockedToken_ExpireLock` without going
-near the record. `findEscrow` already resolves the escrow on every one of these
-routes, so the service reports what it found, and the choice skips the escrow
-rather than reaching for a contract that is gone. Both branches of
-`returnEscrowUnlessReclaimed` assert the deadline, which is what makes honoring a
-caller-supplied report safe on a single-party choice: forging it archives the
-caller's own record and leaves the escrow untouched and still reclaimable. The
-settlement routes (transfer accept, allocation execute-transfer) keep answering
-404 instead, since they have nothing to settle out of.
+The last two rows exist because the escrow has a second exit: after the
+settlement deadline its owner can reclaim it through `LockedToken_ExpireLock`
+without going near the record. `findEscrow` already resolves the escrow on every
+one of these routes, so the service reports what it found, and the choice skips
+the escrow rather than reaching for a contract that is gone.
+
+Honoring a report nothing on-ledger backs is safe under two rules, both enforced
+by `returnEscrowUnlessReclaimed` and its callers. First, the reported branch runs
+the same gate the escrow-returning branch would, so a report can never buy an
+abort the honest path would have refused; that is why `cancel` still sends its
+expire-lock signal when the escrow is gone, since without it the gate is the
+settlement deadline. Second, the report is honored only on a choice the escrow's
+owner authorizes: forging it then archives a record the owner is party to and
+strands the owner's own funds in a lock they can still reclaim, harming nobody
+else. Transfer `reject` is the exception on both counts, being controlled by the
+receiver alone, so it returns the escrow unconditionally and its route answers
+404 like the settlement routes. The settlement routes (transfer accept,
+allocation execute-transfer) answer 404 because they have nothing to settle out
+of.
 
 Two asymmetries in that table are deliberate:
 
