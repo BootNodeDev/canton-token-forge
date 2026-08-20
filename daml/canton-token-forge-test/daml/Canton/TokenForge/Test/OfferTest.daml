@@ -1,9 +1,10 @@
 module Canton.TokenForge.Test.OfferTest where
 
 import Daml.Script
+import Daml.Script.Internal (isNotActive)
 import DA.Assert ((===))
 import DA.List (head)
-import DA.Optional (isNone)
+import DA.Optional (isNone, isSome)
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
@@ -267,6 +268,22 @@ offerRejectIgnoresEscrowReclaimedReport = do
   rv.owner === alice
   rv.amount === 40.0
 
+-- Assert that a reject failed on the archived escrow rather than on the
+-- receiver's inability to see it. Bob is never a stakeholder of the
+-- sender-owned escrow, so every reject he submits without a disclosure fails
+-- one way or the other, and a bare submitMustFail cannot tell the two reasons
+-- apart: a reject that skipped the escrow on a forged report would fail for
+-- want of visibility and read as a pass. The IDE ledger fills in the debugging
+-- info a real participant leaves empty, so against Canton this fails loudly
+-- rather than passing silently.
+rejectMustFailOnArchivedEscrow : Party -> ContractId TransferInstruction -> ExtraArgs -> Script ()
+rejectMustFailOnArchivedEscrow receiver instrCid extraArgs = do
+  res <- trySubmit receiver $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs
+  case res of
+    Left ContractNotFound{additionalDebuggingInfo = Some info} | isSome (isNotActive info) -> pure ()
+    Left e -> abort ("expected the reject to fail on the archived escrow, got: " <> show e)
+    Right _ -> abort "expected the reject to fail once the escrow was reclaimed"
+
 -- Because reject ignores the report, it has nothing left to do once the sender
 -- has reclaimed the escrow, and refuses. The record is not stranded: the same
 -- instant that unlocked the reclaim opens the sender's own withdraw, which
@@ -277,16 +294,14 @@ offerRejectRefusesAfterEscrowReclaim = do
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
   instrCid <- startOffer admin alice bob
-  -- Captured while the escrow is still live, and passed to both submissions
-  -- below. Bob is not a stakeholder of the sender-owned escrow, so without it
-  -- each submission fails for want of the disclosure alone, which is a refusal
-  -- this test would report as success without ever exercising the reclaim it is
-  -- named for.
-  lockedDisclosure <- escrowDisclosure admin instrCid
   setTime offerDeadline
   reclaimEscrow admin alice instrCid
-  submitMustFail (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = escrowReclaimedArgs
-  submitMustFail (actAs bob <> disclose lockedDisclosure) $ exerciseCmd instrCid TransferInstruction_Reject with extraArgs = noContextArgs
+  -- Nothing is disclosed to bob here: a disclosure captured while the escrow
+  -- was live is stale the moment it is reclaimed, and submitting a stale one
+  -- fails the transaction before the choice body runs, which would mask a
+  -- reject that had started honoring the report.
+  rejectMustFailOnArchivedEscrow bob instrCid escrowReclaimedArgs
+  rejectMustFailOnArchivedEscrow bob instrCid noContextArgs
 
 -- The sender withdrawing after reclaiming the escrow directly is the path that
 -- produced the unconsumable record.
