@@ -268,14 +268,20 @@ export async function createOfferInstruction(
   sender: string,
   receiver: string,
   amount: string,
-  executeBefore?: string,
-): Promise<{ instructionCid: string; escrowCid: string }> {
+  windowMs: number = WINDOW_MS,
+): Promise<{ instructionCid: string; escrowCid: string; executeBefore: string }> {
   const inputCid = await tapFaucet(fx, sender, '100.0')
   const factory = (await requestTransferFactory(fx, sender, receiver)).body as FactoryResponse
   if (factory.transferKind !== 'offer') {
     throw new Error(`expected an offer transfer for ${receiver}, got ${factory.transferKind}`)
   }
 
+  // Resolved here rather than by the caller: a caller that means to wait the
+  // offer out asks for a window of seconds, and the faucet tap and factory
+  // round-trip above are the slow part of this setup. Measured from before
+  // them, such a window can be spent before the transfer is even submitted,
+  // which the factory choice rejects as an expired transfer.
+  const executeBefore = new Date(Date.now() + windowMs).toISOString()
   await submitTransfer(fx, factory, {
     sender,
     receiver,
@@ -293,7 +299,11 @@ export async function createOfferInstruction(
   )
   if (!instruction) throw new Error(`no pending instruction from ${sender} to ${receiver}`)
 
-  return { instructionCid: instruction.contractId, escrowCid: instruction.payload.lockedCid }
+  return {
+    instructionCid: instruction.contractId,
+    escrowCid: instruction.payload.lockedCid,
+    executeBefore,
+  }
 }
 
 // Every TransferInstruction choice takes only extraArgs, so one helper covers

@@ -84,16 +84,20 @@ describe.skipIf(!live)('live offer transfer', () => {
     const erin = await allocateParty(`e2e-erin-${suffix}`)
 
     // Short enough to wait out, since both the reclaim and the withdraw are
-    // gated on this instant having passed.
-    const executeBefore = new Date(Date.now() + 4_000).toISOString()
-    const { instructionCid, escrowCid } = await createOfferInstruction(
+    // gated on this instant having passed. The helper measures the window from
+    // just before it submits the transfer, so only that submission has to land
+    // inside it, and the wait below runs to the deadline the offer actually
+    // carries rather than to a duration guessed alongside it.
+    const { instructionCid, escrowCid, executeBefore } = await createOfferInstruction(
       fx,
       dan,
       erin,
       '40.0',
-      executeBefore,
+      6_000,
     )
-    await new Promise((resolve) => setTimeout(resolve, 5_000))
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, Date.parse(executeBefore) - Date.now()) + 1_000),
+    )
 
     await fx.ledger.submitAndWait(
       [dan],
