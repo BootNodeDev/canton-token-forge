@@ -240,11 +240,13 @@ authority is delegated, as sender and receiver typically delegate the allocation
 cancel to the executor, that rule buys less: an executor reporting a live escrow
 as gone archives the allocation without releasing it, so the sender waits for
 `settleBefore` and `LockedToken_ExpireLock` instead of being refunded on the
-spot. That is delay rather than loss. Transfer `reject` is the exception on both
-counts, being controlled by the receiver alone, so it returns the escrow
-unconditionally and its route answers 404 like the settlement routes. The
-settlement routes (transfer accept, allocation execute-transfer) answer 404
-because they have nothing to settle out of.
+spot. That is delay rather than loss. Transfer `reject` is the exception to the
+second, being controlled by the receiver alone, and the first cannot stand in
+for it: reject's escrow-returning branch runs no gate at all, so honoring the
+report there would buy an abort that refunds nothing rather than one that comes
+early. It returns the escrow unconditionally, and its route answers 404 like the
+settlement routes (transfer accept, allocation execute-transfer), which answer
+404 because they have nothing to settle out of.
 
 Two asymmetries in that table are deliberate:
 

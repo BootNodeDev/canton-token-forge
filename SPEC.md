@@ -346,8 +346,11 @@ on-ledger backs the report, so two rules keep it from being forged into an
 abort that would not otherwise be allowed: the reported branch runs the same
 gate the escrow-returning branch would (which is why cancel keeps sending its
 early-release signal), and the report is read only on a choice the escrow's
-owner authorizes. Transfer reject fails both, being the receiver's alone, so it
-ignores the report and its route answers 404 when the escrow is gone.
+owner authorizes. Transfer reject fails the second, being the receiver's alone,
+and the first cannot stand in for it: reject's escrow-returning branch runs no
+gate at all, so honoring the report there would buy an abort that refunds
+nothing rather than one that comes early. It ignores the report, and its route
+answers 404 when the escrow is gone.
 
 Two asymmetries there are deliberate. The factory routes disclose the config
 because they must name one contract as `factoryId`, while the instruction and
