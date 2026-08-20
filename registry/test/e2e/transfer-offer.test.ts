@@ -105,13 +105,16 @@ describe.skipIf(!live)('live offer transfer', () => {
     // gated on this instant having passed. The helper measures the window from
     // just before it submits the transfer, so only that submission has to land
     // inside it, and the wait below runs to the deadline the offer actually
-    // carries rather than to a duration guessed alongside it.
+    // carries rather than to a duration guessed alongside it. Still generous
+    // for a single submission: it is set from this process's clock and spent
+    // against the participant's, so a window trimmed to the round-trip would
+    // fail on clock skew as an expired transfer rather than on a real defect.
     const { instructionCid, escrowCid, executeBefore } = await createOfferInstruction(
       fx,
       dan,
       erin,
       '40.0',
-      6_000,
+      20_000,
     )
     await new Promise((resolve) =>
       setTimeout(resolve, Math.max(0, Date.parse(executeBefore) - Date.now()) + 1_000),
