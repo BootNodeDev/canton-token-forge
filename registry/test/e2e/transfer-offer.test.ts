@@ -14,6 +14,24 @@ const live = await probeSandbox()
 if (!live) console.warn(`no participant on ${LEDGER_API_URL}: skipping the end-to-end suite.`)
 
 describe.skipIf(!live)('live offer transfer', () => {
+  // The service tells a contract the participant has never seen from a read the
+  // participant refused by one literal in the error body, and answers the first
+  // as a 404 and the second as a 500. Nothing else pins that literal to what a
+  // real participant sends, so a rewording would silently turn every miss on
+  // these routes into a server error. This is the assertion that catches it:
+  // the id below is well-formed, so the only thing standing between it and a
+  // 404 is the wording.
+  it('404s on a well-formed contract id no participant has ever issued', async () => {
+    const fx = await setupInstrument()
+    const unknownCid = `00${'a'.repeat(64)}ca121220${'a'.repeat(64)}`
+
+    const res = await request(fx.app)
+      .post(`/registry/transfer-instruction/v1/${unknownCid}/choice-contexts/accept`)
+      .send({ meta: {} })
+
+    expect(res.status).toBe(404)
+  })
+
   // A receiver with no preapproval is the whole difference from the direct
   // path.
   it('answers transferKind offer for a receiver with no preapproval', async () => {
