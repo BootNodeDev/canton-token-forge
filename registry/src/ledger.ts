@@ -215,30 +215,41 @@ export class HttpLedgerClient implements LedgerClient {
         eventFormat: { ...templateFilter(templateId, party), verbose: false },
       }),
     })
-    // 404 covers all three ways a lookup misses: no such contract, one this
-    // party cannot see, and one of a different template. 400 is a contract id
-    // the participant cannot parse. Every other failure is the ledger's, and
-    // must not be reported to a caller as an absent contract.
+    // A lookup misses in four ways, and the participant names each one: no such
+    // contract, one this party cannot see and one of a different template all
+    // answer 404 CONTRACT_EVENTS_NOT_FOUND, and an id it cannot parse answers
+    // 400 naming the contract_id field. Every other failure is a fault of ours
+    // or the ledger's and must not be reported to a caller as an absent
+    // contract: the abort choice-contexts turn an absent escrow into a positive
+    // report that its owner reclaimed it, and a request the participant would
+    // not even process must not manufacture that report for an escrow that is
+    // sitting right there. So both statuses are matched on what the participant
+    // named, never on the status alone: a participant that does not serve this
+    // endpoint answers a path-level 404, one that does not host the package or
+    // the qualified name answers 404 too (PACKAGE_NAMES_NOT_FOUND,
+    // NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME), and a party or event
+    // format it refuses answers 400. All of those raise.
+    //
+    // Reading an unparseable id as a miss is safe in a way those are not: it
+    // names no contract at all, so nothing of ours can be sitting behind it.
+    // The routes screen a path parameter's characters but deliberately not its
+    // length, so a client's truncated id arrives here, and raising it would
+    // answer a client's own typo with a 500. The escrow lookups cannot reach
+    // this branch against a live escrow, because the cid they pass was read out
+    // of the ledger's own payload. Matching on the participant's wording fails
+    // safe: if it is ever reworded, the id is raised again rather than silently
+    // read as a miss.
+    //
+    // What none of this screens is a template id the participant does resolve
+    // but that names a different template than the contract's. That comes back
+    // as a genuine miss, and no answer to this request tells it apart from an
+    // absent contract.
     if (res.status === 404 || res.status === 400) {
       const detail = await res.text()
-      // Both statuses also carry faults that are not a missing contract at all:
-      // a participant that does not serve this endpoint answers a path-level
-      // 404, one that does not host the package or the qualified name answers
-      // 404 too (PACKAGE_NAMES_NOT_FOUND,
-      // NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME), and a party, event
-      // format or contract id it cannot parse answers 400. A genuine miss is
-      // the one the participant names, so anything else is a fault of ours and
-      // is raised rather than answered as an absent contract: the abort
-      // choice-contexts turn an absent escrow into a positive report that its
-      // owner reclaimed it, and a request the participant would not even
-      // process must not manufacture that report for an escrow that is sitting
-      // right there.
-      //
-      // What this cannot screen is a template id the participant does resolve
-      // but that names a different template than the contract's. That comes
-      // back as a genuine miss, and no answer to this request tells it apart
-      // from an absent contract.
-      if (!detail.includes('CONTRACT_EVENTS_NOT_FOUND')) {
+      if (
+        !detail.includes('CONTRACT_EVENTS_NOT_FOUND') &&
+        !detail.includes('cannot parse ContractId')
+      ) {
         this.logger.error(
           { status: res.status, templateId, contractId, detail },
           'contract lookup rejected',

@@ -248,13 +248,11 @@ describe('HttpLedgerClient.lookupByContractId', () => {
     )
   })
 
-  // A contract id the participant cannot parse comes back 400 INVALID_FIELD.
-  // Telling that apart from an event format or party the participant refuses
-  // needs the message text, so the whole status is treated as a fault here,
-  // which is the price of never turning a refused read into a reclaimed-escrow
-  // report. The routes screen the ids that reach them from a path parameter, so
-  // a caller's malformed id is answered 404 without ever becoming one of these.
-  it('throws when the participant rejects the contract id as unparseable', async () => {
+  // A 400 that names no field the service recognizes is an event format or a
+  // party the participant refused, which is a fault of ours: reading it as an
+  // absent contract is what would let it reach an abort choice-context as a
+  // positive report that the escrow's owner reclaimed it.
+  it('throws when the participant refuses the request without naming the id', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
@@ -273,6 +271,38 @@ describe('HttpLedgerClient.lookupByContractId', () => {
       /400/,
     )
     expect(entries).toHaveLength(1)
+  })
+
+  // A contract id the participant cannot parse names no contract, so it is a
+  // miss and not a fault of ours: the routes screen the characters of a path
+  // parameter but not its length, so a client's truncated id reaches the
+  // participant and must come back as the 404 any other unresolvable id gets.
+  // The escrow lookups cannot reach this branch with a live escrow, because the
+  // cid they pass was read out of the ledger's own payload, never off a client.
+  it('returns undefined when the participant cannot parse the contract id', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({
+            code: 'INVALID_FIELD',
+            cause:
+              'INVALID_FIELD(8,0f1c3a): Invalid field contract_id: cannot parse ContractId "00cafe01"',
+          }),
+      },
+    })
+    const { logger, entries } = recordingLogger()
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+      logger,
+    )
+
+    await expect(
+      client.lookupByContractId('pkg:M:T', '00cafe01', 'admin::1'),
+    ).resolves.toBeUndefined()
+    expect(entries).toEqual([])
   })
 
   // An archived contract still answers 200 with its created event; only

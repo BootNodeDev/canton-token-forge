@@ -428,10 +428,10 @@ describe('transfer-instruction choice-contexts', () => {
     validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
-  // The participant refuses a contract id it cannot parse with a 400, which the
-  // ledger client raises as a fault of ours rather than reading as a miss. Left
-  // unscreened, a client's typo in the path would come back as a 500 and an
-  // error-level log line for what is the client's own mistake.
+  // An id that is not hex at all cannot name a contract, so the route answers it
+  // without a participant round-trip: the assertions on lookups and queries are
+  // what pin that it never asks. A hex id the participant cannot parse is the
+  // other half, and the ledger client reads that rejection as the same miss.
   it('404s on a contract id no participant could parse, without asking one', async () => {
     const { ledger, lookups, queries } = recordingLedgerFrom({
       [config.transferInstructionTemplateId]: [instructionEntry()],
