@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `cd5518e`.
+checked against the tree at commit `9c2aaf5`.
 
 ---
 
@@ -46,12 +46,12 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `cd5518e`, exit 0:
+All three suites were re-run at commit `9c2aaf5`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **156 tests**, 10 files | nothing, in-process server with a stub ledger |
+| Registry unit | **158 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **13 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-779 lines of production Daml, 1650 lines of Daml tests, 1430 lines of TypeScript
-service, 3284 lines of TypeScript tests. MIT licensed. Pre-release: the package
+779 lines of production Daml, 1650 lines of Daml tests, 1448 lines of TypeScript
+service, 3359 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -371,7 +371,7 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 156 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
+| Registry unit, 158 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it |
 | End-to-end, 13 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -389,7 +389,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 60 Daml scenarios
-cd registry && npm install && npm test   # 156 unit tests, no ledger needed
+cd registry && npm install && npm test   # 158 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
@@ -429,6 +429,15 @@ Stated plainly, because they are what an evaluation turns on.
   `Numeric 10` whatever the instrument declares, so a `decimals = 0` instrument
   can still hold `42.5`. This matches the standard, which scopes the field to
   display, and Amulet, which has no such field at all.
+- **A reclaimed escrow leaves an instruction only its sender can clear.** After
+  `executeBefore` the sender may reclaim an escrow directly through
+  `LockedToken_ExpireLock` instead of withdrawing. The funds are safe, already
+  back with the sender, and the sender's own withdraw still clears the record,
+  because the abort context reports the reclaim to it. The receiver has no such
+  route: reject is controlled by the receiver alone, so it is never given that
+  report, and `TransferInstruction_Update` aborts. An offer whose sender simply
+  abandons it therefore stays active on the receiver's ledger. Allocations have
+  no such gap, since cancel is authorized by all three parties.
 - **Two active sets are still walked in full.** A contract named by id is
   resolved directly, but the instrument listing, get-by-id and both factory
   routes match on payload fields (an instrument id, a receiver), and the JSON
