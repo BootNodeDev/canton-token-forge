@@ -32,6 +32,22 @@ describe.skipIf(!live)('live offer transfer', () => {
     expect(res.status).toBe(404)
   })
 
+  // The other literal the service reads out of an error body. A hex id short
+  // enough that no participant could parse it passes the route's character
+  // screen, so the participant is the one that rejects it, and it is told from a
+  // refused read by the wording alone ("cannot parse ContractId"). Without that,
+  // the likeliest client mistake there is, a truncated paste, comes back as a
+  // 500 and an error-level log line for what is the client's own typo.
+  it('404s on a hex contract id too short for the participant to parse', async () => {
+    const fx = await setupInstrument()
+
+    const res = await request(fx.app)
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/accept')
+      .send({ meta: {} })
+
+    expect(res.status).toBe(404)
+  })
+
   // A receiver with no preapproval is the whole difference from the direct
   // path.
   it('answers transferKind offer for a receiver with no preapproval', async () => {
