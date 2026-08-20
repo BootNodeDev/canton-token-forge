@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `9c2aaf5`.
+checked against the tree at commit `1da6bf0`.
 
 ---
 
@@ -46,7 +46,7 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `9c2aaf5`, exit 0:
+All three suites were re-run at commit `1da6bf0`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-779 lines of production Daml, 1650 lines of Daml tests, 1448 lines of TypeScript
-service, 3359 lines of TypeScript tests. MIT licensed. Pre-release: the package
+786 lines of production Daml, 1665 lines of Daml tests, 1448 lines of TypeScript
+service, 3370 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -436,8 +436,13 @@ Stated plainly, because they are what an evaluation turns on.
   because the abort context reports the reclaim to it. The receiver has no such
   route: reject is controlled by the receiver alone, so it is never given that
   report, and `TransferInstruction_Update` aborts. An offer whose sender simply
-  abandons it therefore stays active on the receiver's ledger. Allocations have
-  no such gap, since cancel is authorized by all three parties.
+  abandons it therefore stays active on the receiver's ledger. Allocations are no
+  better placed on their own: `Allocation_Cancel` requires the executor, sender
+  and receiver jointly, and `Allocation_Withdraw` is the sender's alone, so an
+  abandoning sender blocks both. What closes the gap there is the delegation the
+  standard documents, where sender and receiver grant their cancel authority to
+  the executor, letting the venue clear the record on the report. The transfer
+  side has no analog.
 - **Two active sets are still walked in full.** A contract named by id is
   resolved directly, but the instrument listing, get-by-id and both factory
   routes match on payload fields (an instrument id, a receiver), and the JSON
@@ -466,7 +471,7 @@ Stated plainly, because they are what an evaluation turns on.
 
 ```
 daml/                                Container of dpm packages; not a package itself
-  canton-token-forge/                Production package, 779 lines
+  canton-token-forge/                Production package, 786 lines
     daml/Canton/TokenForge/
       Registry.daml                  InstrumentConfig, preapproval, the three factory instances
       Token.daml                     Token holding, input fetch/consume/spend helpers
