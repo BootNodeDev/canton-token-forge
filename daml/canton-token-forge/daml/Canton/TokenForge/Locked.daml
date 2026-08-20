@@ -155,9 +155,16 @@ abortEscrow lockedCid expiresAt ctx = do
 -- the honest path would have refused. Second, and because a report can always
 -- be forged, use this ONLY on a choice the escrow's owner authorizes: forging
 -- it then archives a record the owner is party to and strands the owner's own
--- funds in a lock they can still reclaim, harming nobody else. A choice
--- controlled by a counterparty alone (the transfer reject) must return the
--- escrow unconditionally instead.
+-- funds in a lock they can still reclaim. A choice controlled by a counterparty
+-- alone (the transfer reject) must return the escrow unconditionally instead.
+--
+-- Where that authority is delegated, as sender and receiver typically delegate
+-- the allocation cancel to the executor (AllocationV1.daml), the second rule
+-- buys less: an executor reporting a live escrow as gone archives the allocation
+-- without releasing it, so the sender waits for settleBefore and
+-- LockedToken_ExpireLock instead of being refunded on the spot. That is delay
+-- rather than loss, and refusing the report on cancel would instead leave an
+-- allocation whose sender reclaimed the escrow unclearable by anyone.
 returnEscrowUnlessReclaimed
   : ChoiceContext
   -> Update ()                                     -- ^ the escrow branch's own gate
