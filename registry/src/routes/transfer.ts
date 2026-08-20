@@ -10,7 +10,13 @@ import { matchesInstrument, resolveConfig } from '../mapping.js'
 import type { InstrumentIdValue, TransferInstructionPayload } from '../payloads.js'
 import type { ServerDeps } from '../server.js'
 import { asyncHandler } from './async-handler.js'
-import { activeConfigs, activePreapprovals, findByContractId, findEscrow } from './lookup.js'
+import {
+  activeConfigs,
+  activePreapprovals,
+  findByContractId,
+  findEscrow,
+  isContractId,
+} from './lookup.js'
 import { resolveOrRespond } from './respond.js'
 
 interface TransferFactoryBody {
@@ -100,13 +106,18 @@ export function transferRouter(deps: ServerDeps): Router {
     r.post(
       `/registry/transfer-instruction/v1/:transferInstructionId/choice-contexts/${choice}`,
       asyncHandler(async (req, res) => {
+        const notFound = { error: 'transfer instruction not found' }
+        if (!isContractId(req.params.transferInstructionId)) {
+          return res.status(404).json(notFound)
+        }
+
         const instr = await findByContractId<TransferInstructionPayload>(
           deps.ledger,
           deps.config.transferInstructionTemplateId,
           deps.config.adminParty,
           req.params.transferInstructionId,
         )
-        if (!instr) return res.status(404).json({ error: 'transfer instruction not found' })
+        if (!instr) return res.status(404).json(notFound)
 
         const escrow = await findEscrow(deps.ledger, deps.config, instr.payload.lockedCid)
         if (!escrow) {

@@ -233,7 +233,7 @@ export function instructionEntry(
 ): StubEntry<TransferInstructionPayload> {
   return {
     templateId: config.transferInstructionTemplateId,
-    contractId: 'instr1',
+    contractId: '00cafe01',
     createdEventBlob: 'BLOB-INSTR',
     synchronizerId: 's',
     stakeholders,
@@ -259,7 +259,7 @@ export function allocationEntry(
 ): StubEntry<AllocationPayload> {
   return {
     templateId: config.allocationTemplateId,
-    contractId: 'alloc1',
+    contractId: '00cafe02',
     createdEventBlob: 'BLOB-ALLOC',
     synchronizerId: 's',
     stakeholders,

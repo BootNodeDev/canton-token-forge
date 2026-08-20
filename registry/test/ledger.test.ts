@@ -250,10 +250,10 @@ describe('HttpLedgerClient.lookupByContractId', () => {
 
   // A contract id the participant cannot parse comes back 400 INVALID_FIELD.
   // Telling that apart from an event format or party the participant refuses
-  // needs the message text, which no run against a live participant has pinned
-  // down, so the whole status is treated as a fault. A caller that put a
-  // malformed id in the path is answered 500 rather than 404, which is the
-  // price of never turning a refused read into a reclaimed-escrow report.
+  // needs the message text, so the whole status is treated as a fault here,
+  // which is the price of never turning a refused read into a reclaimed-escrow
+  // report. The routes screen the ids that reach them from a path parameter, so
+  // a caller's malformed id is answered 404 without ever becoming one of these.
   it('throws when the participant rejects the contract id as unparseable', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {

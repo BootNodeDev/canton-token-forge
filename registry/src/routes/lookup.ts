@@ -46,6 +46,20 @@ export function activePreapprovals(
   )
 }
 
+// Screen a contract id that arrived as a path parameter. The participant
+// refuses one it cannot parse with a 400, which lookupByContractId raises
+// rather than reads as a miss, so an unscreened typo from a client would be
+// answered as a fault of ours and logged at error level. An id that cannot name
+// a contract names no contract, and the routes answer it as they answer any
+// other id they cannot resolve.
+//
+// Deliberately a character check alone: the length and the version prefix are
+// the participant's business, and pinning them here would start refusing ids it
+// still accepts.
+export function isContractId(value: string): boolean {
+  return /^[0-9a-fA-F]+$/.test(value)
+}
+
 // Resolve a single active contract by its id. Several handlers resolve a path
 // parameter (an allocation, a transfer instruction) this way before acting on
 // it, so the one cast from the client's unknown payload lives here.

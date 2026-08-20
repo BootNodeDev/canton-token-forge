@@ -9,7 +9,7 @@ import { resolveConfig } from '../mapping.js'
 import type { AllocationPayload, InstrumentIdValue } from '../payloads.js'
 import type { ServerDeps } from '../server.js'
 import { asyncHandler } from './async-handler.js'
-import { activeConfigs, findByContractId, findEscrow } from './lookup.js'
+import { activeConfigs, findByContractId, findEscrow, isContractId } from './lookup.js'
 import { resolveOrRespond } from './respond.js'
 
 interface AllocationFactoryBody {
@@ -47,13 +47,16 @@ export function allocationRouter(deps: ServerDeps): Router {
     r.post(
       `/registry/allocations/v1/:allocationId/choice-contexts/${choice}`,
       asyncHandler(async (req, res) => {
+        const notFound = { error: 'allocation not found' }
+        if (!isContractId(req.params.allocationId)) return res.status(404).json(notFound)
+
         const alloc = await findByContractId<AllocationPayload>(
           deps.ledger,
           deps.config.allocationTemplateId,
           deps.config.adminParty,
           req.params.allocationId,
         )
-        if (!alloc) return res.status(404).json({ error: 'allocation not found' })
+        if (!alloc) return res.status(404).json(notFound)
 
         const escrow = await findEscrow(deps.ledger, deps.config, alloc.payload.lockedCid)
         if (!escrow) {

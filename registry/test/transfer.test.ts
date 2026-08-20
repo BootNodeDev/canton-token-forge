@@ -388,7 +388,7 @@ describe('transfer-instruction choice-contexts', () => {
       })
       const app = createServer({ ledger, config })
       const res = await request(app)
-        .post(`/registry/transfer-instruction/v1/instr1/choice-contexts/${choice}`)
+        .post(`/registry/transfer-instruction/v1/00cafe01/choice-contexts/${choice}`)
         .send({ meta: {} })
       expect(res.status).toBe(200)
       validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
@@ -408,11 +408,11 @@ describe('transfer-instruction choice-contexts', () => {
       [config.lockedTokenTemplateId]: [lockedTokenEntry()],
     })
     const res = await request(createServer({ ledger, config }))
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/accept')
       .send({ meta: {} })
     expect(res.status).toBe(200)
     expect(lookups).toEqual([
-      [config.transferInstructionTemplateId, 'instr1', config.adminParty],
+      [config.transferInstructionTemplateId, '00cafe01', config.adminParty],
       [config.lockedTokenTemplateId, 'locked1', config.adminParty],
     ])
     expect(queries).toEqual([])
@@ -422,9 +422,26 @@ describe('transfer-instruction choice-contexts', () => {
     const ledger = ledgerFrom({ [config.transferInstructionTemplateId]: [] })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/transfer-instruction/v1/nope/choice-contexts/accept')
+      .post('/registry/transfer-instruction/v1/00cafe99/choice-contexts/accept')
       .send({ meta: {} })
     expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+  })
+
+  // The participant refuses a contract id it cannot parse with a 400, which the
+  // ledger client raises as a fault of ours rather than reading as a miss. Left
+  // unscreened, a client's typo in the path would come back as a 500 and an
+  // error-level log line for what is the client's own mistake.
+  it('404s on a contract id no participant could parse, without asking one', async () => {
+    const { ledger, lookups, queries } = recordingLedgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+    })
+    const res = await request(createServer({ ledger, config }))
+      .post('/registry/transfer-instruction/v1/not-a-cid/choice-contexts/accept')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    expect(lookups).toEqual([])
+    expect(queries).toEqual([])
     validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
   })
 
@@ -439,7 +456,7 @@ describe('transfer-instruction choice-contexts', () => {
       })
       const app = createServer({ ledger, config })
       const res = await request(app)
-        .post(`/registry/transfer-instruction/v1/instr1/choice-contexts/${choice}`)
+        .post(`/registry/transfer-instruction/v1/00cafe01/choice-contexts/${choice}`)
         .send({ meta: {} })
       expect(res.status).toBe(404)
       validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
@@ -456,7 +473,7 @@ describe('transfer-instruction choice-contexts', () => {
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/withdraw')
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
       .send({ meta: {} })
     expect(res.status).toBe(200)
     validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
@@ -485,7 +502,7 @@ describe('transfer-instruction choice-contexts', () => {
     const { logger } = recordingLogger()
     const app = createServer({ ledger, config, logger })
     const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/withdraw')
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
       .send({ meta: {} })
     expect(res.status).toBe(500)
     expect(res.body.choiceContextData).toBeUndefined()
@@ -498,7 +515,7 @@ describe('transfer-instruction choice-contexts', () => {
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/withdraw')
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
       .send({ meta: {} })
     // spelled out rather than imported, so renaming the constant cannot travel
     // through both sides of this contract unnoticed
@@ -515,7 +532,7 @@ describe('transfer-instruction choice-contexts', () => {
     })
     const app = createServer({ ledger, config })
     const res = await request(app)
-      .post('/registry/transfer-instruction/v1/instr1/choice-contexts/accept')
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/accept')
       .send({ meta: {} })
     // A duplicate config 409s the factory route, which has to name one config
     // as the factory. These three choices never read one, so an accept that is
