@@ -17,10 +17,16 @@ export interface PartyDetails {
 // named `status`: the terminal error handler answers a request with any status
 // it finds on the error, and the participant's own status is never the one a
 // client should be told (an expired ledger token is not the caller's 403).
+//
+// `detail` is the participant's own response body, kept for the same reason and
+// held to the same rule: it names which error the participant raised, which one
+// status can stand for several of, but it is its wording and not ours, so it
+// stays off `message`, which the terminal handler does answer the client with.
 export class LedgerRequestError extends Error {
   constructor(
     readonly ledgerStatus: number,
     message: string,
+    readonly detail?: string,
   ) {
     super(message)
     this.name = 'LedgerRequestError'
@@ -194,7 +200,17 @@ export class HttpLedgerClient implements LedgerClient {
         activeAtOffset,
       }),
     })
-    if (!res.ok) throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`)
+    // The body carries the participant's error code, and a template id it
+    // cannot resolve is only distinguishable from any other 404 by that code,
+    // which is what the startup check reads to attribute the fault to one
+    // configured variable.
+    if (!res.ok) {
+      throw new LedgerRequestError(
+        res.status,
+        `ledger query failed: ${res.status}`,
+        await res.text(),
+      )
+    }
     const rows = (await res.json()) as ActiveContractsRow[]
     return rows.flatMap((r) => {
       const ac = r?.contractEntry?.JsActiveContract
