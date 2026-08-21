@@ -27,16 +27,19 @@ function statusFromError(err: unknown): number {
 }
 
 // The path and query of a request target, dropping the scheme and authority an
-// absolute-form target carries. This is the same split express applies to
-// req.url (its getProtohost), so the two cannot disagree about where the path
-// starts.
+// absolute-form target carries. Express settles where the path starts with
+// parseurl, not with the getProtohost split it uses to strip mount prefixes, so
+// this follows parseurl: the path starts at the first "/" ahead of the query, and
+// a target carrying a query but no path keeps that query behind a bare "/".
 function originForm(target: string): string {
   if (target.startsWith('/')) return target
   const query = target.indexOf('?')
-  const scheme = target.slice(0, query === -1 ? target.length : query).indexOf('://')
+  const beforeQuery = query === -1 ? target : target.slice(0, query)
+  const scheme = beforeQuery.indexOf('://')
   if (scheme === -1) return target
-  const pathStart = target.indexOf('/', scheme + 3)
-  return pathStart === -1 ? '/' : target.slice(pathStart)
+  const pathStart = beforeQuery.indexOf('/', scheme + 3)
+  if (pathStart !== -1) return target.slice(pathStart)
+  return query === -1 ? '/' : `/${target.slice(query)}`
 }
 
 // RFC 9112 section 3.2.2 lets a client address any server in the absolute form

@@ -158,3 +158,45 @@ describe('absolute-form request targets', () => {
     expect(absoluteForm).toEqual(originForm)
   })
 })
+
+// An absolute-form target can carry a query with no path at all
+// (`GET http://host?pageSize=abc`). Express routes that on "/", which no route
+// and no validator mount matches, so both forms answer 404 and the mismatch is
+// only visible on req.originalUrl itself: the field the request validator
+// reads its query parameters out of. A handler appended after every router has
+// declined the request is what makes it observable.
+describe('an absolute-form target with no path', () => {
+  let server: Server
+  let port: number
+
+  beforeAll(async () => {
+    const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [] })
+    const app = createServer({ ledger, config })
+    app.use((req, res) => {
+      res.json({ originalUrl: req.originalUrl, query: req.query })
+    })
+    server = app.listen(0)
+    await new Promise((resolve) => server.once('listening', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('server did not bind a port')
+    port = address.port
+  })
+
+  afterAll(() => {
+    server.close()
+  })
+
+  it('keeps its query on the field the request validator reads', async () => {
+    const res = await sendRaw(port, 'GET', `http://127.0.0.1:${port}?pageSize=abc`)
+    expect(JSON.parse(res.body)).toEqual({
+      originalUrl: '/?pageSize=abc',
+      query: { pageSize: 'abc' },
+    })
+  })
+
+  it('reads a "/" inside that query as part of a value, not as a path', async () => {
+    const target = `http://127.0.0.1:${port}?next=/registry/metadata/v1/instruments`
+    const res = await sendRaw(port, 'GET', target)
+    expect(JSON.parse(res.body).originalUrl).toBe('/?next=/registry/metadata/v1/instruments')
+  })
+})
