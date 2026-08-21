@@ -249,7 +249,12 @@ export class HttpLedgerClient implements LedgerClient {
   // status as at the ledger end, because the filter is resolved before the
   // offset is consulted.
   async probeTemplate(templateId: string, party: string): Promise<void> {
-    await this.queryActiveContracts(templateId, party, 0, false)
+    const res = await this.queryActiveContracts(templateId, party, 0, false)
+    // The empty set still has to be consumed: an unread body holds its socket
+    // open until the collector gets to it, and the point of this call is to
+    // cost the boot nothing. A body that cannot be read changes no verdict,
+    // since the participant already answered that it resolves the id.
+    await res.text().catch(() => undefined)
   }
 
   async lookupByContractId(

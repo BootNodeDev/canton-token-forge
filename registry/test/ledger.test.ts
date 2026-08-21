@@ -198,6 +198,27 @@ describe('HttpLedgerClient.probeTemplate', () => {
     })
   })
 
+  it('resolves an id whose answer arrives unreadable', async () => {
+    // The participant answered, which is the whole verdict: a body that breaks
+    // on the way in says nothing about the id, and treating it as a failure
+    // would downgrade a resolved id to one the check could not put a question
+    // to, on the endpoint whose answer is deliberately empty.
+    const { fakeFetch } = recordingFetch({
+      [ACTIVE_CONTRACTS]: {
+        ok: true,
+        text: async () => {
+          throw new TypeError('terminated')
+        },
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(client.probeTemplate('pkg:M:LockedToken', 'admin::1')).resolves.toBeUndefined()
+  })
+
   it('carries the participant wording of an id it cannot resolve', async () => {
     const body = '{"code":"NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME","cause":"..."}'
     const { fakeFetch } = recordingFetch({
