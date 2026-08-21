@@ -26,9 +26,43 @@ function statusFromError(err: unknown): number {
   return 500
 }
 
+// The path and query of a request target, dropping the scheme and authority an
+// absolute-form target carries. Express settles where the path starts with
+// parseurl, not with the getProtohost split it uses to strip mount prefixes, so
+// this follows parseurl: the path starts at the first "/" ahead of the query, and
+// a target carrying a query but no path keeps that query behind a bare "/".
+function originForm(target: string): string {
+  if (target.startsWith('/')) return target
+  const query = target.indexOf('?')
+  const beforeQuery = query === -1 ? target : target.slice(0, query)
+  const scheme = beforeQuery.indexOf('://')
+  if (scheme === -1) return target
+  const pathStart = beforeQuery.indexOf('/', scheme + 3)
+  if (pathStart !== -1) return target.slice(pathStart)
+  return query === -1 ? '/' : `/${target.slice(query)}`
+}
+
+// RFC 9112 section 3.2.2 lets a client address any server in the absolute form
+// (`GET http://host/path`), and node passes that target through verbatim.
+// Express routes on the parsed pathname either way, but the request validator
+// looks its route up in the unstripped req.originalUrl, where the scheme and
+// authority make the request match no path in any spec; ignoreUndocumented then
+// passes it on unvalidated, which is how the two forms of one request came to
+// get different answers. Canonicalizing the field the validator reads is what
+// makes them agree.
+// req.url is deliberately left as node delivered it: express reads the mount
+// prefix it strips from req.url once per request, before any middleware runs,
+// so rewriting it here would cut into the path of every layer mounted on a base
+// path. Express already handles the absolute form on its own.
+function canonicalizeRequestTarget(req: Request, _res: Response, next: NextFunction): void {
+  req.originalUrl = originForm(req.originalUrl)
+  next()
+}
+
 export function createServer(deps: ServerDeps): Express {
   const app = express()
   const logger = deps.logger ?? createLogger()
+  app.use(canonicalizeRequestTarget)
   app.use(express.json())
 
   // One validator per vendored standard spec, requests only, each mounted on

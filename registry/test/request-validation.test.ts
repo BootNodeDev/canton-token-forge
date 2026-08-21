@@ -1,5 +1,7 @@
+import type { Server } from 'node:http'
+import net from 'node:net'
 import request from 'supertest'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createServer } from '../src/server'
 import { cfgEntry, config, ledgerFrom } from './helpers/fixtures'
 import { validateAgainst } from './helpers/schema'
@@ -52,5 +54,165 @@ describe('runtime request validation', () => {
     // validator with { error: 'not found' } instead.
     expect(res.status).toBe(404)
     expect(res.text).toMatch(/Cannot POST \/not-a-documented-path/)
+  })
+})
+
+interface RawResponse {
+  status: number
+  body: string
+}
+
+/**
+ * A request written onto the socket by hand. Every HTTP client in the toolchain
+ * (supertest included) emits the origin form of the request target, so the
+ * absolute form these tests are about is only reachable this way.
+ */
+function sendRaw(
+  port: number,
+  method: string,
+  target: string,
+  body?: string,
+): Promise<RawResponse> {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, '127.0.0.1', () => {
+      const headers = [`Host: 127.0.0.1:${port}`, 'Connection: close']
+      if (body !== undefined) {
+        headers.push('Content-Type: application/json', `Content-Length: ${Buffer.byteLength(body)}`)
+      }
+      socket.write(`${method} ${target} HTTP/1.1\r\n${headers.join('\r\n')}\r\n\r\n${body ?? ''}`)
+    })
+    let raw = ''
+    socket.on('data', (chunk) => {
+      raw += chunk.toString()
+    })
+    socket.on('error', reject)
+    socket.on('end', () => {
+      const [head, ...rest] = raw.split('\r\n\r\n')
+      resolve({ status: Number(head.split(' ')[1]), body: rest.join('\r\n\r\n') })
+    })
+  })
+}
+
+describe('absolute-form request targets', () => {
+  let server: Server
+  let port: number
+  let authority: string
+
+  beforeAll(async () => {
+    const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [] })
+    server = createServer({ ledger, config }).listen(0)
+    await new Promise((resolve) => server.once('listening', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('server did not bind a port')
+    port = address.port
+    authority = `http://127.0.0.1:${port}`
+  })
+
+  afterAll(() => {
+    server.close()
+  })
+
+  // Each test asserts the origin form's own answer as well as the two forms
+  // agreeing: two identically broken answers would satisfy the comparison
+  // alone.
+  it('validates a query parameter the absolute form carries', async () => {
+    const target = '/registry/metadata/v1/instruments?pageSize=abc'
+    const originForm = await sendRaw(port, 'GET', target)
+    const absoluteForm = await sendRaw(port, 'GET', `${authority}${target}`)
+    expect(originForm.status).toBe(400)
+    expect(JSON.parse(originForm.body).error).toMatch(/pageSize must be integer/)
+    expect(absoluteForm).toEqual(originForm)
+  })
+
+  it('validates a body the absolute form carries', async () => {
+    const target = '/registry/transfer-instruction/v1/transfer-factory'
+    const originForm = await sendRaw(port, 'POST', target, '{}')
+    const absoluteForm = await sendRaw(port, 'POST', `${authority}${target}`, '{}')
+    // Both a validated and an unvalidated request answer 400 here, so the
+    // status alone proves nothing: the message is what says which one answered.
+    // The validator names the property the spec requires; the handler, reached
+    // only when the request got past the validator unchecked, names its own
+    // first missing field instead.
+    expect(originForm.status).toBe(400)
+    expect(JSON.parse(originForm.body).error).toMatch(
+      /must have required property 'choiceArguments'/,
+    )
+    expect(absoluteForm).toEqual(originForm)
+  })
+
+  it('applies the media-type check to the absolute form too', async () => {
+    const target = '/registry/transfer-instruction/v1/transfer-factory'
+    const originForm = await sendRaw(port, 'POST', target)
+    const absoluteForm = await sendRaw(port, 'POST', `${authority}${target}`)
+    // No body means no content type, which the validator refuses before it ever
+    // reads a schema.
+    expect(originForm.status).toBe(415)
+    expect(absoluteForm).toEqual(originForm)
+  })
+
+  it('answers a valid absolute-form request exactly as it answers the origin form', async () => {
+    const target = '/registry/metadata/v1/instruments?pageSize=2'
+    const originForm = await sendRaw(port, 'GET', target)
+    const absoluteForm = await sendRaw(port, 'GET', `${authority}${target}`)
+    expect(originForm).toEqual({ status: 200, body: '{"instruments":[]}' })
+    expect(absoluteForm).toEqual(originForm)
+  })
+
+  // The scheme separator is only a scheme separator ahead of the path, which is
+  // the distinction express itself draws before stripping one.
+  it('leaves an origin-form target whose own path contains :// alone', async () => {
+    const res = await sendRaw(port, 'GET', '/registry/metadata/v1/instruments/a://b')
+    expect(res.status).toBe(404)
+    expect(res.body).toMatch(/Cannot GET \/registry\/metadata\/v1\/instruments\/a:\/\/b/)
+  })
+
+  it('still lets an absolute-form request on an undocumented path reach express routing', async () => {
+    const originForm = await sendRaw(port, 'GET', '/not-a-documented-path')
+    const absoluteForm = await sendRaw(port, 'GET', `${authority}/not-a-documented-path`)
+    expect(originForm.status).toBe(404)
+    expect(originForm.body).toMatch(/Cannot GET \/not-a-documented-path/)
+    expect(absoluteForm).toEqual(originForm)
+  })
+})
+
+// An absolute-form target can carry a query with no path at all
+// (`GET http://host?pageSize=abc`). Express routes that on "/", which no route
+// and no validator mount matches, so both forms answer 404 and the mismatch is
+// only visible on req.originalUrl itself: the field the request validator
+// reads its query parameters out of. A handler appended after every router has
+// declined the request is what makes it observable.
+describe('an absolute-form target with no path', () => {
+  let server: Server
+  let port: number
+
+  beforeAll(async () => {
+    const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [] })
+    const app = createServer({ ledger, config })
+    app.use((req, res) => {
+      res.json({ originalUrl: req.originalUrl, query: req.query })
+    })
+    server = app.listen(0)
+    await new Promise((resolve) => server.once('listening', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('server did not bind a port')
+    port = address.port
+  })
+
+  afterAll(() => {
+    server.close()
+  })
+
+  it('keeps its query on the field the request validator reads', async () => {
+    const res = await sendRaw(port, 'GET', `http://127.0.0.1:${port}?pageSize=abc`)
+    expect(JSON.parse(res.body)).toEqual({
+      originalUrl: '/?pageSize=abc',
+      query: { pageSize: 'abc' },
+    })
+  })
+
+  it('reads a "/" inside that query as part of a value, not as a path', async () => {
+    const target = `http://127.0.0.1:${port}?next=/registry/metadata/v1/instruments`
+    const res = await sendRaw(port, 'GET', target)
+    expect(JSON.parse(res.body).originalUrl).toBe('/?next=/registry/metadata/v1/instruments')
   })
 })
