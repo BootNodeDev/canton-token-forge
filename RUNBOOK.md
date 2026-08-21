@@ -262,8 +262,12 @@ reason the seed script looks the way it does.
   restart to fix rather than one per variable. The same warn-and-continue rule
   as above applies to anything the participant does not attribute to the id
   itself: an unreachable participant, a refused read, or a plain 404 carrying
-  neither code. One consequence worth planning a deploy around: a registry
-  started before its DAR is uploaded now crashloops until the upload lands.
+  neither code. The two checks run in sequence and each carries its own
+  five-second budget, so a participant that drops packets rather than refusing
+  them holds the boot for up to ten seconds before the service listens: size a
+  startup probe against that, not against one check's five. One consequence
+  worth planning a deploy around: a registry started before its DAR is uploaded
+  now crashloops until the upload lands.
   They are concrete template ids, never interface ids: the choice-context
   handlers read payload fields that exist on the template create arguments and
   not on the standard interface views.

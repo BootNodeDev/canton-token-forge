@@ -108,10 +108,12 @@ async function runTemplateIdChecks(
   report: Report,
 ): Promise<boolean> {
   const entries = Object.entries(TEMPLATE_ID_ENV_VARS) as [TemplateIdKey, string][]
-  // Concurrently, so the check costs one round trip rather than five, and every
-  // id is put to the participant even once one of them has already failed: a
-  // drifted environment file is rarely wrong in a single place, and reporting
-  // the whole set makes fixing it one restart instead of one per variable.
+  // Concurrently, so the queries overlap rather than serialize: each one reads
+  // the ledger end before its own, so the check costs two sequential round
+  // trips whatever the number of ids. Every id is put to the participant even
+  // once one of them has already failed: a drifted environment file is rarely
+  // wrong in a single place, and reporting the whole set makes fixing it one
+  // restart instead of one per variable.
   const verdicts = await Promise.all(
     entries.map(async ([key, envVar]) => {
       const templateId = config[key]
