@@ -205,11 +205,13 @@ export class HttpLedgerClient implements LedgerClient {
     // which is what the startup check reads to attribute the fault to one
     // configured variable.
     if (!res.ok) {
-      throw new LedgerRequestError(
-        res.status,
-        `ledger query failed: ${res.status}`,
-        await res.text(),
-      )
+      // Read before constructing, and never let the read fail the throw: a body
+      // that breaks mid-stream would otherwise propagate its own error in place
+      // of this one, and both callers classify on this type. Losing it turns an
+      // authorization refusal and an unresolvable template id alike from fatal
+      // into a warning, which is the direction these checks exist to close.
+      const detail = await res.text().catch(() => undefined)
+      throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`, detail)
     }
     const rows = (await res.json()) as ActiveContractsRow[]
     return rows.flatMap((r) => {

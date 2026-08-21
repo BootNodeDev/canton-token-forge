@@ -140,6 +140,35 @@ describe('HttpLedgerClient.activeContracts', () => {
     // the client with.
     expect((err as LedgerRequestError).message).not.toContain('PACKAGE_NAMES_NOT_FOUND')
   })
+
+  it('still classifies a refusal whose body cannot be read', async () => {
+    // A body that arrives broken is a network fault on top of the refusal, and
+    // reading it inside the throw would replace the status the startup checks
+    // classify on with whatever the stream failed with. Both classifiers key
+    // off this type, and both fail open without it: an authorization refusal
+    // stops being fatal, and so does an unresolvable template id.
+    const { fakeFetch } = recordingFetch({
+      [LEDGER_END]: ledgerEndAt(1),
+      [ACTIVE_CONTRACTS]: {
+        ok: false,
+        status: 403,
+        text: async () => {
+          throw new TypeError('terminated')
+        },
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const err = await client.activeContracts('pkg:M:InstrumentConfig', 'admin::1').then(
+      () => undefined,
+      (e) => e,
+    )
+    expect(err).toBeInstanceOf(LedgerRequestError)
+    expect((err as LedgerRequestError).ledgerStatus).toBe(403)
+  })
 })
 
 // The shape of a by-contract-id response, recorded from Canton 3.5.6: the
