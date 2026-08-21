@@ -175,6 +175,46 @@ describe('absolute-form request targets', () => {
   })
 })
 
+// The response to a fragment-bearing request cannot show every way the cut can
+// go wrong: a lookup mangled into a path no spec documents is passed on by
+// ignoreUndocumented, and express keeps routing on req.url, so the request still
+// answers exactly as it should while nothing validates it. These read the field
+// the fix changes instead, on a path no route answers.
+describe('the request target the validator matches', () => {
+  let server: Server
+  let port: number
+
+  beforeAll(async () => {
+    const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [] })
+    const app = createServer({ ledger, config })
+    app.use((req, res) => {
+      res.json({ originalUrl: req.originalUrl, url: req.url })
+    })
+    server = app.listen(0)
+    await new Promise((resolve) => server.once('listening', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('server did not bind a port')
+    port = address.port
+  })
+
+  afterAll(() => {
+    server.close()
+  })
+
+  it('drops the fragment, leaving req.url as node delivered it', async () => {
+    const res = await sendRaw(port, 'GET', '/undocumented#x?pageSize=abc')
+    expect(JSON.parse(res.body)).toEqual({
+      originalUrl: '/undocumented',
+      url: '/undocumented#x?pageSize=abc',
+    })
+  })
+
+  it('keeps a percent-encoded number sign, which delimits nothing', async () => {
+    const res = await sendRaw(port, 'GET', '/undocumented/%23/x')
+    expect(JSON.parse(res.body).originalUrl).toBe('/undocumented/%23/x')
+  })
+})
+
 // An absolute-form target can carry a query with no path at all
 // (`GET http://host?pageSize=abc`). Express routes that on "/", which no route
 // and no validator mount matches, so both forms answer 404 and the mismatch is
