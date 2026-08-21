@@ -216,3 +216,94 @@ describe('an absolute-form target with no path', () => {
     expect(JSON.parse(res.body).originalUrl).toBe('/?next=/registry/metadata/v1/instruments')
   })
 })
+
+// A fragment is not one of RFC 9112's request-target forms, but node hands one
+// through to the application verbatim. Express drops it, along with anything
+// behind it, before it routes; the request validator looks its route up on the
+// unstripped req.originalUrl, where the fragment makes the request match no path
+// in any spec and ignoreUndocumented then passes it on unvalidated.
+describe('fragment-bearing request targets', () => {
+  let server: Server
+  let port: number
+  let authority: string
+
+  beforeAll(async () => {
+    const ledger = ledgerFrom({ [config.instrumentConfigTemplateId]: [cfgEntry()] })
+    server = createServer({ ledger, config }).listen(0)
+    await new Promise((resolve) => server.once('listening', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('server did not bind a port')
+    port = address.port
+    authority = `http://127.0.0.1:${port}`
+  })
+
+  afterAll(() => {
+    server.close()
+  })
+
+  it('validates a body the target carries behind a fragment', async () => {
+    const target = '/registry/transfer-instruction/v1/transfer-factory'
+    const plain = await sendRaw(port, 'POST', target, '{}')
+    const fragment = await sendRaw(port, 'POST', `${target}#x`, '{}')
+    // Both answer 400, so the status alone proves nothing: the message is what
+    // says which one answered. The validator names the property the spec
+    // requires; the handler, reached only when the request got past the
+    // validator unchecked, names its own first missing field instead.
+    expect(plain.status).toBe(400)
+    expect(JSON.parse(plain.body).error).toMatch(/must have required property 'choiceArguments'/)
+    expect(fragment).toEqual(plain)
+  })
+
+  it('applies the media-type check behind a fragment too', async () => {
+    const target = '/registry/transfer-instruction/v1/transfer-factory'
+    const plain = await sendRaw(port, 'POST', target)
+    const fragment = await sendRaw(port, 'POST', `${target}#x`)
+    expect(plain.status).toBe(415)
+    expect(fragment).toEqual(plain)
+  })
+
+  it('validates a body an absolute-form target carries behind a fragment', async () => {
+    const target = '/registry/transfer-instruction/v1/transfer-factory'
+    const plain = await sendRaw(port, 'POST', target, '{}')
+    const fragment = await sendRaw(port, 'POST', `${authority}${target}#x`, '{}')
+    expect(plain.status).toBe(400)
+    expect(fragment).toEqual(plain)
+  })
+
+  // A fragment ahead of the query takes the query with it: parseurl reports no
+  // query at all, so req.query is empty and the pageSize below never reaches the
+  // server in any form. The answer that agrees with what express routed is
+  // therefore the fragment-free path's own answer, not the 400 the same query
+  // draws when it really is a query.
+  it('answers a fragment-bearing GET exactly as it answers the fragment-free path', async () => {
+    const target = '/registry/metadata/v1/instruments'
+    const plain = await sendRaw(port, 'GET', target)
+    const fragment = await sendRaw(port, 'GET', `${target}#x?pageSize=abc`)
+    expect(plain.status).toBe(200)
+    expect(JSON.parse(plain.body).instruments).toHaveLength(1)
+    expect(fragment).toEqual(plain)
+  })
+
+  it('still validates a query the fragment follows rather than precedes', async () => {
+    const res = await sendRaw(port, 'GET', '/registry/metadata/v1/instruments?pageSize=abc#x')
+    expect(res.status).toBe(400)
+    expect(JSON.parse(res.body).error).toMatch(/pageSize must be integer/)
+  })
+
+  // %23 is a percent-encoded number sign, not a fragment delimiter, so the cut
+  // must not reach it. A cut that did would leave "/instruments/", which routes
+  // to the list endpoint and answers 200 with every instrument.
+  it('leaves a percent-encoded number sign in the path alone', async () => {
+    const res = await sendRaw(port, 'GET', '/registry/metadata/v1/instruments/%23')
+    expect(res.status).toBe(404)
+    expect(JSON.parse(res.body).error).toBe('instrument not found')
+  })
+
+  it('still lets a fragment-bearing request on an undocumented path reach express routing', async () => {
+    const plain = await sendRaw(port, 'GET', '/not-a-documented-path')
+    const fragment = await sendRaw(port, 'GET', '/not-a-documented-path#x')
+    expect(plain.status).toBe(404)
+    expect(plain.body).toMatch(/Cannot GET \/not-a-documented-path/)
+    expect(fragment).toEqual(plain)
+  })
+})

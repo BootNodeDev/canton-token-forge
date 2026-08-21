@@ -26,20 +26,28 @@ function statusFromError(err: unknown): number {
   return 500
 }
 
-// The path and query of a request target, dropping the scheme and authority an
-// absolute-form target carries. Express settles where the path starts with
-// parseurl, not with the getProtohost split it uses to strip mount prefixes, so
-// this follows parseurl: the path starts at the first "/" ahead of the query, and
-// a target carrying a query but no path keeps that query behind a bare "/".
+// The path and query of a request target, dropping the fragment node passes
+// through verbatim and the scheme and authority an absolute-form target carries.
+// Express settles where the path starts with parseurl, not with the getProtohost
+// split it uses to strip mount prefixes, so this follows parseurl: the path
+// starts at the first "/" ahead of the query, and a target carrying a query but
+// no path keeps that query behind a bare "/".
+// The fragment is cut ahead of the origin-form early return below, not after it,
+// because a fragment arrives on an origin-form target: returning that target
+// untouched would leave the fragment on the field the validator matches. The cut
+// is at the first "#" wherever it sits, which is where parseurl puts the fragment
+// too, so an unencoded "#" inside a query ends the query for both of them.
 function originForm(target: string): string {
-  if (target.startsWith('/')) return target
-  const query = target.indexOf('?')
-  const beforeQuery = query === -1 ? target : target.slice(0, query)
+  const fragment = target.indexOf('#')
+  const addressed = fragment === -1 ? target : target.slice(0, fragment)
+  if (addressed.startsWith('/')) return addressed
+  const query = addressed.indexOf('?')
+  const beforeQuery = query === -1 ? addressed : addressed.slice(0, query)
   const scheme = beforeQuery.indexOf('://')
-  if (scheme === -1) return target
+  if (scheme === -1) return addressed
   const pathStart = beforeQuery.indexOf('/', scheme + 3)
-  if (pathStart !== -1) return target.slice(pathStart)
-  return query === -1 ? '/' : `/${target.slice(query)}`
+  if (pathStart !== -1) return addressed.slice(pathStart)
+  return query === -1 ? '/' : `/${addressed.slice(query)}`
 }
 
 // RFC 9112 section 3.2.2 lets a client address any server in the absolute form
@@ -49,7 +57,9 @@ function originForm(target: string): string {
 // authority make the request match no path in any spec; ignoreUndocumented then
 // passes it on unvalidated, which is how the two forms of one request came to
 // get different answers. Canonicalizing the field the validator reads is what
-// makes them agree.
+// makes them agree. A fragment is not a request-target form at all, but node
+// hands one through the same way and it defeats the same lookup, so it is cut
+// here as well.
 // req.url is deliberately left as node delivered it: express reads the mount
 // prefix it strips from req.url once per request, before any middleware runs,
 // so rewriting it here would cut into the path of every layer mounted on a base
