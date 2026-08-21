@@ -250,6 +250,24 @@ describe('an absolute-form target with no path', () => {
     })
   })
 
+  // A fragment ahead of that query takes the query with it, leaving the
+  // validator matching the bare path parseurl reports. Node's own parser
+  // refuses a "#" that follows the authority directly (HPE_INVALID_URL), so
+  // the shortest target that can carry this shape onto the wire is the one
+  // below, whose path is a single "/".
+  it('drops a query the fragment precedes, leaving the bare path', async () => {
+    const res = await sendRaw(port, 'GET', `http://127.0.0.1:${port}/#x?pageSize=abc`)
+    expect(JSON.parse(res.body)).toEqual({ originalUrl: '/', query: {} })
+  })
+
+  it('keeps a query the fragment follows, dropping only the fragment', async () => {
+    const res = await sendRaw(port, 'GET', `http://127.0.0.1:${port}?pageSize=abc#x`)
+    expect(JSON.parse(res.body)).toEqual({
+      originalUrl: '/?pageSize=abc',
+      query: { pageSize: 'abc' },
+    })
+  })
+
   it('reads a "/" inside that query as part of a value, not as a path', async () => {
     const target = `http://127.0.0.1:${port}?next=/registry/metadata/v1/instruments`
     const res = await sendRaw(port, 'GET', target)
