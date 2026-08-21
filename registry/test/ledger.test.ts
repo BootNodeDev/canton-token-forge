@@ -114,6 +114,32 @@ describe('HttpLedgerClient.activeContracts', () => {
       /503/,
     )
   })
+
+  it('carries the participant wording of a refused query without putting it in the message', async () => {
+    const body = '{"code":"PACKAGE_NAMES_NOT_FOUND","cause":"...no-such-package..."}'
+    const { fakeFetch } = recordingFetch({
+      [LEDGER_END]: ledgerEndAt(1),
+      [ACTIVE_CONTRACTS]: { ok: false, status: 404, text: async () => body },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const err = await client
+      .activeContracts('#no-such-package:M:InstrumentConfig', 'admin::1')
+      .then(
+        () => undefined,
+        (e) => e,
+      )
+    expect(err).toBeInstanceOf(LedgerRequestError)
+    // The startup check attributes a fault to one configured variable by this
+    // code, which the status alone cannot distinguish from any other 404.
+    expect((err as LedgerRequestError).detail).toBe(body)
+    // And it stays off the message, which the terminal error handler answers
+    // the client with.
+    expect((err as LedgerRequestError).message).not.toContain('PACKAGE_NAMES_NOT_FOUND')
+  })
 })
 
 // The shape of a by-contract-id response, recorded from Canton 3.5.6: the
