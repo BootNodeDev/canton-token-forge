@@ -185,10 +185,13 @@ describe('allocation choice-contexts', () => {
 
   for (const choice of ['withdraw', 'cancel']) {
     it(`reports a reclaimed escrow instead of refusing the ${choice} context`, async () => {
-      const ledger = ledgerFrom({
-        [config.allocationTemplateId]: [allocationEntry()],
-        [config.lockedTokenTemplateId]: [],
-      })
+      const ledger = ledgerFrom(
+        {
+          [config.allocationTemplateId]: [allocationEntry()],
+          [config.lockedTokenTemplateId]: [],
+        },
+        { [config.lockedTokenTemplateId]: [lockedTokenEntry()] },
+      )
       const app = createServer({ ledger, config })
       const res = await request(app)
         .post(`/registry/allocations/v1/00cafe02/choice-contexts/${choice}`)
@@ -201,10 +204,13 @@ describe('allocation choice-contexts', () => {
   }
 
   it('keeps the early-release signal on a cancel whose escrow is already gone', async () => {
-    const ledger = ledgerFrom({
-      [config.allocationTemplateId]: [allocationEntry()],
-      [config.lockedTokenTemplateId]: [],
-    })
+    const ledger = ledgerFrom(
+      {
+        [config.allocationTemplateId]: [allocationEntry()],
+        [config.lockedTokenTemplateId]: [],
+      },
+      { [config.lockedTokenTemplateId]: [lockedTokenEntry()] },
+    )
     const app = createServer({ ledger, config })
     const res = await request(app)
       .post('/registry/allocations/v1/00cafe02/choice-contexts/cancel')
@@ -219,10 +225,13 @@ describe('allocation choice-contexts', () => {
   // The single-party withdraw is deadline-gated on-ledger either way, so it
   // never carries the signal, gone escrow or not.
   it('sends no early-release signal on a withdraw whose escrow is already gone', async () => {
-    const ledger = ledgerFrom({
-      [config.allocationTemplateId]: [allocationEntry()],
-      [config.lockedTokenTemplateId]: [],
-    })
+    const ledger = ledgerFrom(
+      {
+        [config.allocationTemplateId]: [allocationEntry()],
+        [config.lockedTokenTemplateId]: [],
+      },
+      { [config.lockedTokenTemplateId]: [lockedTokenEntry()] },
+    )
     const app = createServer({ ledger, config })
     const res = await request(app)
       .post('/registry/allocations/v1/00cafe02/choice-contexts/withdraw')

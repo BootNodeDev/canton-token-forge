@@ -1,5 +1,5 @@
 import type { Config } from '../config.js'
-import type { ContractEntry, LedgerClient } from '../ledger.js'
+import type { ContractEntry, ContractLookup, LedgerClient } from '../ledger.js'
 import type {
   InstrumentConfigPayload,
   LockedTokenPayload,
@@ -83,20 +83,25 @@ export async function findByContractId<P = unknown>(
 
 // Resolve the escrow LockedToken behind a lockedCid. The receiver is not a
 // stakeholder of the escrow, so the transfer and allocation choice-contexts
-// both disclose it before the counterparty exercises its choice. An absent
-// escrow is returned as undefined rather than an empty disclosure list, because
-// a context that silently omits it would only fail later inside the choice.
-// Note the caller need not hold a stale id for this to happen: after expiry the
-// sender can reclaim the escrow through LockedToken_ExpireLock, which archives
-// it while the record that names it stays active, so the cid the service itself
-// just read out of a live instruction can already be gone. The aborts whose
-// controller owns the escrow report that back to the choice; the settlement
-// routes and the receiver-controlled reject treat it as a dead end.
-export async function findEscrow(
+// both disclose it before the counterparty exercises its choice. An escrow that
+// is not live is reported by state rather than as an empty disclosure list,
+// because a context that silently omitted it would only fail later inside the
+// choice.
+//
+// The caller need not hold a stale id for the escrow to be gone: after expiry
+// the sender can reclaim it through LockedToken_ExpireLock, which archives the
+// escrow while the record that names it stays active, so the cid the service
+// itself just read out of a live instruction can already be archived. That is
+// the one case the aborts whose controller owns the escrow report back to the
+// choice, and it is why the state is passed through instead of collapsed: an
+// archive event is the participant's evidence that the reclaim happened, while
+// a lookup that found nothing is only the absence of an answer. The settlement
+// routes and the receiver-controlled reject treat both alike as a dead end.
+export function findEscrow(
   ledger: LedgerClient,
   config: Pick<Config, 'lockedTokenTemplateId' | 'adminParty'>,
   lockedCid: string,
-): Promise<ContractEntry<LockedTokenPayload> | undefined> {
+): Promise<ContractLookup<LockedTokenPayload>> {
   // Deliberately not routed through findByContractId: this is the one lookup
   // whose id the service read out of a record's own payload rather than off a
   // client, and the only one whose absent contract the abort contexts turn into
@@ -105,10 +110,9 @@ export async function findEscrow(
   // contract is not the template it was read as. Withholding the client-id flag
   // is what makes the participant's refusal raise there instead of becoming
   // that report for an escrow that is still live.
-  const found = await ledger.lookupByContractId(
+  return ledger.lookupByContractId(
     config.lockedTokenTemplateId,
     lockedCid,
     config.adminParty,
-  )
-  return found.state === 'live' ? (found.entry as ContractEntry<LockedTokenPayload>) : undefined
+  ) as Promise<ContractLookup<LockedTokenPayload>>
 }

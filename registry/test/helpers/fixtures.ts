@@ -105,9 +105,21 @@ export const LEDGER_END_OFFSET = 7
 // A read-only ledger stub serving contracts by template id, visible only to
 // their stakeholders. Routes driven by it never submit; a submission is
 // therefore a test failure.
-export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClient {
+//
+// `archivedByTemplate` seeds contracts the participant still answers a by-id
+// read about but that no active-set query returns. It is a separate map because
+// that is the participant's own split: an archived contract leaves the active
+// set while its events stay addressable by id, and telling that apart from a
+// contract the participant knows nothing about is what entitles an abort
+// context to report a reclaim.
+export function ledgerFrom(
+  byTemplate: Record<string, StubEntry[]>,
+  archivedByTemplate: Record<string, StubEntry[]> = {},
+): LedgerClient {
   const visible = (templateId: string, party: string) =>
     (byTemplate[templateId] ?? []).filter((e) => e.stakeholders.includes(party))
+  const archived = (templateId: string, party: string) =>
+    (archivedByTemplate[templateId] ?? []).filter((e) => e.stakeholders.includes(party))
   return {
     activeContracts: (templateId: string, party: string) =>
       Promise.resolve(visible(templateId, party)),
@@ -118,12 +130,14 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
     probeTemplate: () => Promise.resolve(),
     // A by-id read is answered by the participant off the same template filter
     // and the same stakeholder visibility as an active-set query, so a contract
-    // of another template, or one this party cannot see, is simply absent.
+    // of another template, or one this party cannot see, is simply absent. An
+    // archived one is not: it answers with its created event and an archive
+    // event alongside it.
     lookupByContractId: (templateId: string, contractId: string, party: string) => {
       const found = visible(templateId, party).find((e) => e.contractId === contractId)
-      return Promise.resolve(
-        found ? { state: 'live' as const, entry: found } : { state: 'absent' as const },
-      )
+      if (found) return Promise.resolve({ state: 'live' as const, entry: found })
+      const gone = archived(templateId, party).some((e) => e.contractId === contractId)
+      return Promise.resolve({ state: gone ? ('archived' as const) : ('absent' as const) })
     },
     ledgerEnd: () => Promise.resolve(LEDGER_END_OFFSET),
     // Matches what a participant answers: a party it does not know is an empty
@@ -142,7 +156,10 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
 // in the request body are necessarily the same value. `queries` stays
 // active-set queries alone, so a route that traded one for a bounded by-id
 // read shows up as a shorter list rather than a differently-shaped entry.
-export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
+export function recordingLedgerFrom(
+  byTemplate: Record<string, StubEntry[]>,
+  archivedByTemplate: Record<string, StubEntry[]> = {},
+): {
   ledger: LedgerClient
   queries: [string, string][]
   probes: [string, string][]
@@ -155,7 +172,7 @@ export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
   const probes: [string, string][] = []
   const lookups: [string, string, string][] = []
   const ledgerEnds: number[] = []
-  const inner = ledgerFrom(byTemplate)
+  const inner = ledgerFrom(byTemplate, archivedByTemplate)
   return {
     queries,
     probes,

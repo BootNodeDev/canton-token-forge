@@ -467,10 +467,13 @@ describe('transfer-instruction choice-contexts', () => {
   }
 
   it('reports a reclaimed escrow instead of refusing the withdraw context', async () => {
-    const ledger = ledgerFrom({
-      [config.transferInstructionTemplateId]: [instructionEntry()],
-      [config.lockedTokenTemplateId]: [],
-    })
+    const ledger = ledgerFrom(
+      {
+        [config.transferInstructionTemplateId]: [instructionEntry()],
+        [config.lockedTokenTemplateId]: [],
+      },
+      { [config.lockedTokenTemplateId]: [lockedTokenEntry()] },
+    )
     const app = createServer({ ledger, config })
     const res = await request(app)
       .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
@@ -540,10 +543,13 @@ describe('transfer-instruction choice-contexts', () => {
   })
 
   it('names the reclaimed-escrow key exactly as the Daml choice reads it', async () => {
-    const ledger = ledgerFrom({
-      [config.transferInstructionTemplateId]: [instructionEntry()],
-      [config.lockedTokenTemplateId]: [],
-    })
+    const ledger = ledgerFrom(
+      {
+        [config.transferInstructionTemplateId]: [instructionEntry()],
+        [config.lockedTokenTemplateId]: [],
+      },
+      { [config.lockedTokenTemplateId]: [lockedTokenEntry()] },
+    )
     const app = createServer({ ledger, config })
     const res = await request(app)
       .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')

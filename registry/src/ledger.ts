@@ -337,8 +337,15 @@ export class HttpLedgerClient implements LedgerClient {
     if (!res.ok) throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`)
     const body = (await res.json()) as EventsByContractIdResponse
     // An archived contract is still answered with its created event, so the
-    // archive event is the only thing separating it from a live one.
-    if (!body.created || body.archived) return { state: 'absent' }
+    // archive event is the only thing separating it from a live one. Verified
+    // on Canton 3.5.12: `archived` is null on a live contract and carries the
+    // archive event on an archived one, and the template filter is applied to
+    // both alike, so a contract of another template is refused above rather
+    // than answered here. That is what makes the archive event evidence about
+    // the configured template without comparing a package-id-qualified id from
+    // the response against a package-name-qualified configuration.
+    if (!body.created) return { state: 'absent' }
+    if (body.archived) return { state: 'archived' }
     return { state: 'live', entry: toEntry(body.created.createdEvent, body.created.synchronizerId) }
   }
 

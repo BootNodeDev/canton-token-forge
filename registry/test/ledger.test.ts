@@ -472,10 +472,13 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   })
 
   // An archived contract still answers 200 with its created event; only
-  // `archived` distinguishes it. Returning it would disclose a dead contract
-  // and push the failure to the on-ledger submission, where the active-set
-  // scan this replaced simply never saw it.
-  it('answers absent for a contract that has been archived', async () => {
+  // `archived` distinguishes it. Returning it live would disclose a dead
+  // contract and push the failure to the on-ledger submission, where the
+  // active-set scan this replaced simply never saw it. It is not absent
+  // either: the archive event is the participant's own evidence that the
+  // contract existed and is gone, which is what an abort context needs before
+  // it may report an escrow reclaimed.
+  it('answers archived for a contract that has been archived', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: true,
@@ -492,7 +495,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
 
     await expect(
       client.lookupByContractId('pkg:Canton.TokenForge.Locked:LockedToken', '00locked', 'admin::1'),
-    ).resolves.toEqual({ state: 'absent' })
+    ).resolves.toEqual({ state: 'archived' })
   })
 })
 
