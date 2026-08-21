@@ -447,24 +447,55 @@ describe('transfer-instruction choice-contexts', () => {
 
   // Accept has nothing left to settle out of, and reject, controlled by the
   // receiver alone, is the one abort the Daml side refuses to let a reclaim
-  // report clear, so it has nothing left to do either.
+  // report clear, so it has nothing left to do either. Neither reads the state
+  // the escrow is gone in: only withdraw acts on that difference.
   for (const choice of ['accept', 'reject']) {
-    it(`404s instead of returning a ${choice} context that omits the escrow when the LockedToken is gone`, async () => {
-      const ledger = ledgerFrom({
-        [config.transferInstructionTemplateId]: [instructionEntry()],
-        [config.lockedTokenTemplateId]: [],
+    for (const [state, archived] of [
+      ['no longer active', true],
+      ['not found at all', false],
+    ] as const) {
+      it(`404s instead of returning a ${choice} context that omits an escrow ${state}`, async () => {
+        const ledger = ledgerFrom(
+          {
+            [config.transferInstructionTemplateId]: [instructionEntry()],
+            [config.lockedTokenTemplateId]: [],
+          },
+          archived ? { [config.lockedTokenTemplateId]: [lockedTokenEntry()] } : {},
+        )
+        const app = createServer({ ledger, config })
+        const res = await request(app)
+          .post(`/registry/transfer-instruction/v1/00cafe01/choice-contexts/${choice}`)
+          .send({ meta: {} })
+        expect(res.status).toBe(404)
+        validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+        // The instruction resolves on this path, so only the message separates a
+        // stale escrow from the route's other 404.
+        expect(res.body.error).toBe('escrow not found')
       })
-      const app = createServer({ ledger, config })
-      const res = await request(app)
-        .post(`/registry/transfer-instruction/v1/00cafe01/choice-contexts/${choice}`)
-        .send({ meta: {} })
-      expect(res.status).toBe(404)
-      validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
-      // The instruction resolves on this path, so only the message separates a
-      // stale escrow from the route's other 404.
-      expect(res.body.error).toBe('escrow not found')
-    })
+    }
   }
+
+  // The report is a positive claim that the sender already took the escrow
+  // back, and a client acts on it by archiving the instruction. A lookup that
+  // found nothing is not that claim: with LOCKED_TOKEN_TEMPLATE_ID naming
+  // another template the participant really hosts, every live escrow reads as
+  // absent, and reporting a reclaim there clears the record while the funds
+  // stay locked until the escrow's own expiry.
+  it('404s the withdraw context when the escrow lookup found nothing at all', async () => {
+    const ledger = ledgerFrom({
+      [config.transferInstructionTemplateId]: [instructionEntry()],
+      [config.lockedTokenTemplateId]: [],
+    })
+    const app = createServer({ ledger, config })
+    const res = await request(app)
+      .post('/registry/transfer-instruction/v1/00cafe01/choice-contexts/withdraw')
+      .send({ meta: {} })
+    expect(res.status).toBe(404)
+    validateAgainst('transfer-instruction#/components/schemas/ErrorResponse', res.body)
+    expect(res.body.error).toBe('escrow not found')
+    // Not merely a 404: the report must not ride along on an error body either.
+    expect(res.body.choiceContextData).toBeUndefined()
+  })
 
   it('reports a reclaimed escrow instead of refusing the withdraw context', async () => {
     const ledger = ledgerFrom(

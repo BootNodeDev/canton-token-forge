@@ -165,23 +165,32 @@ describe('allocation choice-contexts', () => {
     expect(ids).toEqual(['locked1'])
   })
 
-  it('404s the settlement context when the escrow LockedToken is gone', async () => {
-    const ledger = ledgerFrom({
-      [config.allocationTemplateId]: [allocationEntry()],
-      [config.lockedTokenTemplateId]: [],
+  for (const [state, archived] of [
+    ['no longer active', true],
+    ['not found at all', false],
+  ] as const) {
+    it(`404s the settlement context when the escrow LockedToken is ${state}`, async () => {
+      const ledger = ledgerFrom(
+        {
+          [config.allocationTemplateId]: [allocationEntry()],
+          [config.lockedTokenTemplateId]: [],
+        },
+        archived ? { [config.lockedTokenTemplateId]: [lockedTokenEntry()] } : {},
+      )
+      const app = createServer({ ledger, config })
+      const res = await request(app)
+        .post('/registry/allocations/v1/00cafe02/choice-contexts/execute-transfer')
+        .send({ meta: {} })
+      // execute-transfer settles the leg out of the escrow, so an escrow that is
+      // not live is a dead end for it in either state, unlike the two abort
+      // contexts below, which separate the two.
+      expect(res.status).toBe(404)
+      validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
+      // The allocation itself resolves here, so only the message separates a
+      // stale escrow from the not-found allocation below.
+      expect(res.body.error).toBe('escrow not found')
     })
-    const app = createServer({ ledger, config })
-    const res = await request(app)
-      .post('/registry/allocations/v1/00cafe02/choice-contexts/execute-transfer')
-      .send({ meta: {} })
-    // execute-transfer settles the leg out of the escrow, so an absent escrow
-    // is a dead end for it, unlike the two abort contexts below.
-    expect(res.status).toBe(404)
-    validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
-    // The allocation itself resolves here, so only the message separates a
-    // stale escrow from the not-found allocation below.
-    expect(res.body.error).toBe('escrow not found')
-  })
+  }
 
   for (const choice of ['withdraw', 'cancel']) {
     it(`reports a reclaimed escrow instead of refusing the ${choice} context`, async () => {
@@ -200,6 +209,27 @@ describe('allocation choice-contexts', () => {
       validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
       expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
       expect(res.body.disclosedContracts).toEqual([])
+    })
+
+    // The report and cancel's early-release signal together are what let a
+    // client clear the allocation record. Neither may be sent on a lookup that
+    // merely found nothing: a LOCKED_TOKEN_TEMPLATE_ID naming another template
+    // the participant hosts reads every live escrow that way, so the record
+    // would be cleared with the funds still locked until the escrow's own
+    // expiry.
+    it(`404s the ${choice} context when the escrow lookup found nothing at all`, async () => {
+      const ledger = ledgerFrom({
+        [config.allocationTemplateId]: [allocationEntry()],
+        [config.lockedTokenTemplateId]: [],
+      })
+      const app = createServer({ ledger, config })
+      const res = await request(app)
+        .post(`/registry/allocations/v1/00cafe02/choice-contexts/${choice}`)
+        .send({ meta: {} })
+      expect(res.status).toBe(404)
+      validateAgainst('allocation#/components/schemas/ErrorResponse', res.body)
+      expect(res.body.error).toBe('escrow not found')
+      expect(res.body.choiceContextData).toBeUndefined()
     })
   }
 
