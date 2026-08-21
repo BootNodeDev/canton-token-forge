@@ -262,10 +262,14 @@ reason the seed script looks the way it does.
   restart to fix rather than one per variable. The same warn-and-continue rule
   as above applies to anything the participant does not attribute to the id
   itself: an unreachable participant, a refused read, or a plain 404 carrying
-  neither code. The two checks run in sequence and each carries its own
-  five-second budget, so a participant that drops packets rather than refusing
-  them holds the boot for up to ten seconds before the service listens: size a
-  startup probe against that, not against one check's five. One consequence
+  neither code. Each id costs one request and no contract: the query is
+  snapshotted at the beginning of the ledger, where nothing is active, so the
+  boot does not slow down as the registry accumulates escrows, instructions and
+  allocations the admin is a stakeholder of. The two checks run in sequence and
+  each carries its own five-second budget, so a participant that drops packets
+  rather than refusing them holds the boot for up to ten seconds before the
+  service listens: size a startup probe against that, not against one check's
+  five. One consequence
   worth planning a deploy around: a registry started before its DAR is uploaded
   now crashloops until the upload lands.
   They are concrete template ids, never interface ids: the choice-context
