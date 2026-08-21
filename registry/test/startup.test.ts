@@ -238,6 +238,21 @@ describe('checkTemplateIds', () => {
     )
   })
 
+  it('reports which half of the id the participant could not resolve', async () => {
+    const { logger, entries } = recordingLogger()
+    const ledger = ledgerRefusing({
+      [config.lockedTokenTemplateId]: 'PACKAGE_NAMES_NOT_FOUND',
+    })
+
+    expect(await checkTemplateIds(ledger, config, logger)).toBe(false)
+    // Naming the variable says where to look; only the participant's own code
+    // says what to do there. A package it has never been given is a deploy that
+    // has not uploaded the DAR, and a qualified name it cannot match is a typo
+    // in the .env, and the message is the same for both.
+    const [reported] = entries as { err?: LedgerRequestError }[]
+    expect(reported.err?.detail).toContain('PACKAGE_NAMES_NOT_FOUND')
+  })
+
   it('refuses to start when an id names a qualified name the participant does not host', async () => {
     const { logger, errors } = recordingLogger()
     const ledger = ledgerRefusing({

@@ -124,7 +124,12 @@ async function runTemplateIdChecks(
         if (namesAnUnresolvableTemplate(err)) {
           report(
             'error',
-            { envVar, templateId },
+            // The participant's own wording rides along, as it does on the warn
+            // branch below: the message names the variable to fix, and only the
+            // code inside the error says whether the package was never uploaded
+            // or the module and entity were typed wrong, which are different
+            // repairs. It reaches the log alone, never a client.
+            { err, envVar, templateId },
             `${envVar} names a template this participant does not host; every read off it would fail`,
           )
           return 'unresolvable' as const
