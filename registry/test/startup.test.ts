@@ -263,6 +263,18 @@ describe('checkTemplateIds', () => {
     expect(reported).toContain('TRANSFER_INSTRUCTION_TEMPLATE_ID')
   })
 
+  it('starts with a warning on a 404 the participant did not attribute to a template id', async () => {
+    const { logger, warnings, errors } = recordingLogger()
+    // 404 is not by itself evidence about the configured id: a participant that
+    // does not serve the endpoint answers one at the path level, and reading
+    // the status alone would refuse to start over it.
+    const ledger = ledgerRefusing({ [config.lockedTokenTemplateId]: 'SOMETHING_ELSE_ENTIRELY' })
+
+    expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
+    expect(warnings.length).toBe(1)
+    expect(errors).toEqual([])
+  })
+
   it('starts with a warning when the query fails for a reason it cannot attribute', async () => {
     const { logger, warnings, errors } = recordingLogger()
     // A participant that is down says nothing about the configured ids, and
