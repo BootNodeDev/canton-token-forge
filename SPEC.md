@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `c1d298f`.
+checked against the tree at commit `497800f`.
 
 ---
 
@@ -46,12 +46,12 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `c1d298f`, exit 0:
+All three suites were re-run at commit `497800f`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **177 tests**, 10 files | nothing, in-process server with a stub ledger |
+| Registry unit | **180 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **13 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-786 lines of production Daml, 1665 lines of Daml tests, 1617 lines of TypeScript
-service, 3721 lines of TypeScript tests. MIT licensed. Pre-release: the package
+786 lines of production Daml, 1665 lines of Daml tests, 1626 lines of TypeScript
+service, 3796 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -377,7 +377,7 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 177 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in |
+| Registry unit, 180 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in |
 | End-to-end, 13 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -395,7 +395,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 60 Daml scenarios
-cd registry && npm install && npm test   # 177 unit tests, no ledger needed
+cd registry && npm install && npm test   # 180 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
@@ -462,9 +462,11 @@ Stated plainly, because they are what an evaluation turns on.
   end, which is scoped to neither the admin party nor any template. The startup
   checks cover the configuration faults that produced (an admin party the
   participant does not know, a token that may not read as it, and a template id
-  naming something the participant does not host), but they run once: a right
-  revoked, or a package unvetted, while the service is running still reports
-  ready and fails every route.
+  naming something the participant does not host), but they run once: a read
+  right revoked while the service is running still reports ready and fails every
+  route. Unvetting is not one of these: vetting gates what a participant will
+  accept in a transaction, and an unvetted package's contracts still read back,
+  so a service that submits nothing serves them unchanged.
 - **A template id naming a real but different template is not caught.** It
   resolves, so no boot check can see it, and every read through it comes back as
   an absent contract, which the abort choice-contexts report as an escrow its
