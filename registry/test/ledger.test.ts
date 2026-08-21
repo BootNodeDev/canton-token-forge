@@ -267,17 +267,20 @@ describe('HttpLedgerClient.lookupByContractId', () => {
       fakeFetch,
     )
 
-    const entry = await client.lookupByContractId(
+    const lookup = await client.lookupByContractId(
       'pkg:Canton.TokenForge.Locked:LockedToken',
       '00locked',
       'admin::1',
     )
 
-    expect(entry).toMatchObject({
-      contractId: '00locked',
-      createdEventBlob: 'BLOB-LOCK',
-      synchronizerId: 'sync-1',
-      payload: { amount: '10.0' },
+    expect(lookup).toMatchObject({
+      state: 'live',
+      entry: {
+        contractId: '00locked',
+        createdEventBlob: 'BLOB-LOCK',
+        synchronizerId: 'sync-1',
+        payload: { amount: '10.0' },
+      },
     })
 
     expect(calls.map(([url]) => new URL(url).pathname)).toEqual([BY_CONTRACT_ID])
@@ -301,7 +304,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   // The participant answers one 404 (CONTRACT_EVENTS_NOT_FOUND) for all three
   // of: no such contract, a contract this party cannot see, and a contract of
   // a different template. Each is "not found" to the caller.
-  it('returns undefined when the participant reports no such contract', async () => {
+  it('answers absent when the participant reports no such contract', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
@@ -316,9 +319,9 @@ describe('HttpLedgerClient.lookupByContractId', () => {
       logger,
     )
 
-    await expect(
-      client.lookupByContractId('pkg:M:T', '00gone', 'admin::1'),
-    ).resolves.toBeUndefined()
+    await expect(client.lookupByContractId('pkg:M:T', '00gone', 'admin::1')).resolves.toEqual({
+      state: 'absent',
+    })
     // A miss is the routine answer on these routes, so it must stay silent:
     // logging it would bury the rejections below in traffic a caller controls.
     expect(entries).toEqual([])
@@ -408,7 +411,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   // of a path parameter but not its length, so a truncated id reaches the
   // participant and must come back as the 404 any other unresolvable id gets.
   // The caller has to say so, which is what keeps this off the escrow lookups.
-  it("returns undefined when the participant cannot parse a client's contract id", async () => {
+  it("answers absent when the participant cannot parse a client's contract id", async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
@@ -430,7 +433,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
 
     await expect(
       client.lookupByContractId('pkg:M:T', '00cafe01', 'admin::1', true),
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual({ state: 'absent' })
     expect(entries).toEqual([])
   })
 
@@ -472,7 +475,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   // `archived` distinguishes it. Returning it would disclose a dead contract
   // and push the failure to the on-ledger submission, where the active-set
   // scan this replaced simply never saw it.
-  it('returns undefined for a contract that has been archived', async () => {
+  it('answers absent for a contract that has been archived', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: true,
@@ -489,7 +492,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
 
     await expect(
       client.lookupByContractId('pkg:Canton.TokenForge.Locked:LockedToken', '00locked', 'admin::1'),
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual({ state: 'absent' })
   })
 })
 

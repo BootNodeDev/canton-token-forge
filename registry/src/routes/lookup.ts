@@ -77,9 +77,8 @@ export async function findByContractId<P = unknown>(
   party: string,
   contractId: string,
 ): Promise<ContractEntry<P> | undefined> {
-  return ledger.lookupByContractId(templateId, contractId, party, true) as Promise<
-    ContractEntry<P> | undefined
-  >
+  const found = await ledger.lookupByContractId(templateId, contractId, party, true)
+  return found.state === 'live' ? (found.entry as ContractEntry<P>) : undefined
 }
 
 // Resolve the escrow LockedToken behind a lockedCid. The receiver is not a
@@ -106,9 +105,10 @@ export async function findEscrow(
   // contract is not the template it was read as. Withholding the client-id flag
   // is what makes the participant's refusal raise there instead of becoming
   // that report for an escrow that is still live.
-  return ledger.lookupByContractId(
+  const found = await ledger.lookupByContractId(
     config.lockedTokenTemplateId,
     lockedCid,
     config.adminParty,
-  ) as Promise<ContractEntry<LockedTokenPayload> | undefined>
+  )
+  return found.state === 'live' ? (found.entry as ContractEntry<LockedTokenPayload>) : undefined
 }

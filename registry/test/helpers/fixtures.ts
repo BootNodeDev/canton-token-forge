@@ -119,8 +119,12 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
     // A by-id read is answered by the participant off the same template filter
     // and the same stakeholder visibility as an active-set query, so a contract
     // of another template, or one this party cannot see, is simply absent.
-    lookupByContractId: (templateId: string, contractId: string, party: string) =>
-      Promise.resolve(visible(templateId, party).find((e) => e.contractId === contractId)),
+    lookupByContractId: (templateId: string, contractId: string, party: string) => {
+      const found = visible(templateId, party).find((e) => e.contractId === contractId)
+      return Promise.resolve(
+        found ? { state: 'live' as const, entry: found } : { state: 'absent' as const },
+      )
+    },
     ledgerEnd: () => Promise.resolve(LEDGER_END_OFFSET),
     // Matches what a participant answers: a party it does not know is an empty
     // list rather than an error, which is the whole reason a wrong ADMIN_PARTY

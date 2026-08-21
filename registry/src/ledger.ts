@@ -41,6 +41,18 @@ export interface ContractEntry<P = unknown> {
   payload: P
 }
 
+// What a by-id lookup found. The escrow lookup needs the archived case kept
+// apart from the absent one: the abort choice-contexts turn a reclaimed escrow
+// into a positive report to the choice, and only an archive event is evidence
+// of a reclaim. Collapsing the two is what let a template id naming another
+// real template manufacture that report for an escrow still sitting on the
+// ledger. Callers that only need to know whether a contract is servable
+// collapse it back themselves.
+export type ContractLookup<P = unknown> =
+  | { state: 'live'; entry: ContractEntry<P> }
+  | { state: 'archived' }
+  | { state: 'absent' }
+
 export interface CreateCommand {
   templateId: string
   createArguments: Record<string, unknown>
@@ -60,7 +72,7 @@ export interface LedgerClient {
     contractId: string,
     party: string,
     clientSuppliedId?: boolean,
-  ): Promise<ContractEntry | undefined>
+  ): Promise<ContractLookup>
   // The cheapest round-trip the participant offers, and the only ledger call
   // whose cost does not move with what the admin is a stakeholder of. The
   // readiness probe uses it for that reason.
@@ -262,7 +274,7 @@ export class HttpLedgerClient implements LedgerClient {
     contractId: string,
     party: string,
     clientSuppliedId = false,
-  ): Promise<ContractEntry | undefined> {
+  ): Promise<ContractLookup> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/events/events-by-contract-id`, {
       method: 'POST',
       headers: this.headers(),
@@ -320,14 +332,14 @@ export class HttpLedgerClient implements LedgerClient {
         )
         throw new LedgerRequestError(res.status, `contract lookup rejected: ${res.status}`)
       }
-      return undefined
+      return { state: 'absent' }
     }
     if (!res.ok) throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`)
     const body = (await res.json()) as EventsByContractIdResponse
     // An archived contract is still answered with its created event, so the
     // archive event is the only thing separating it from a live one.
-    if (!body.created || body.archived) return undefined
-    return toEntry(body.created.createdEvent, body.created.synchronizerId)
+    if (!body.created || body.archived) return { state: 'absent' }
+    return { state: 'live', entry: toEntry(body.created.createdEvent, body.created.synchronizerId) }
   }
 
   // Every submission field lives inside a nested `commands` object; the
