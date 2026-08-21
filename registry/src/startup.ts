@@ -120,7 +120,7 @@ async function runTemplateIdChecks(
         // has no contracts yet answers 200 with an empty set, which is what
         // every clean deploy looks like, so only the failure carries meaning.
         await ledger.activeContracts(templateId, config.adminParty)
-        return true
+        return 'resolved' as const
       } catch (err) {
         if (namesAnUnresolvableTemplate(err)) {
           report(
@@ -128,7 +128,7 @@ async function runTemplateIdChecks(
             { envVar, templateId },
             `${envVar} names a template this participant does not host; every read off it would fail`,
           )
-          return false
+          return 'unresolvable' as const
         }
         // Anything else leaves the question open: an unreachable participant,
         // or one refusing the read on authorization grounds, says nothing about
@@ -139,13 +139,18 @@ async function runTemplateIdChecks(
           { err, envVar, templateId },
           `could not verify ${envVar} against the participant`,
         )
-        return true
+        return 'unanswered' as const
       }
     }),
   )
 
-  const ok = verdicts.every(Boolean)
-  if (ok) report('info', { count: entries.length }, 'template ids verified')
+  const ok = !verdicts.includes('unresolvable')
+  // Only the ids the participant actually resolved, so a boot that reached no
+  // participant at all reports the warnings alone. Counting the ids put to it
+  // instead would claim a verification that never happened, which is the one
+  // thing worse than the silent misconfiguration this check exists to catch.
+  const resolved = verdicts.filter((v) => v === 'resolved').length
+  if (ok && resolved > 0) report('info', { count: resolved }, 'template ids verified')
   return ok
 }
 

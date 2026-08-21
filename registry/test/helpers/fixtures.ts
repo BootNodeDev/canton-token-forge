@@ -183,6 +183,8 @@ export function recordingLogger(): {
   logger: Logger
   entries: object[]
   warnEntries: object[]
+  infoEntries: object[]
+  infos: string[]
   warnings: string[]
   errors: string[]
 } {
@@ -195,8 +197,16 @@ export function recordingLogger(): {
   // check is asserted on which variable it named, which lives in the message.
   const warnings: string[] = []
   const errors: string[] = []
+  // A check reports what it concluded at info level, so a suite that only
+  // records faults cannot tell a verdict that was reached from one that was
+  // claimed without evidence.
+  const infos: string[] = []
+  const infoEntries: object[] = []
   const logger: Logger = {
-    info: () => {},
+    info: (obj: object | string, msg?: string) => {
+      if (typeof obj === 'object') infoEntries.push(obj)
+      infos.push(typeof obj === 'string' ? obj : (msg ?? ''))
+    },
     warn: (obj: object | string, msg?: string) => {
       if (typeof obj === 'object') warnEntries.push(obj)
       warnings.push(typeof obj === 'string' ? obj : (msg ?? ''))
@@ -206,7 +216,7 @@ export function recordingLogger(): {
       errors.push(typeof obj === 'string' ? obj : (msg ?? ''))
     },
   }
-  return { logger, entries, warnEntries, warnings, errors }
+  return { logger, entries, warnEntries, infoEntries, infos, warnings, errors }
 }
 
 // TokenTransferPreapproval is signatory admin, receiver.

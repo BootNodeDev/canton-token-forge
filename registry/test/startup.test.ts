@@ -306,6 +306,42 @@ describe('checkTemplateIds', () => {
     expect(errors).toEqual([])
   })
 
+  it('does not claim the ids were verified when the participant answered for none of them', async () => {
+    const { logger, infos, errors } = recordingLogger()
+    // Every query failed for a reason that says nothing about the ids, which
+    // is no evidence of a fault and equally no evidence of a correct
+    // configuration. Reporting it as verified tells an operator the ids were
+    // put to a participant that in fact never answered.
+    const ledger = {
+      ...ledgerFrom(seeded),
+      activeContracts: () =>
+        Promise.reject(new LedgerRequestError(503, 'ledger query failed: 503')),
+    }
+
+    expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
+    expect(infos).toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  it('counts only the ids the participant actually resolved', async () => {
+    const { logger, infoEntries, infos, warnings } = recordingLogger()
+    const inner = ledgerFrom(seeded)
+    const ledger = {
+      ...inner,
+      activeContracts: (templateId: string, party: string) =>
+        templateId === config.allocationTemplateId
+          ? Promise.reject(new LedgerRequestError(503, 'ledger query failed: 503'))
+          : inner.activeContracts(templateId, party),
+    }
+
+    expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
+    expect(warnings.length).toBe(1)
+    // Four of the five answered, and the count is the evidence the check has
+    // rather than the number of ids it set out to put to the participant.
+    expect(infos.join(' ')).toContain('template ids verified')
+    expect(infoEntries).toEqual([{ count: 4 }])
+  })
+
   it('probes every configured template id as the admin party', async () => {
     const { logger } = recordingLogger()
     const { ledger, queries } = recordingLedgerFrom(seeded)
