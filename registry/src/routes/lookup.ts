@@ -97,6 +97,12 @@ export async function findByContractId<P = unknown>(
 // archive event is the participant's evidence that the reclaim happened, while
 // a lookup that found nothing is only the absence of an answer. The settlement
 // routes and the receiver-controlled reject treat both alike as a dead end.
+//
+// A participant that has pruned the archive event answers a genuine reclaim as
+// absent, which stalls the client on a 404 instead of letting it clear the
+// record. That is the safe direction of the two, and the reason the evidence is
+// required rather than inferred: the opposite failure clears the record while
+// the funds stay locked until the escrow's own expiry.
 export function findEscrow(
   ledger: LedgerClient,
   config: Pick<Config, 'lockedTokenTemplateId' | 'adminParty'>,
