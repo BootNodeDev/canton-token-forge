@@ -219,14 +219,25 @@ What each route returns:
 | allocation factory | empty | `InstrumentConfig` |
 | allocation execute-transfer / withdraw | empty | the escrow `LockedToken` |
 | allocation cancel | the expire-lock signal | the escrow `LockedToken` |
-| transfer withdraw / allocation withdraw whose escrow is gone | the reclaimed-escrow report | nothing |
-| allocation cancel whose escrow is gone | the report + the expire-lock signal | nothing |
+| transfer withdraw / allocation withdraw whose escrow is archived | the reclaimed-escrow report | nothing |
+| allocation cancel whose escrow is archived | the report + the expire-lock signal | nothing |
+| any of these whose escrow lookup finds nothing at all | 404 `escrow not found` | nothing |
 
-The last two rows exist because the escrow has a second exit: after the
+The last three rows exist because the escrow has a second exit: after the
 settlement deadline its owner can reclaim it through `LockedToken_ExpireLock`
 without going near the record. `findEscrow` already resolves the escrow on every
 one of these routes, so the service reports what it found, and the choice skips
 the escrow rather than reaching for a contract that is gone.
+
+What it reports is the state, not the mere absence of an answer. `findEscrow`
+returns the participant's three: `live`, `archived`, and `absent`. Only
+`archived` earns the report, because only the archive event is evidence the
+escrow was ever there and is gone now. The participant supplies that evidence
+for free, since a by-id read answers an archived contract 200 with its created
+event and an archive event beside it, while a contract of another template, one
+the admin cannot see, and one that never existed all answer 404 alike. Reading
+that 404 as a reclaim is what let a `LOCKED_TOKEN_TEMPLATE_ID` naming another
+real template manufacture a report for every live escrow on the ledger.
 
 Honoring a report nothing on-ledger backs is safe under two rules, both enforced
 by `returnEscrowUnlessReclaimed` and its callers. First, the reported branch runs

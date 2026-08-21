@@ -46,13 +46,13 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `941f738`, exit 0:
+All three suites were re-run at commit `7a56968`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **197 tests**, 10 files | nothing, in-process server with a stub ledger |
-| End-to-end | **17 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
+| Registry unit | **203 tests**, 10 files | nothing, in-process server with a stub ledger |
+| End-to-end | **18 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
 asks the service for the factory and each choice context, then submits the
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-786 lines of production Daml, 1665 lines of Daml tests, 1675 lines of TypeScript
-service, 4148 lines of TypeScript tests. MIT licensed. Pre-release: the package
+786 lines of production Daml, 1665 lines of Daml tests, 1720 lines of TypeScript
+service, 4284 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -341,13 +341,28 @@ Three context keys are ours rather than the standard's:
 | allocation factory | empty | `InstrumentConfig` |
 | allocation execute-transfer, withdraw | empty | the escrow `LockedToken` |
 | allocation cancel | the early-release signal | the escrow `LockedToken` |
-| transfer or allocation withdraw whose escrow is gone | the reclaimed-escrow report | nothing |
-| allocation cancel whose escrow is gone | the report and the early-release signal | nothing |
+| transfer or allocation withdraw whose escrow the participant reports archived | the reclaimed-escrow report | nothing |
+| allocation cancel whose escrow the participant reports archived | the report and the early-release signal | nothing |
+| any of these whose escrow lookup finds nothing at all | 404 `escrow not found` | nothing |
 
-The last two rows are what keep a record clearable after its owner reclaims the
+The last three rows are what keep a record clearable after its owner reclaims the
 escrow directly, which the settlement deadline lets them do. The choice then
-skips the escrow instead of reaching for a contract that is gone. Nothing
-on-ledger backs the report, so two rules keep it from being forged into an
+skips the escrow instead of reaching for a contract that is gone.
+
+The report is sent only on the participant's own evidence that the escrow was
+archived, never on a lookup that merely found nothing. A by-id read separates
+the two: an archived contract answers 200 with its created event and an archive
+event beside it, while a contract of another template, one this party cannot
+see, and one that never existed all answer 404 alike. Inferring the reclaim from
+the second group would let a `LOCKED_TOKEN_TEMPLATE_ID` naming another template
+the participant really hosts fabricate a report for every live escrow, and a
+client acting on it would clear the record while the funds stayed locked to the
+escrow's own deadline. A participant that has pruned the archive event answers a
+genuine reclaim the same way and so stalls the client on a 404, which is the
+safe direction of the two.
+
+Nothing on-ledger backs the report, so two further rules keep it from being
+forged into an
 abort that would not otherwise be allowed: the reported branch runs the same
 gate the escrow-returning branch would (which is why cancel keeps sending its
 early-release signal), and the report is read only on a choice the escrow's
@@ -379,8 +394,8 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 197 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
-| End-to-end, 17 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
+| Registry unit, 203 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
+| End-to-end, 18 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers, including a misconfigured escrow template id that must not produce a reclaim report |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
 neither reads nor disturbs seeded state, and it reports every test as skipped
@@ -397,7 +412,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 60 Daml scenarios
-cd registry && npm install && npm test   # 197 unit tests, no ledger needed
+cd registry && npm install && npm test   # 203 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
@@ -469,11 +484,13 @@ Stated plainly, because they are what an evaluation turns on.
   route. Unvetting is not one of these: vetting gates what a participant will
   accept in a transaction, and an unvetted package's contracts still read back,
   so a service that submits nothing serves them unchanged.
-- **A template id naming a real but different template is not caught.** It
-  resolves, so no boot check can see it, and every read through it comes back as
-  an absent contract, which the abort choice-contexts report as an escrow its
-  owner already reclaimed. Closing it means requiring positive evidence of the
-  archive rather than inferring the reclaim from an absent contract. Tracked.
+- **A template id naming a real but different template is not caught at boot.**
+  It resolves, so no startup check can see it, and every read through it comes
+  back as a contract the participant cannot find. That now fails closed on every
+  route rather than silently: the escrow-dependent contexts answer `404 escrow
+  not found` instead of reporting a reclaim, and a misconfigured preapproval id
+  costs a direct transfer its fast path rather than its safety. The service is
+  broken under such a configuration, but it is broken loudly.
 - **No CI pipeline yet.** The three suites are run by hand. Tracked.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
