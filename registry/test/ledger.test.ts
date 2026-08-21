@@ -114,6 +114,131 @@ describe('HttpLedgerClient.activeContracts', () => {
       /503/,
     )
   })
+
+  it('carries the participant wording of a refused query without putting it in the message', async () => {
+    const body = '{"code":"PACKAGE_NAMES_NOT_FOUND","cause":"...no-such-package..."}'
+    const { fakeFetch } = recordingFetch({
+      [LEDGER_END]: ledgerEndAt(1),
+      [ACTIVE_CONTRACTS]: { ok: false, status: 404, text: async () => body },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const err = await client
+      .activeContracts('#no-such-package:M:InstrumentConfig', 'admin::1')
+      .then(
+        () => undefined,
+        (e) => e,
+      )
+    expect(err).toBeInstanceOf(LedgerRequestError)
+    // The startup check attributes a fault to one configured variable by this
+    // code, which the status alone cannot distinguish from any other 404.
+    expect((err as LedgerRequestError).detail).toBe(body)
+    // And it stays off the message, which the terminal error handler answers
+    // the client with.
+    expect((err as LedgerRequestError).message).not.toContain('PACKAGE_NAMES_NOT_FOUND')
+  })
+
+  it('still classifies a refusal whose body cannot be read', async () => {
+    // A body that arrives broken is a network fault on top of the refusal, and
+    // reading it inside the throw would replace the status the startup checks
+    // classify on with whatever the stream failed with. Both classifiers key
+    // off this type, and both fail open without it: an authorization refusal
+    // stops being fatal, and so does an unresolvable template id.
+    const { fakeFetch } = recordingFetch({
+      [LEDGER_END]: ledgerEndAt(1),
+      [ACTIVE_CONTRACTS]: {
+        ok: false,
+        status: 403,
+        text: async () => {
+          throw new TypeError('terminated')
+        },
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const err = await client.activeContracts('pkg:M:InstrumentConfig', 'admin::1').then(
+      () => undefined,
+      (e) => e,
+    )
+    expect(err).toBeInstanceOf(LedgerRequestError)
+    expect((err as LedgerRequestError).ledgerStatus).toBe(403)
+  })
+})
+
+describe('HttpLedgerClient.probeTemplate', () => {
+  it('resolves an id against the participant without transferring a contract', async () => {
+    const { fakeFetch, calls } = recordingFetch({
+      [ACTIVE_CONTRACTS]: { ok: true, json: async () => [] },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await client.probeTemplate('pkg:M:LockedToken', 'admin::1')
+
+    // No ledger end: the query is snapshotted at the beginning of the ledger,
+    // where nothing is active, so it answers empty however many contracts the
+    // template holds and the current offset is of no use to it.
+    expect(calls.map(([url]) => new URL(url).pathname)).toEqual([ACTIVE_CONTRACTS])
+    const body = JSON.parse(calls[0][1].body as string)
+    expect(body.activeAtOffset).toBe(0)
+    // And no disclosure blob, which is the bulk of a row and is what a
+    // counterparty needs rather than a check that reads nothing back.
+    const filter = body.filter.filtersByParty['admin::1'].cumulative[0].identifierFilter
+    expect(filter.TemplateFilter.value).toEqual({
+      templateId: 'pkg:M:LockedToken',
+      includeCreatedEventBlob: false,
+    })
+  })
+
+  it('resolves an id whose answer arrives unreadable', async () => {
+    // The participant answered, which is the whole verdict: a body that breaks
+    // on the way in says nothing about the id, and treating it as a failure
+    // would downgrade a resolved id to one the check could not put a question
+    // to, on the endpoint whose answer is deliberately empty.
+    const { fakeFetch } = recordingFetch({
+      [ACTIVE_CONTRACTS]: {
+        ok: true,
+        text: async () => {
+          throw new TypeError('terminated')
+        },
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(client.probeTemplate('pkg:M:LockedToken', 'admin::1')).resolves.toBeUndefined()
+  })
+
+  it('carries the participant wording of an id it cannot resolve', async () => {
+    const body = '{"code":"NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME","cause":"..."}'
+    const { fakeFetch } = recordingFetch({
+      [ACTIVE_CONTRACTS]: { ok: false, status: 404, text: async () => body },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const err = await client.probeTemplate('#pkg:M:NoSuchTemplate', 'admin::1').then(
+      () => undefined,
+      (e) => e,
+    )
+    // The whole verdict rests on this code reaching the caller: without it the
+    // startup check cannot tell an id the participant does not host from a
+    // participant that answered 404 for a reason of its own, and fails open.
+    expect((err as LedgerRequestError).detail).toBe(body)
+    expect((err as LedgerRequestError).message).not.toContain('NO_TEMPLATES')
+  })
 })
 
 // The shape of a by-contract-id response, recorded from Canton 3.5.6: the

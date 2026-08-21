@@ -17,10 +17,16 @@ export interface PartyDetails {
 // named `status`: the terminal error handler answers a request with any status
 // it finds on the error, and the participant's own status is never the one a
 // client should be told (an expired ledger token is not the caller's 403).
+//
+// `detail` is the participant's own response body, kept for the same reason and
+// held to the same rule: it names which error the participant raised, which one
+// status can stand for several of, but it is its wording and not ours, so it
+// stays off `message`, which the terminal handler does answer the client with.
 export class LedgerRequestError extends Error {
   constructor(
     readonly ledgerStatus: number,
     message: string,
+    readonly detail?: string,
   ) {
     super(message)
     this.name = 'LedgerRequestError'
@@ -59,6 +65,13 @@ export interface LedgerClient {
   // whose cost does not move with what the admin is a stakeholder of. The
   // readiness probe uses it for that reason.
   ledgerEnd(): Promise<number>
+  // Put a configured template id to the participant and read nothing back,
+  // used by the startup check. A template the participant hosts but that has no
+  // contracts answers as one that has thousands, so only the failure carries
+  // meaning, and the query is shaped to transfer no contract either way: a
+  // check that downloaded five active sets to discard them would cost the boot
+  // whatever the admin happens to be a stakeholder of.
+  probeTemplate(templateId: string, party: string): Promise<void>
   // The participant's view of a single party, used by the startup check. Its
   // cost does not move with the ledger, and unlike every other read here it can
   // tell a party the participant does not know from one that simply has no
@@ -116,9 +129,10 @@ interface EventsByContractIdResponse {
   archived?: unknown
 }
 
-// The party-and-template filter both reads send. Requesting the created event
-// blob is what makes a row disclosable to a counterparty later.
-function templateFilter(templateId: string, party: string) {
+// The party-and-template filter every read sends. Requesting the created event
+// blob is what makes a row disclosable to a counterparty later, so both reads
+// ask for it; only the startup probe, which returns no rows at all, does not.
+function templateFilter(templateId: string, party: string, includeCreatedEventBlob = true) {
   return {
     filtersByParty: {
       [party]: {
@@ -126,7 +140,7 @@ function templateFilter(templateId: string, party: string) {
           {
             identifierFilter: {
               TemplateFilter: {
-                value: { templateId, includeCreatedEventBlob: true },
+                value: { templateId, includeCreatedEventBlob },
               },
             },
           },
@@ -183,24 +197,64 @@ export class HttpLedgerClient implements LedgerClient {
     return (body.partyDetails ?? []).map(({ party, isLocal }) => ({ party, isLocal }))
   }
 
-  async activeContracts(templateId: string, party: string): Promise<ContractEntry[]> {
-    const activeAtOffset = await this.ledgerEnd()
+  private async queryActiveContracts(
+    templateId: string,
+    party: string,
+    activeAtOffset: number,
+    includeCreatedEventBlob: boolean,
+  ): Promise<Response> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/state/active-contracts`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({
-        filter: templateFilter(templateId, party),
+        filter: templateFilter(templateId, party, includeCreatedEventBlob),
         verbose: false,
         activeAtOffset,
       }),
     })
-    if (!res.ok) throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`)
+    // The body carries the participant's error code, and a template id it
+    // cannot resolve is only distinguishable from any other 404 by that code,
+    // which is what the startup check reads to attribute the fault to one
+    // configured variable.
+    if (!res.ok) {
+      // Read before constructing, and never let the read fail the throw: a body
+      // that breaks mid-stream would otherwise propagate its own error in place
+      // of this one, and both callers classify on this type. Losing it turns an
+      // authorization refusal and an unresolvable template id alike from fatal
+      // into a warning, which is the direction these checks exist to close.
+      const detail = await res.text().catch(() => undefined)
+      throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`, detail)
+    }
+    return res
+  }
+
+  async activeContracts(templateId: string, party: string): Promise<ContractEntry[]> {
+    const activeAtOffset = await this.ledgerEnd()
+    const res = await this.queryActiveContracts(templateId, party, activeAtOffset, true)
     const rows = (await res.json()) as ActiveContractsRow[]
     return rows.flatMap((r) => {
       const ac = r?.contractEntry?.JsActiveContract
       if (!ac) return []
       return [toEntry(ac.createdEvent, ac.synchronizerId)]
     })
+  }
+
+  // Offset 0 is the beginning of the ledger, where no contract is active yet,
+  // so the participant answers an empty set however many the template holds:
+  // the id is resolved without a single contract crossing the wire, and the
+  // ledger end this query would otherwise be snapshotted at is not read either.
+  // The blob is left out for the same reason, being the bulk of a row's bytes.
+  // Verified on Canton 3.5.12: an id naming a package, module or entity the
+  // participant does not host is refused at offset 0 with the same code and
+  // status as at the ledger end, because the filter is resolved before the
+  // offset is consulted.
+  async probeTemplate(templateId: string, party: string): Promise<void> {
+    const res = await this.queryActiveContracts(templateId, party, 0, false)
+    // The empty set still has to be consumed: an unread body holds its socket
+    // open until the collector gets to it, and the point of this call is to
+    // cost the boot nothing. A body that cannot be read changes no verdict,
+    // since the participant already answered that it resolves the id.
+    await res.text().catch(() => undefined)
   }
 
   async lookupByContractId(

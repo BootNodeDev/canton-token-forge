@@ -4,12 +4,160 @@ import type { Logger } from './logger.js'
 
 const DEFAULT_CHECK_TIMEOUT_MS = 5_000
 
-const TIMED_OUT = Symbol('admin party check timed out')
+const TIMED_OUT = Symbol('startup check timed out')
 
 // The checks report through this rather than logging directly, so a verdict
 // that only arrives after the boot gave up waiting can be reported for what it
 // then is: a warning about a running service, not a refusal to start.
 type Report = (level: 'info' | 'warn' | 'error', obj: object, msg: string) => void
+
+// The environment variable each configured template id came from, which is the
+// only thing that names the fault to whoever has to fix it: the participant
+// reports the id, and the id appears in five variables that all look alike.
+//
+// Keyed on the template-id fields of Config rather than on a hand-written list,
+// so a sixth id cannot be added to the configuration and silently go unchecked
+// here; the Record makes that a type error rather than a gap.
+type TemplateIdKey = Extract<keyof Config, `${string}TemplateId`>
+
+const TEMPLATE_ID_ENV_VARS: Record<TemplateIdKey, string> = {
+  instrumentConfigTemplateId: 'INSTRUMENT_CONFIG_TEMPLATE_ID',
+  transferInstructionTemplateId: 'TRANSFER_INSTRUCTION_TEMPLATE_ID',
+  preapprovalTemplateId: 'PREAPPROVAL_TEMPLATE_ID',
+  lockedTokenTemplateId: 'LOCKED_TOKEN_TEMPLATE_ID',
+  allocationTemplateId: 'ALLOCATION_TEMPLATE_ID',
+}
+
+// What the participant answers when it cannot resolve a template id: the first
+// for a package name it does not host, the second for a module or entity it
+// does not host within one it does. Both are attributable to our own
+// configuration and to nothing else, which is what makes them fatal where every
+// other failure of the same query is not.
+const UNRESOLVABLE_TEMPLATE_CODES = [
+  'PACKAGE_NAMES_NOT_FOUND',
+  'NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME',
+]
+
+function namesAnUnresolvableTemplate(err: unknown): boolean {
+  if (!(err instanceof LedgerRequestError) || err.detail === undefined) return false
+  return UNRESOLVABLE_TEMPLATE_CODES.some((code) => err.detail?.includes(code))
+}
+
+// Bound a startup check's wall clock and give it a reporter that knows whether
+// the boot is still waiting on it. A participant that drops packets rather than
+// refusing them would otherwise hold the boot open indefinitely, since fetch has
+// no timeout of its own. That is worse than the faults these checks exist to
+// catch: the service would never listen at all, where today it listens and
+// reports itself unready.
+async function withBootTimeout(
+  logger: Logger,
+  timeoutMs: number,
+  label: string,
+  run: (report: Report) => Promise<boolean>,
+): Promise<boolean> {
+  let abandoned = false
+  const report: Report = (level, obj, msg) => {
+    if (!abandoned) return logger[level](obj, msg)
+    // The service is already listening, so nothing here can still stop it.
+    logger[level === 'error' ? 'warn' : level]({ ...obj, afterBootTimeout: true }, msg)
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs)
+  })
+  try {
+    const verdict = await Promise.race([run(report), timedOut])
+    if (verdict !== TIMED_OUT) return verdict
+    abandoned = true
+    logger.warn({ timeoutMs }, `${label} timed out; continuing`)
+    return true
+  } finally {
+    // Promise.race leaves the loser running: without this the timer fires on
+    // every healthy boot and reports a timeout that never happened.
+    clearTimeout(timer)
+  }
+}
+
+// A configured template id the participant cannot resolve fails every read the
+// service makes off it, but only at request time and only as a 500 whose sole
+// clue is the participant's wording in a log line. Putting each id to the
+// participant once at boot turns that into a refusal to start naming the
+// variable at fault, which is what config.ts already does for an id whose form
+// is wrong.
+//
+// This runs before the admin party check for two reasons. The query resolves a
+// template id whether or not the party is one the participant knows, so it needs
+// nothing that check establishes; and the admin check issues this same query for
+// its own purposes, so an unresolvable id reaches it as a failure it reports
+// against ADMIN_PARTY, naming the wrong variable entirely.
+export async function checkTemplateIds(
+  ledger: LedgerClient,
+  config: Pick<Config, TemplateIdKey | 'adminParty'>,
+  logger: Logger,
+  timeoutMs: number = DEFAULT_CHECK_TIMEOUT_MS,
+): Promise<boolean> {
+  return withBootTimeout(logger, timeoutMs, 'template id check', (report) =>
+    runTemplateIdChecks(ledger, config, report),
+  )
+}
+
+async function runTemplateIdChecks(
+  ledger: LedgerClient,
+  config: Pick<Config, TemplateIdKey | 'adminParty'>,
+  report: Report,
+): Promise<boolean> {
+  const entries = Object.entries(TEMPLATE_ID_ENV_VARS) as [TemplateIdKey, string][]
+  // Concurrently, so the queries overlap rather than serialize: one round trip
+  // each and none of them reads the ledger end, so the check costs the boot a
+  // single round trip whatever the number of ids. Every id is put to the
+  // participant even once one of them has already failed: a drifted environment
+  // file is rarely wrong in a single place, and reporting the whole set makes
+  // fixing it one restart instead of one per variable.
+  const verdicts = await Promise.all(
+    entries.map(async ([key, envVar]) => {
+      const templateId = config[key]
+      try {
+        await ledger.probeTemplate(templateId, config.adminParty)
+        return 'resolved' as const
+      } catch (err) {
+        if (namesAnUnresolvableTemplate(err)) {
+          report(
+            'error',
+            // The participant's own wording rides along, as it does on the warn
+            // branch below: the message names the variable to fix, and only the
+            // code inside the error says whether the package was never uploaded
+            // or the module and entity were typed wrong, which are different
+            // repairs. It reaches the log alone, never a client.
+            { err, envVar, templateId },
+            `${envVar} names a template this participant does not host; every read off it would fail`,
+          )
+          return 'unresolvable' as const
+        }
+        // Anything else leaves the question open: an unreachable participant,
+        // or one refusing the read on authorization grounds, says nothing about
+        // the id. The authorization case is a real fault, but it belongs to the
+        // admin party check, which runs next and reads the same endpoint as the
+        // same party, so it answers for it.
+        report(
+          'warn',
+          { err, envVar, templateId },
+          `could not verify ${envVar} against the participant`,
+        )
+        return 'unanswered' as const
+      }
+    }),
+  )
+
+  const ok = !verdicts.includes('unresolvable')
+  // Only the ids the participant actually resolved, so a boot that reached no
+  // participant at all reports the warnings alone. Counting the ids put to it
+  // instead would claim a verification that never happened, which is the one
+  // thing worse than the silent misconfiguration this check exists to catch.
+  const resolved = verdicts.filter((v) => v === 'resolved').length
+  if (ok && resolved > 0) report('info', { count: resolved }, 'template ids verified')
+  return ok
+}
 
 // A participant that refuses a request on authorization grounds answers with
 // one of these; anything else is a fault the service cannot attribute to its
@@ -38,32 +186,9 @@ export async function checkAdminParty(
   logger: Logger,
   timeoutMs: number = DEFAULT_CHECK_TIMEOUT_MS,
 ): Promise<boolean> {
-  let abandoned = false
-  const report: Report = (level, obj, msg) => {
-    if (!abandoned) return logger[level](obj, msg)
-    // The service is already listening, so nothing here can still stop it.
-    logger[level === 'error' ? 'warn' : level]({ ...obj, afterBootTimeout: true }, msg)
-  }
-
-  // A participant that drops packets rather than refusing them would otherwise
-  // hold the boot open indefinitely, since fetch has no timeout of its own.
-  // That is worse than the fault this check exists to catch: the service would
-  // never listen at all, where today it listens and reports itself unready.
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timedOut = new Promise<typeof TIMED_OUT>((resolve) => {
-    timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs)
-  })
-  try {
-    const verdict = await Promise.race([runChecks(ledger, config, report), timedOut])
-    if (verdict !== TIMED_OUT) return verdict
-    abandoned = true
-    logger.warn({ timeoutMs }, 'admin party check timed out; continuing')
-    return true
-  } finally {
-    // Promise.race leaves the loser running: without this the timer fires on
-    // every healthy boot and reports a timeout that never happened.
-    clearTimeout(timer)
-  }
+  return withBootTimeout(logger, timeoutMs, 'admin party check', (report) =>
+    runChecks(ledger, config, report),
+  )
 }
 
 async function runChecks(

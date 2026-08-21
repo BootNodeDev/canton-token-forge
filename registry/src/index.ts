@@ -3,7 +3,7 @@ import { type Config, loadConfig } from './config.js'
 import { HttpLedgerClient } from './ledger.js'
 import { createLogger } from './logger.js'
 import { createServer } from './server.js'
-import { checkAdminParty } from './startup.js'
+import { checkAdminParty, checkTemplateIds } from './startup.js'
 
 const logger = createLogger()
 
@@ -16,9 +16,13 @@ try {
 }
 
 const ledger = new HttpLedgerClient(config, fetch, logger)
-// Refuse to serve a configuration that can only answer empty lists and 404s.
-// Only a fault attributable to the configuration stops the boot here; see the
-// check for why an unreachable participant is left to /readyz instead.
+// Refuse to serve a configuration that can only answer empty lists, 404s and
+// 500s. Only a fault attributable to the configuration stops the boot here; see
+// each check for why an unreachable participant is left to /readyz instead.
+// The template ids go first: their check needs nothing the admin party check
+// establishes, while the admin party check reads off one of them and would
+// report an unresolvable id against ADMIN_PARTY.
+if (!(await checkTemplateIds(ledger, config, logger))) process.exit(1)
 if (!(await checkAdminParty(ledger, config, logger))) process.exit(1)
 
 const app = createServer({ ledger, config, logger })
