@@ -251,6 +251,19 @@ reason the seed script looks the way it does.
   serving and nothing can still stop it starting.
 - All five template ids are package-name form, and the service refuses to start
   otherwise rather than serving empty results from a filter that matches nothing.
+  Each is also put to the participant at boot, because the form being right does
+  not mean the participant hosts it: an id naming a package, module or entity it
+  does not host answers `404 PACKAGE_NAMES_NOT_FOUND` or
+  `404 NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME` on every read, so the
+  service used to start clean and then 500 each route with only the
+  participant's wording to say which of the five was wrong. It now logs
+  `<VARIABLE> names a template this participant does not host` and exits 1,
+  reporting every id at fault in the one boot so a drifted `.env` takes one
+  restart to fix rather than one per variable. The same warn-and-continue rule
+  as above applies to anything the participant does not attribute to the id
+  itself: an unreachable participant, a refused read, or a plain 404 carrying
+  neither code. One consequence worth planning a deploy around: a registry
+  started before its DAR is uploaded now crashloops until the upload lands.
   They are concrete template ids, never interface ids: the choice-context
   handlers read payload fields that exist on the template create arguments and
   not on the standard interface views.
