@@ -254,6 +254,16 @@ describe('fragment-bearing request targets', () => {
     expect(fragment).toEqual(plain)
   })
 
+  // The fragment starts at the FIRST "#", which is where parseurl ends the path
+  // too, so a second one is fragment content rather than a second delimiter.
+  it('cuts at the first number sign when the target carries two', async () => {
+    const target = '/registry/transfer-instruction/v1/transfer-factory'
+    const plain = await sendRaw(port, 'POST', target, '{}')
+    const fragment = await sendRaw(port, 'POST', `${target}#a#b`, '{}')
+    expect(plain.status).toBe(400)
+    expect(fragment).toEqual(plain)
+  })
+
   it('applies the media-type check behind a fragment too', async () => {
     const target = '/registry/transfer-instruction/v1/transfer-factory'
     const plain = await sendRaw(port, 'POST', target)
