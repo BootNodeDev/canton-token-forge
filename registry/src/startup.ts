@@ -108,20 +108,17 @@ async function runTemplateIdChecks(
   report: Report,
 ): Promise<boolean> {
   const entries = Object.entries(TEMPLATE_ID_ENV_VARS) as [TemplateIdKey, string][]
-  // Concurrently, so the queries overlap rather than serialize: each one reads
-  // the ledger end before its own, so the check costs two sequential round
-  // trips whatever the number of ids. Every id is put to the participant even
-  // once one of them has already failed: a drifted environment file is rarely
-  // wrong in a single place, and reporting the whole set makes fixing it one
-  // restart instead of one per variable.
+  // Concurrently, so the queries overlap rather than serialize: one round trip
+  // each and none of them reads the ledger end, so the check costs the boot a
+  // single round trip whatever the number of ids. Every id is put to the
+  // participant even once one of them has already failed: a drifted environment
+  // file is rarely wrong in a single place, and reporting the whole set makes
+  // fixing it one restart instead of one per variable.
   const verdicts = await Promise.all(
     entries.map(async ([key, envVar]) => {
       const templateId = config[key]
       try {
-        // The rows are irrelevant. A template the participant hosts but that
-        // has no contracts yet answers 200 with an empty set, which is what
-        // every clean deploy looks like, so only the failure carries meaning.
-        await ledger.activeContracts(templateId, config.adminParty)
+        await ledger.probeTemplate(templateId, config.adminParty)
         return 'resolved' as const
       } catch (err) {
         if (namesAnUnresolvableTemplate(err)) {
@@ -135,7 +132,8 @@ async function runTemplateIdChecks(
         // Anything else leaves the question open: an unreachable participant,
         // or one refusing the read on authorization grounds, says nothing about
         // the id. The authorization case is a real fault, but it belongs to the
-        // admin party check, which runs next and issues the same query.
+        // admin party check, which runs next and reads the same endpoint as the
+        // same party, so it answers for it.
         report(
           'warn',
           { err, envVar, templateId },

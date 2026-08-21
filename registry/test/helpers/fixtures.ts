@@ -111,6 +111,11 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
   return {
     activeContracts: (templateId: string, party: string) =>
       Promise.resolve(visible(templateId, party)),
+    // A template the participant hosts resolves whether or not it holds
+    // contracts, so the stub answers off the configured ids rather than off
+    // what was seeded: a probe that only passed for a template with contracts
+    // would make a check that refuses every clean deploy look healthy.
+    probeTemplate: () => Promise.resolve(),
     // A by-id read is answered by the participant off the same template filter
     // and the same stakeholder visibility as an active-set query, so a contract
     // of another template, or one this party cannot see, is simply absent.
@@ -136,21 +141,30 @@ export function ledgerFrom(byTemplate: Record<string, StubEntry[]>): LedgerClien
 export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
   ledger: LedgerClient
   queries: [string, string][]
+  probes: [string, string][]
   lookups: [string, string, string][]
   ledgerEnds: number[]
 } {
   const queries: [string, string][] = []
+  // Kept apart from the active-set queries above, so a check that validated a
+  // template id by downloading its contracts is a query rather than a probe.
+  const probes: [string, string][] = []
   const lookups: [string, string, string][] = []
   const ledgerEnds: number[] = []
   const inner = ledgerFrom(byTemplate)
   return {
     queries,
+    probes,
     lookups,
     ledgerEnds,
     ledger: {
       activeContracts: (templateId, party) => {
         queries.push([templateId, party])
         return inner.activeContracts(templateId, party)
+      },
+      probeTemplate: (templateId, party) => {
+        probes.push([templateId, party])
+        return inner.probeTemplate(templateId, party)
       },
       lookupByContractId: (templateId, contractId, party) => {
         lookups.push([templateId, contractId, party])
@@ -171,6 +185,7 @@ export function recordingLedgerFrom(byTemplate: Record<string, StubEntry[]>): {
 // the terminal 5xx error handler and the readiness probe's unavailable branch.
 export const rejectingLedger: LedgerClient = {
   activeContracts: () => Promise.reject(new Error('ledger query failed: 503')),
+  probeTemplate: () => Promise.reject(new Error('ledger query failed: 503')),
   lookupByContractId: () => Promise.reject(new Error('ledger query failed: 503')),
   ledgerEnd: () => Promise.reject(new Error('ledger end query failed: 503')),
   partyDetails: () => Promise.reject(new Error('party lookup failed: 503')),

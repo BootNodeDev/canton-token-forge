@@ -171,6 +171,55 @@ describe('HttpLedgerClient.activeContracts', () => {
   })
 })
 
+describe('HttpLedgerClient.probeTemplate', () => {
+  it('resolves an id against the participant without transferring a contract', async () => {
+    const { fakeFetch, calls } = recordingFetch({
+      [ACTIVE_CONTRACTS]: { ok: true, json: async () => [] },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await client.probeTemplate('pkg:M:LockedToken', 'admin::1')
+
+    // No ledger end: the query is snapshotted at the beginning of the ledger,
+    // where nothing is active, so it answers empty however many contracts the
+    // template holds and the current offset is of no use to it.
+    expect(calls.map(([url]) => new URL(url).pathname)).toEqual([ACTIVE_CONTRACTS])
+    const body = JSON.parse(calls[0][1].body as string)
+    expect(body.activeAtOffset).toBe(0)
+    // And no disclosure blob, which is the bulk of a row and is what a
+    // counterparty needs rather than a check that reads nothing back.
+    const filter = body.filter.filtersByParty['admin::1'].cumulative[0].identifierFilter
+    expect(filter.TemplateFilter.value).toEqual({
+      templateId: 'pkg:M:LockedToken',
+      includeCreatedEventBlob: false,
+    })
+  })
+
+  it('carries the participant wording of an id it cannot resolve', async () => {
+    const body = '{"code":"NO_TEMPLATES_FOR_PACKAGE_NAME_AND_QUALIFIED_NAME","cause":"..."}'
+    const { fakeFetch } = recordingFetch({
+      [ACTIVE_CONTRACTS]: { ok: false, status: 404, text: async () => body },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const err = await client.probeTemplate('#pkg:M:NoSuchTemplate', 'admin::1').then(
+      () => undefined,
+      (e) => e,
+    )
+    // The whole verdict rests on this code reaching the caller: without it the
+    // startup check cannot tell an id the participant does not host from a
+    // participant that answered 404 for a reason of its own, and fails open.
+    expect((err as LedgerRequestError).detail).toBe(body)
+    expect((err as LedgerRequestError).message).not.toContain('NO_TEMPLATES')
+  })
+})
+
 // The shape of a by-contract-id response, recorded from Canton 3.5.6: the
 // created event and its synchronizer id sit under `created`, and `archived` is
 // null for a contract that is still active.

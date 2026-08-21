@@ -65,6 +65,13 @@ export interface LedgerClient {
   // whose cost does not move with what the admin is a stakeholder of. The
   // readiness probe uses it for that reason.
   ledgerEnd(): Promise<number>
+  // Put a configured template id to the participant and read nothing back,
+  // used by the startup check. A template the participant hosts but that has no
+  // contracts answers as one that has thousands, so only the failure carries
+  // meaning, and the query is shaped to transfer no contract either way: a
+  // check that downloaded five active sets to discard them would cost the boot
+  // whatever the admin happens to be a stakeholder of.
+  probeTemplate(templateId: string, party: string): Promise<void>
   // The participant's view of a single party, used by the startup check. Its
   // cost does not move with the ledger, and unlike every other read here it can
   // tell a party the participant does not know from one that simply has no
@@ -122,9 +129,10 @@ interface EventsByContractIdResponse {
   archived?: unknown
 }
 
-// The party-and-template filter both reads send. Requesting the created event
-// blob is what makes a row disclosable to a counterparty later.
-function templateFilter(templateId: string, party: string) {
+// The party-and-template filter every read sends. Requesting the created event
+// blob is what makes a row disclosable to a counterparty later, so both reads
+// ask for it; only the startup probe, which returns no rows at all, does not.
+function templateFilter(templateId: string, party: string, includeCreatedEventBlob = true) {
   return {
     filtersByParty: {
       [party]: {
@@ -132,7 +140,7 @@ function templateFilter(templateId: string, party: string) {
           {
             identifierFilter: {
               TemplateFilter: {
-                value: { templateId, includeCreatedEventBlob: true },
+                value: { templateId, includeCreatedEventBlob },
               },
             },
           },
@@ -189,13 +197,17 @@ export class HttpLedgerClient implements LedgerClient {
     return (body.partyDetails ?? []).map(({ party, isLocal }) => ({ party, isLocal }))
   }
 
-  async activeContracts(templateId: string, party: string): Promise<ContractEntry[]> {
-    const activeAtOffset = await this.ledgerEnd()
+  private async queryActiveContracts(
+    templateId: string,
+    party: string,
+    activeAtOffset: number,
+    includeCreatedEventBlob: boolean,
+  ): Promise<Response> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/state/active-contracts`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({
-        filter: templateFilter(templateId, party),
+        filter: templateFilter(templateId, party, includeCreatedEventBlob),
         verbose: false,
         activeAtOffset,
       }),
@@ -213,12 +225,31 @@ export class HttpLedgerClient implements LedgerClient {
       const detail = await res.text().catch(() => undefined)
       throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`, detail)
     }
+    return res
+  }
+
+  async activeContracts(templateId: string, party: string): Promise<ContractEntry[]> {
+    const activeAtOffset = await this.ledgerEnd()
+    const res = await this.queryActiveContracts(templateId, party, activeAtOffset, true)
     const rows = (await res.json()) as ActiveContractsRow[]
     return rows.flatMap((r) => {
       const ac = r?.contractEntry?.JsActiveContract
       if (!ac) return []
       return [toEntry(ac.createdEvent, ac.synchronizerId)]
     })
+  }
+
+  // Offset 0 is the beginning of the ledger, where no contract is active yet,
+  // so the participant answers an empty set however many the template holds:
+  // the id is resolved without a single contract crossing the wire, and the
+  // ledger end this query would otherwise be snapshotted at is not read either.
+  // The blob is left out for the same reason, being the bulk of a row's bytes.
+  // Verified on Canton 3.5.12: an id naming a package, module or entity the
+  // participant does not host is refused at offset 0 with the same code and
+  // status as at the ledger end, because the filter is resolved before the
+  // offset is consulted.
+  async probeTemplate(templateId: string, party: string): Promise<void> {
+    await this.queryActiveContracts(templateId, party, 0, false)
   }
 
   async lookupByContractId(

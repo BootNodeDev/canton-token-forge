@@ -182,9 +182,9 @@ function ledgerRefusing(refusals: Record<string, string>): LedgerClient {
   const inner = ledgerFrom(seeded)
   return {
     ...inner,
-    activeContracts: (templateId: string, party: string) => {
+    probeTemplate: (templateId: string, party: string) => {
       const code = refusals[templateId]
-      if (!code) return inner.activeContracts(templateId, party)
+      if (!code) return inner.probeTemplate(templateId, party)
       return Promise.reject(
         new LedgerRequestError(
           404,
@@ -281,8 +281,7 @@ describe('checkTemplateIds', () => {
     // refusing to boot on it turns a participant restart into a crashloop.
     const ledger = {
       ...ledgerFrom(seeded),
-      activeContracts: () =>
-        Promise.reject(new LedgerRequestError(503, 'ledger query failed: 503')),
+      probeTemplate: () => Promise.reject(new LedgerRequestError(503, 'ledger query failed: 503')),
     }
 
     expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
@@ -297,8 +296,7 @@ describe('checkTemplateIds', () => {
     // reporting it fatally here would name the wrong variable.
     const ledger = {
       ...ledgerFrom(seeded),
-      activeContracts: () =>
-        Promise.reject(new LedgerRequestError(403, 'ledger query failed: 403')),
+      probeTemplate: () => Promise.reject(new LedgerRequestError(403, 'ledger query failed: 403')),
     }
 
     expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
@@ -314,8 +312,7 @@ describe('checkTemplateIds', () => {
     // put to a participant that in fact never answered.
     const ledger = {
       ...ledgerFrom(seeded),
-      activeContracts: () =>
-        Promise.reject(new LedgerRequestError(503, 'ledger query failed: 503')),
+      probeTemplate: () => Promise.reject(new LedgerRequestError(503, 'ledger query failed: 503')),
     }
 
     expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
@@ -328,10 +325,10 @@ describe('checkTemplateIds', () => {
     const inner = ledgerFrom(seeded)
     const ledger = {
       ...inner,
-      activeContracts: (templateId: string, party: string) =>
+      probeTemplate: (templateId: string, party: string) =>
         templateId === config.allocationTemplateId
           ? Promise.reject(new LedgerRequestError(503, 'ledger query failed: 503'))
-          : inner.activeContracts(templateId, party),
+          : inner.probeTemplate(templateId, party),
     }
 
     expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
@@ -344,12 +341,12 @@ describe('checkTemplateIds', () => {
 
   it('probes every configured template id as the admin party', async () => {
     const { logger } = recordingLogger()
-    const { ledger, queries } = recordingLedgerFrom(seeded)
+    const { ledger, probes } = recordingLedgerFrom(seeded)
 
     expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
     // An id the check never puts to the participant is an id it cannot
     // validate, so the read set is the assertion.
-    expect(new Set(queries)).toEqual(
+    expect(new Set(probes)).toEqual(
       new Set([
         [config.instrumentConfigTemplateId, config.adminParty],
         [config.transferInstructionTemplateId, config.adminParty],
@@ -359,12 +356,26 @@ describe('checkTemplateIds', () => {
       ]),
     )
   })
+
+  it('validates the ids without reading a single contract', async () => {
+    const { logger } = recordingLogger()
+    const { ledger, queries, ledgerEnds } = recordingLedgerFrom(seeded)
+
+    expect(await checkTemplateIds(ledger, config, logger)).toBe(true)
+    // Three of the five templates are ones no route ever walks in full, and the
+    // admin is a stakeholder on every escrow, instruction and allocation the
+    // registry has ever left open. A check that queried the active set to throw
+    // it away would make the boot cost grow with that backlog, and time out
+    // validating nothing on the deployments that need it most.
+    expect(queries).toEqual([])
+    expect(ledgerEnds).toEqual([])
+  })
 })
 
 describe('checkTemplateIds timeout', () => {
   it('starts with a warning rather than hanging the boot on a participant that never answers', async () => {
     const { logger, warnings, errors } = recordingLogger()
-    const ledger = { ...ledgerFrom(seeded), activeContracts: () => new Promise<never>(() => {}) }
+    const ledger = { ...ledgerFrom(seeded), probeTemplate: () => new Promise<never>(() => {}) }
 
     expect(await checkTemplateIds(ledger, config, logger, 5)).toBe(true)
     expect(warnings.length).toBe(1)
