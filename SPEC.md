@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `6f9b995`.
+checked against the tree at commit `2cf480c`.
 
 ---
 
@@ -46,12 +46,12 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `6f9b995`, exit 0:
+All three suites were re-run at commit `2cf480c`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **165 tests**, 10 files | nothing, in-process server with a stub ledger |
+| Registry unit | **166 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **13 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -62,7 +62,7 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 ### Size and status
 
 786 lines of production Daml, 1665 lines of Daml tests, 1482 lines of TypeScript
-service, 3516 lines of TypeScript tests. MIT licensed. Pre-release: the package
+service, 3532 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -374,7 +374,7 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 165 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in |
+| Registry unit, 166 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in |
 | End-to-end, 13 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -392,7 +392,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 60 Daml scenarios
-cd registry && npm install && npm test   # 165 unit tests, no ledger needed
+cd registry && npm install && npm test   # 166 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
