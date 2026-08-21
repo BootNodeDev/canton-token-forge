@@ -126,10 +126,26 @@ describe('absolute-form request targets', () => {
 
   it('validates a body the absolute form carries', async () => {
     const target = '/registry/transfer-instruction/v1/transfer-factory'
+    const originForm = await sendRaw(port, 'POST', target, '{}')
+    const absoluteForm = await sendRaw(port, 'POST', `${authority}${target}`, '{}')
+    // Both a validated and an unvalidated request answer 400 here, so the
+    // status alone proves nothing: the message is what says which one answered.
+    // The validator names the property the spec requires; the handler, reached
+    // only when the request got past the validator unchecked, names its own
+    // first missing field instead.
+    expect(originForm.status).toBe(400)
+    expect(JSON.parse(originForm.body).error).toMatch(
+      /must have required property 'choiceArguments'/,
+    )
+    expect(absoluteForm).toEqual(originForm)
+  })
+
+  it('applies the media-type check to the absolute form too', async () => {
+    const target = '/registry/transfer-instruction/v1/transfer-factory'
     const originForm = await sendRaw(port, 'POST', target)
     const absoluteForm = await sendRaw(port, 'POST', `${authority}${target}`)
-    // The spec makes the body required, so the validator answers before the
-    // route does; unvalidated, the handler's own guard answers 400 instead.
+    // No body means no content type, which the validator refuses before it ever
+    // reads a schema.
     expect(originForm.status).toBe(415)
     expect(absoluteForm).toEqual(originForm)
   })
