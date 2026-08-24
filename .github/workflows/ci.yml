@@ -2,6 +2,7 @@ name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 
@@ -13,6 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # This job's name is the status check context that branch protection or a
+  # ruleset would match on. Renaming it, including a capitalisation change,
+  # stops that check from reporting on every pull request, this rename's own
+  # included.
   registry:
     name: registry
     runs-on: ubuntu-latest
@@ -38,11 +43,10 @@ jobs:
           fi
           git fetch --no-tags --prune origin \
             "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
-          if printf '%s\n' "$changed" \
-             | grep -Eq '^(registry/|\.github/workflows/ci\.yml$)'; then
+          if grep -Eq '^(registry/|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
@@ -83,6 +87,10 @@ jobs:
         working-directory: registry
         run: npm test
 
+  # This job's name is the status check context that branch protection or a
+  # ruleset would match on. Renaming it, including a capitalisation change,
+  # stops that check from reporting on every pull request, this rename's own
+  # included.
   daml:
     name: daml
     runs-on: ubuntu-latest
@@ -112,11 +120,10 @@ jobs:
           fi
           git fetch --no-tags --prune origin \
             "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
-          if printf '%s\n' "$changed" \
-             | grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)'; then
+          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
