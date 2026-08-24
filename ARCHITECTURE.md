@@ -221,15 +221,17 @@ What each route returns:
 | allocation cancel | the expire-lock signal | the escrow `LockedToken` |
 | transfer withdraw / allocation withdraw whose escrow is archived | the reclaimed-escrow report | nothing |
 | allocation cancel whose escrow is archived | the report + the expire-lock signal | nothing |
-| any of these whose escrow lookup finds nothing at all | 404 `escrow not found` | nothing |
+| any other of these whose escrow is not live | 404 `escrow not found` | nothing |
 
 The first two of those rows exist because the escrow has a second exit: after
 the settlement deadline its owner can reclaim it through `LockedToken_ExpireLock`
 without going near the record. `findEscrow` already resolves the escrow on every
 one of these routes, so the service reports what it found, and the choice skips
 the escrow rather than reaching for a contract that is gone. The third row is
-where the lookup found nothing at all, which is not evidence of a reclaim, so
-the route answers 404 rather than report one.
+every other way an escrow can fail to be live: accept, reject and
+execute-transfer, which have nothing left to act on and no authority to clear
+the record without the escrow, and any route whose lookup found nothing at all,
+which is not evidence of a reclaim. Both answer 404 rather than report one.
 
 What it reports is the state, not the mere absence of an answer. `findEscrow`
 returns the participant's three: `live`, `archived`, and `absent`. Only

@@ -343,14 +343,16 @@ Three context keys are ours rather than the standard's:
 | allocation cancel | the early-release signal | the escrow `LockedToken` |
 | transfer or allocation withdraw whose escrow the participant reports archived | the reclaimed-escrow report | nothing |
 | allocation cancel whose escrow the participant reports archived | the report and the early-release signal | nothing |
-| any of these whose escrow lookup finds nothing at all | 404 `escrow not found` | nothing |
+| any other of these whose escrow the participant does not report live | 404 `escrow not found` | nothing |
 
 The first two of those rows are what keep a record clearable after its owner
 reclaims the escrow directly, which the settlement deadline lets them do: the
 choice skips the escrow instead of reaching for a contract that is gone. The
-third row is the opposite case. A lookup that comes back empty says nothing
-about whether the escrow was ever there, so the route refuses instead of
-guessing, and the record stays until its escrow can be accounted for.
+third row is every other way an escrow can fail to be live. Accept, reject and
+execute-transfer have nothing left to act on and no authority to clear the
+record without the escrow. And on any route, a lookup that comes back empty
+says nothing about whether the escrow was ever there, so the route refuses
+instead of guessing, and the record stays until its escrow can be accounted for.
 
 The report is sent only on the participant's own evidence that the escrow was
 archived, never on a lookup that merely found nothing. A by-id read separates
