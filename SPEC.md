@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `941f738`.
+checked against the tree at commit `9f33e82`.
 
 ---
 
@@ -46,7 +46,7 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `807ac4a`, exit 0:
+All three suites were re-run at commit `9f33e82`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
