@@ -254,10 +254,12 @@ Run before declaring work done:
 - `npm test` - the integration suite passes
 - `npm run test:coverage` - when you touched or added templates
 
-Every pull request that touches either package runs the first three of
-these automatically, as the `daml` and `registry` checks. `npm run test:coverage`
-and the registry's `npm run test:e2e` stay manual: the first re-runs Splice's
-own suites, and the second needs a live participant.
+A pull request that touches `daml/` or the root build inputs runs the first
+three of these automatically, as the `daml` check. One that touches
+`registry/` runs that package's own lint, typecheck, and unit suite as the
+`registry` check, not the root commands above. `npm run test:coverage` and the
+registry's `npm run test:e2e` stay manual: the first re-runs Splice's own
+suites, and the second needs a live participant.
 
 ## References
 

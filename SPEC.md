@@ -509,11 +509,13 @@ Stated plainly, because they are what an evaluation turns on.
   holding a null `decimals` and the static `supportedApis`. Response validation
   is off, so nothing catches it on the way out; get-by-id escapes only because
   no id can match such a row.
-- **Two of the four suites are still run by hand.** Every pull request that
-  touches either package runs the Daml script suite and the registry unit
-  suite. The registry e2e suite needs a live participant, and
-  `npm run test:coverage` re-runs Splice's own suites, so neither is on the
-  pull-request path.
+- **One of the three suites above is still run by hand, and so is a further
+  check outside them.** A pull request that touches `daml/` runs the Daml
+  script suite as the `daml` check; one that touches `registry/` runs the
+  registry unit suite as the `registry` check. The end-to-end suite needs a
+  live participant, so it stays off the pull-request path, and so does
+  `npm run test:coverage`, which re-runs Splice's own suites and is not one of
+  the three above.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 
