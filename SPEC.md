@@ -46,12 +46,12 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `7a56968`, exit 0:
+All three suites were re-run at commit `807ac4a`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **203 tests**, 10 files | nothing, in-process server with a stub ledger |
+| Registry unit | **204 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **18 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-786 lines of production Daml, 1665 lines of Daml tests, 1720 lines of TypeScript
-service, 4284 lines of TypeScript tests. MIT licensed. Pre-release: the package
+786 lines of production Daml, 1665 lines of Daml tests, 1724 lines of TypeScript
+service, 4312 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -397,7 +397,7 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 203 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
+| Registry unit, 204 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
 | End-to-end, 18 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers, including a misconfigured escrow template id that must not produce a reclaim report |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -415,7 +415,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 60 Daml scenarios
-cd registry && npm install && npm test   # 203 unit tests, no ledger needed
+cd registry && npm install && npm test   # 204 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
