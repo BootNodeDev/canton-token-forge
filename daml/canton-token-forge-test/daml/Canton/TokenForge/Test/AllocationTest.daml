@@ -374,7 +374,7 @@ allocationWithdrawClearsRecordAfterEscrowReclaim = do
   wd <- submit alice $ exerciseCmd allocCid Allocation_Withdraw with extraArgs = escrowReclaimedArgs
   wd.senderHoldingCids === []
   gone <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
-  assertMsg "the withdrawn allocation is archived" (isNone gone)
+  assertMsg "the withdrawn allocation is archived" (isSome gone)
 
 -- The same through the jointly-authorized cancel, which is the other abort the
 -- executor and counterparties can reach.
