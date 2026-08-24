@@ -525,6 +525,30 @@ describe('HttpLedgerClient.lookupByContractId', () => {
 
     expect(found.state).toBe('live')
   })
+
+  // The archive event alone is enough, because it is the sole evidence a
+  // reclaim report rests on and a missing created event contradicts none of
+  // it. If a participant ever answers with the archive event by itself (its
+  // pruning is by offset, so the two events of one contract need not survive
+  // together), gating on the created event would read a genuine reclaim as
+  // absent, stalling the abort contexts on a 404 for a record that could then
+  // never be cleared.
+  it('answers archived when the archive event arrives without its created event', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: true,
+        json: async () => ({ archived: { archivedEvent: { contractId: '00locked', offset: 21 } } }),
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(
+      client.lookupByContractId('pkg:Canton.TokenForge.Locked:LockedToken', '00locked', 'admin::1'),
+    ).resolves.toEqual({ state: 'archived' })
+  })
 })
 
 const ADMIN = 'admin::1220620ff05a58be80fcc36c085660b788ec6380759d88f1ec72547ed38d3d6c7656'
