@@ -288,10 +288,10 @@ export class HttpLedgerClient implements LedgerClient {
     // answer 404 CONTRACT_EVENTS_NOT_FOUND, and an id it cannot parse answers
     // 400 naming the contract_id field. Every other failure is a fault of ours
     // or the ledger's and must not be reported to a caller as an absent
-    // contract: the abort choice-contexts turn an absent escrow into a positive
-    // report that its owner reclaimed it, and a request the participant would
-    // not even process must not manufacture that report for an escrow that is
-    // sitting right there. So both statuses are matched on what the participant
+    // contract: absence is a claim about the ledger, and a request the
+    // participant would not even process supports no such claim, so answering
+    // one hands the routes a verdict on a contract that may be sitting right
+    // there. So both statuses are matched on what the participant
     // named, never on the status alone: a participant that does not serve this
     // endpoint answers a path-level 404, one that does not host the package or
     // the qualified name answers 404 too (PACKAGE_NAMES_NOT_FOUND,
@@ -306,8 +306,8 @@ export class HttpLedgerClient implements LedgerClient {
     // client's own typo with a 500. An id the service sourced is the opposite
     // case: the only one is the escrow lookup, which reads the cid out of a
     // record's payload, and an unparseable payload field means the payload is
-    // not the shape it was cast to. Reading that as a miss would manufacture a
-    // reclaim report for an escrow sitting live on the ledger, so it raises.
+    // not the shape it was cast to. Reading a fault of ours as a miss would
+    // answer for the ledger on an escrow that may still be live, so it raises.
     // Matching on the participant's wording fails safe either way: if it is
     // ever reworded, the id is raised again rather than read as a miss.
     //

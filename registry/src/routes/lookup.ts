@@ -110,12 +110,12 @@ export function findEscrow(
 ): Promise<ContractLookup<LockedTokenPayload>> {
   // Deliberately not routed through findByContractId: this is the one lookup
   // whose id the service read out of a record's own payload rather than off a
-  // client, and the only one whose absent contract the abort contexts turn into
-  // a positive report that the escrow's owner already reclaimed it. The payload
-  // is an unchecked cast, so a lockedCid that is missing or malformed says the
-  // contract is not the template it was read as. Withholding the client-id flag
-  // is what makes the participant's refusal raise there instead of becoming
-  // that report for an escrow that is still live.
+  // client, and the only one that returns all three states rather than
+  // collapsing them. The payload is an unchecked cast, so a lockedCid the
+  // participant cannot parse says the contract is not the template it was read
+  // as. Withholding the client-id flag is what makes that refusal raise instead
+  // of coming back as an absent escrow, reporting a fault of ours as a contract
+  // the ledger simply does not hold.
   return ledger.lookupByContractId(
     config.lockedTokenTemplateId,
     lockedCid,

@@ -517,10 +517,10 @@ describe('transfer-instruction choice-contexts', () => {
     expect(res.body.disclosedContracts).toEqual([])
   })
 
-  // A refused escrow read is a fault of ours, and the withdraw context turns an
-  // absent escrow into a positive report that the sender reclaimed it. The
-  // client would archive the record on that report while the escrow it names is
-  // sitting on the ledger untouched, so the read has to fail loudly instead.
+  // A refused escrow read is a fault of ours, not an answer about the escrow.
+  // Reading it as one would 404 the withdraw context for an instruction whose
+  // escrow is sitting on the ledger untouched, hiding a broken read behind a
+  // routine not-found, so the read has to fail loudly instead.
   it('fails the withdraw context rather than reporting a reclaim when the escrow read is refused', async () => {
     const base = ledgerFrom({
       [config.transferInstructionTemplateId]: [instructionEntry()],
@@ -544,8 +544,8 @@ describe('transfer-instruction choice-contexts', () => {
 
   // The two lookups a choice-context makes differ in where their id came from,
   // and only the client's may be forgiven an id the participant cannot parse.
-  // Flagging the escrow lookup as well would let a malformed lockedCid read as
-  // an absent escrow, which this route reports as a positive reclaim.
+  // Flagging the escrow lookup as well would read a payload that is not the
+  // shape it was cast to as an escrow the ledger simply does not hold.
   it("marks only the client's path parameter as a client-supplied contract id", async () => {
     const base = ledgerFrom({
       [config.transferInstructionTemplateId]: [instructionEntry()],
