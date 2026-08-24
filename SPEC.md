@@ -5,7 +5,8 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `9f33e82`.
+checked against the tree at commit `9f33e82`, apart from what section 9 says
+about the pull-request checks: the workflow that runs them landed after it.
 
 ---
 
