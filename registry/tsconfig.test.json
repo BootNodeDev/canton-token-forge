@@ -1,0 +1,17 @@
+{
+  // The build config emits dist/, so it is scoped to src/ and typechecks none
+  // of test/. vitest strips types rather than checking them, and its default
+  // config excludes test/e2e/** entirely, so without this project a hard type
+  // error in a suite passes lint, build and test alike.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    // The suites are resolved by vitest, not by node, so they import
+    // extensionless ("../src/server"). NodeNext would reject every one of
+    // those; src/ is still checked under NodeNext by the build config.
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["src", "test", "vitest.config.ts", "vitest.e2e.config.ts"]
+}

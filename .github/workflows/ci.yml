@@ -79,6 +79,16 @@ jobs:
         working-directory: registry
         run: npm run build
 
+      # npm run build emits dist/ and so is scoped to src/. Nothing else
+      # typechecks test/: vitest strips types instead of checking them, its
+      # default config excludes test/e2e/** from the run, and Biome does not
+      # typecheck at all. Without this step a hard type error in a suite is
+      # green on all three.
+      - name: Typecheck the suites
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm run typecheck:test
+
       # vitest run, not the e2e config: test:e2e needs a live participant and
       # skips itself when nothing answers, which would report green having
       # verified nothing.
