@@ -509,7 +509,10 @@ Stated plainly, because they are what an evaluation turns on.
   holding a null `decimals` and the static `supportedApis`. Response validation
   is off, so nothing catches it on the way out; get-by-id escapes only because
   no id can match such a row.
-- **No CI pipeline yet.** The three suites are run by hand. Tracked.
+- **Two of the four suites are still run by hand.** Every pull request runs the
+  Daml script suite and the registry unit suite. The registry e2e suite needs a
+  live participant, and `npm run test:coverage` re-runs Splice's own suites, so
+  neither is on the pull-request path.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 
