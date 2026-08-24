@@ -15,15 +15,18 @@ source versions.env   # provides SPLICE_TAG
 REPO="https://github.com/canton-network/splice.git"
 DARS="deps/splice-daml/dars"
 
-# Both fetch paths retry. This is the only network step in the setup, it has
-# nothing to resume from, and on a cold CI cache a single DNS or 5xx blip would
-# otherwise fail the run outright.
+# Both fetch paths retry. This is the only network step in the setup and it has
+# nothing to resume from, so on a cold CI cache a single DNS or 5xx blip is
+# worth a second attempt rather than a failed run. A third is not: the failure
+# that is not a blip is a transport that stays broken for as long as that
+# environment does, and every attempt pays for it with a full transfer before
+# the tarball fallback below is even reached.
 retry() {
-  local attempt
-  for attempt in 1 2 3; do
+  local attempt max=2
+  for ((attempt = 1; attempt <= max; attempt++)); do
     if "$@"; then return 0; fi
-    echo "attempt ${attempt} of 3 failed: $*" >&2
-    if [ "$attempt" -lt 3 ]; then sleep 5; fi
+    echo "attempt ${attempt} of ${max} failed: $*" >&2
+    if [ "$attempt" -lt "$max" ]; then sleep 5; fi
   done
   return 1
 }
