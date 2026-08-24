@@ -319,7 +319,7 @@ jobs:
       - name: Restore vendored deps
         id: deps
         if: steps.scope.outputs.run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: deps
           key: deps-${{ runner.os }}-${{ steps.splice.outputs.sha }}-${{ hashFiles('versions.env', 'scripts/fetch-dep.sh') }}
@@ -339,6 +339,21 @@ jobs:
             test -f "$path"
             echo "ok: $path -> $(readlink "$path")"
           done
+
+      # actions/cache's own post step saves even when the job has already
+      # failed, and this key has no restore-keys, so a fetch-dep.sh that dies
+      # partway through would publish a half-vendored deps/ that every later
+      # run for the same tag hits exactly, skipping the vendor step and
+      # failing the verification above with no key input left to change.
+      # Saving here instead, once the layout is verified, keeps a broken tree
+      # out of the cache. A step-level `if:` applies success() on its own; it
+      # is spelled out here because it is the half doing that work.
+      - name: Save vendored deps
+        if: success() && steps.scope.outputs.run == 'true' && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: deps
+          key: ${{ steps.deps.outputs.cache-primary-key }}
 
       - name: Build
         if: steps.scope.outputs.run == 'true'
