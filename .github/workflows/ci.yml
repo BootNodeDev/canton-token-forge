@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "Not a pull request: verifying unconditionally."
-            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
           git fetch --no-tags --prune origin \
@@ -43,9 +43,9 @@ jobs:
           echo "$changed"
           if printf '%s\n' "$changed" \
              | grep -Eq '^(registry/|\.github/workflows/ci\.yml$)'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
-            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "run=false" | tee -a "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-node@v4
