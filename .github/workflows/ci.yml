@@ -172,7 +172,8 @@ jobs:
           done
           tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
           url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
-          curl -SLf "$url" --output "${RUNNER_TEMP}/${tarball}"
+          curl -SLf --retry 3 --retry-all-errors --retry-delay 5 \
+            "$url" --output "${RUNNER_TEMP}/${tarball}"
           echo "${DPM_TARBALL_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
           mkdir -p "${RUNNER_TEMP}/dpm-extracted"
           tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/dpm-extracted" --strip-components 1
