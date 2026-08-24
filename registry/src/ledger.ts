@@ -336,20 +336,20 @@ export class HttpLedgerClient implements LedgerClient {
     }
     if (!res.ok) throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`)
     const body = (await res.json()) as EventsByContractIdResponse
-    // An archived contract is still answered with its created event, so the
-    // archive event is the only thing separating it from a live one. Verified
-    // on Canton 3.5.12: `archived` is null on a live contract and holds the
-    // event under `archivedEvent` on an archived one, and the template filter
-    // is applied to both alike, so a contract of another template is refused
-    // above rather than answered here. That is what makes the archive event
-    // evidence about the configured template without comparing a
-    // package-id-qualified id from the response against a configuration that
-    // names the package. The test is on the event and not on the field around
-    // it because this answer is the sole authority for a reclaim report: were
-    // that field ever filled with something else for a live contract, a bare
-    // presence check would report every live escrow reclaimed.
-    if (!body.created) return { state: 'absent' }
+    // The archive event is the whole evidence a reclaim report rests on, so it
+    // is tested first and on the event itself, not on the field around it.
+    // Verified on Canton 3.5.12: `archived` is null on a live contract and holds
+    // the event under `archivedEvent` on an archived one, and the template filter
+    // is applied to both alike, so the event proves the contract existed under
+    // the configured template without comparing a package-id-qualified id from
+    // the response against a configuration that names the package. Testing the
+    // field instead would be a bare presence check: were it ever filled with
+    // something else for a live contract, every live escrow would read as
+    // reclaimed. An archived contract is normally answered with its created
+    // event as well, but a participant that has pruned that event still answers
+    // the archive, and an archive is a reclaim, not an absent contract.
     if (body.archived?.archivedEvent) return { state: 'archived' }
+    if (!body.created) return { state: 'absent' }
     return { state: 'live', entry: toEntry(body.created.createdEvent, body.created.synchronizerId) }
   }
 
