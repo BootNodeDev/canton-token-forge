@@ -267,17 +267,20 @@ describe('HttpLedgerClient.lookupByContractId', () => {
       fakeFetch,
     )
 
-    const entry = await client.lookupByContractId(
+    const lookup = await client.lookupByContractId(
       'pkg:Canton.TokenForge.Locked:LockedToken',
       '00locked',
       'admin::1',
     )
 
-    expect(entry).toMatchObject({
-      contractId: '00locked',
-      createdEventBlob: 'BLOB-LOCK',
-      synchronizerId: 'sync-1',
-      payload: { amount: '10.0' },
+    expect(lookup).toMatchObject({
+      state: 'live',
+      entry: {
+        contractId: '00locked',
+        createdEventBlob: 'BLOB-LOCK',
+        synchronizerId: 'sync-1',
+        payload: { amount: '10.0' },
+      },
     })
 
     expect(calls.map(([url]) => new URL(url).pathname)).toEqual([BY_CONTRACT_ID])
@@ -301,7 +304,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   // The participant answers one 404 (CONTRACT_EVENTS_NOT_FOUND) for all three
   // of: no such contract, a contract this party cannot see, and a contract of
   // a different template. Each is "not found" to the caller.
-  it('returns undefined when the participant reports no such contract', async () => {
+  it('answers absent when the participant reports no such contract', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
@@ -316,9 +319,9 @@ describe('HttpLedgerClient.lookupByContractId', () => {
       logger,
     )
 
-    await expect(
-      client.lookupByContractId('pkg:M:T', '00gone', 'admin::1'),
-    ).resolves.toBeUndefined()
+    await expect(client.lookupByContractId('pkg:M:T', '00gone', 'admin::1')).resolves.toEqual({
+      state: 'absent',
+    })
     // A miss is the routine answer on these routes, so it must stay silent:
     // logging it would bury the rejections below in traffic a caller controls.
     expect(entries).toEqual([])
@@ -408,7 +411,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   // of a path parameter but not its length, so a truncated id reaches the
   // participant and must come back as the 404 any other unresolvable id gets.
   // The caller has to say so, which is what keeps this off the escrow lookups.
-  it("returns undefined when the participant cannot parse a client's contract id", async () => {
+  it("answers absent when the participant cannot parse a client's contract id", async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: false,
@@ -430,7 +433,7 @@ describe('HttpLedgerClient.lookupByContractId', () => {
 
     await expect(
       client.lookupByContractId('pkg:M:T', '00cafe01', 'admin::1', true),
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual({ state: 'absent' })
     expect(entries).toEqual([])
   })
 
@@ -469,10 +472,13 @@ describe('HttpLedgerClient.lookupByContractId', () => {
   })
 
   // An archived contract still answers 200 with its created event; only
-  // `archived` distinguishes it. Returning it would disclose a dead contract
-  // and push the failure to the on-ledger submission, where the active-set
-  // scan this replaced simply never saw it.
-  it('returns undefined for a contract that has been archived', async () => {
+  // `archived` distinguishes it. Returning it live would disclose a dead
+  // contract and push the failure to the on-ledger submission, where the
+  // active-set scan this replaced simply never saw it. It is not absent
+  // either: the archive event is the participant's own evidence that the
+  // contract existed and is gone, which is what an abort context needs before
+  // it may report an escrow reclaimed.
+  it('answers archived for a contract that has been archived', async () => {
     const { fakeFetch } = recordingFetch({
       [BY_CONTRACT_ID]: {
         ok: true,
@@ -489,7 +495,59 @@ describe('HttpLedgerClient.lookupByContractId', () => {
 
     await expect(
       client.lookupByContractId('pkg:Canton.TokenForge.Locked:LockedToken', '00locked', 'admin::1'),
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual({ state: 'archived' })
+  })
+
+  // The archive event is the evidence, not the field that carries it. This
+  // answer is the whole basis of a reclaim report, so reading a non-null
+  // `archived` as archived without looking inside it would let a participant
+  // that ever filled the field for a live contract have every live escrow
+  // reported reclaimed. Live is also the safe way to be wrong here: it hands
+  // the escrow to the choice, which the participant refuses if the contract
+  // really is gone.
+  it('answers live for a contract whose archived field carries no archive event', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: true,
+        json: async () => ({ ...createdEventFor('00locked'), archived: {} }),
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const found = await client.lookupByContractId(
+      'pkg:Canton.TokenForge.Locked:LockedToken',
+      '00locked',
+      'admin::1',
+    )
+
+    expect(found.state).toBe('live')
+  })
+
+  // The archive event alone is enough, because it is the sole evidence a
+  // reclaim report rests on and a missing created event contradicts none of
+  // it. If a participant ever answers with the archive event by itself (its
+  // pruning is by offset, so the two events of one contract need not survive
+  // together), gating on the created event would read a genuine reclaim as
+  // absent, stalling the abort contexts on a 404 for a record that could then
+  // never be cleared.
+  it('answers archived when the archive event arrives without its created event', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: true,
+        json: async () => ({ archived: { archivedEvent: { contractId: '00locked', offset: 21 } } }),
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    await expect(
+      client.lookupByContractId('pkg:Canton.TokenForge.Locked:LockedToken', '00locked', 'admin::1'),
+    ).resolves.toEqual({ state: 'archived' })
   })
 })
 

@@ -41,6 +41,18 @@ export interface ContractEntry<P = unknown> {
   payload: P
 }
 
+// What a by-id lookup found. The escrow lookup needs the archived case kept
+// apart from the absent one: the abort choice-contexts turn a reclaimed escrow
+// into a positive report to the choice, and only an archive event is evidence
+// of a reclaim. Collapsing the two is what let a template id naming another
+// real template manufacture that report for an escrow still sitting on the
+// ledger. Callers that only need to know whether a contract is servable
+// collapse it back themselves.
+export type ContractLookup<P = unknown> =
+  | { state: 'live'; entry: ContractEntry<P> }
+  | { state: 'archived' }
+  | { state: 'absent' }
+
 export interface CreateCommand {
   templateId: string
   createArguments: Record<string, unknown>
@@ -60,7 +72,7 @@ export interface LedgerClient {
     contractId: string,
     party: string,
     clientSuppliedId?: boolean,
-  ): Promise<ContractEntry | undefined>
+  ): Promise<ContractLookup>
   // The cheapest round-trip the participant offers, and the only ledger call
   // whose cost does not move with what the admin is a stakeholder of. The
   // readiness probe uses it for that reason.
@@ -126,7 +138,7 @@ interface EventsByContractIdResponse {
     createdEvent: CreatedEvent
     synchronizerId: string
   }
-  archived?: unknown
+  archived?: { archivedEvent?: unknown } | null
 }
 
 // The party-and-template filter every read sends. Requesting the created event
@@ -262,7 +274,7 @@ export class HttpLedgerClient implements LedgerClient {
     contractId: string,
     party: string,
     clientSuppliedId = false,
-  ): Promise<ContractEntry | undefined> {
+  ): Promise<ContractLookup> {
     const res = await this.fetchFn(`${this.config.ledgerApiUrl}/v2/events/events-by-contract-id`, {
       method: 'POST',
       headers: this.headers(),
@@ -276,10 +288,10 @@ export class HttpLedgerClient implements LedgerClient {
     // answer 404 CONTRACT_EVENTS_NOT_FOUND, and an id it cannot parse answers
     // 400 naming the contract_id field. Every other failure is a fault of ours
     // or the ledger's and must not be reported to a caller as an absent
-    // contract: the abort choice-contexts turn an absent escrow into a positive
-    // report that its owner reclaimed it, and a request the participant would
-    // not even process must not manufacture that report for an escrow that is
-    // sitting right there. So both statuses are matched on what the participant
+    // contract: absence is a claim about the ledger, and a request the
+    // participant would not even process supports no such claim, so answering
+    // one hands the routes a verdict on a contract that may be sitting right
+    // there. So both statuses are matched on what the participant
     // named, never on the status alone: a participant that does not serve this
     // endpoint answers a path-level 404, one that does not host the package or
     // the qualified name answers 404 too (PACKAGE_NAMES_NOT_FOUND,
@@ -294,8 +306,8 @@ export class HttpLedgerClient implements LedgerClient {
     // client's own typo with a 500. An id the service sourced is the opposite
     // case: the only one is the escrow lookup, which reads the cid out of a
     // record's payload, and an unparseable payload field means the payload is
-    // not the shape it was cast to. Reading that as a miss would manufacture a
-    // reclaim report for an escrow sitting live on the ledger, so it raises.
+    // not the shape it was cast to. Reading a fault of ours as a miss would
+    // answer for the ledger on an escrow that may still be live, so it raises.
     // Matching on the participant's wording fails safe either way: if it is
     // ever reworded, the id is raised again rather than read as a miss.
     //
@@ -320,14 +332,25 @@ export class HttpLedgerClient implements LedgerClient {
         )
         throw new LedgerRequestError(res.status, `contract lookup rejected: ${res.status}`)
       }
-      return undefined
+      return { state: 'absent' }
     }
     if (!res.ok) throw new LedgerRequestError(res.status, `ledger query failed: ${res.status}`)
     const body = (await res.json()) as EventsByContractIdResponse
-    // An archived contract is still answered with its created event, so the
-    // archive event is the only thing separating it from a live one.
-    if (!body.created || body.archived) return undefined
-    return toEntry(body.created.createdEvent, body.created.synchronizerId)
+    // The archive event is the whole evidence a reclaim report rests on, so it
+    // is tested first and on the event itself, not on the field around it.
+    // Verified on Canton 3.5.12: `archived` is null on a live contract and holds
+    // the event under `archivedEvent` on an archived one, and the template filter
+    // is applied to both alike, so the event proves the contract existed under
+    // the configured template without comparing a package-id-qualified id from
+    // the response against a configuration that names the package. Testing the
+    // field instead would be a bare presence check: were it ever filled with
+    // something else for a live contract, every live escrow would read as
+    // reclaimed. An archived contract is normally answered with its created
+    // event as well, but a participant that has pruned that event still answers
+    // the archive, and an archive is a reclaim, not an absent contract.
+    if (body.archived?.archivedEvent) return { state: 'archived' }
+    if (!body.created) return { state: 'absent' }
+    return { state: 'live', entry: toEntry(body.created.createdEvent, body.created.synchronizerId) }
   }
 
   // Every submission field lives inside a nested `commands` object; the

@@ -5,7 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `941f738`.
+checked against the tree at commit `9f33e82`.
 
 ---
 
@@ -46,13 +46,13 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `941f738`, exit 0:
+All three suites were re-run at commit `9f33e82`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **197 tests**, 10 files | nothing, in-process server with a stub ledger |
-| End-to-end | **17 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
+| Registry unit | **205 tests**, 10 files | nothing, in-process server with a stub ledger |
+| End-to-end | **18 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
 asks the service for the factory and each choice context, then submits the
@@ -61,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-786 lines of production Daml, 1665 lines of Daml tests, 1675 lines of TypeScript
-service, 4148 lines of TypeScript tests. MIT licensed. Pre-release: the package
+786 lines of production Daml, 1665 lines of Daml tests, 1724 lines of TypeScript
+service, 4336 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -341,17 +341,36 @@ Three context keys are ours rather than the standard's:
 | allocation factory | empty | `InstrumentConfig` |
 | allocation execute-transfer, withdraw | empty | the escrow `LockedToken` |
 | allocation cancel | the early-release signal | the escrow `LockedToken` |
-| transfer or allocation withdraw whose escrow is gone | the reclaimed-escrow report | nothing |
-| allocation cancel whose escrow is gone | the report and the early-release signal | nothing |
+| transfer or allocation withdraw whose escrow the participant reports archived | the reclaimed-escrow report | nothing |
+| allocation cancel whose escrow the participant reports archived | the report and the early-release signal | nothing |
+| any other of these whose escrow the participant does not report live | 404 `escrow not found` | nothing |
 
-The last two rows are what keep a record clearable after its owner reclaims the
-escrow directly, which the settlement deadline lets them do. The choice then
-skips the escrow instead of reaching for a contract that is gone. Nothing
-on-ledger backs the report, so two rules keep it from being forged into an
-abort that would not otherwise be allowed: the reported branch runs the same
-gate the escrow-returning branch would (which is why cancel keeps sending its
-early-release signal), and the report is read only on a choice the escrow's
-owner authorizes. Transfer reject fails the second, being the receiver's alone,
+The first two of those rows are what keep a record clearable after its owner
+reclaims the escrow directly, which the settlement deadline lets them do: the
+choice skips the escrow instead of reaching for a contract that is gone. The
+third row is every other way an escrow can fail to be live. Accept, reject and
+execute-transfer have nothing left to act on and no authority to clear the
+record without the escrow. And on any route, a lookup that comes back empty
+says nothing about whether the escrow was ever there, so the route refuses
+instead of guessing, and the record stays until its escrow can be accounted for.
+
+The report is sent only on the participant's own evidence that the escrow was
+archived, never on a lookup that merely found nothing. A by-id read separates
+the two: an archived contract answers 200 with its created event and an archive
+event beside it, while a contract of another template, one this party cannot
+see, and one that never existed all answer 404 alike. Inferring the reclaim from
+the second group would let a `LOCKED_TOKEN_TEMPLATE_ID` naming another template
+the participant really hosts fabricate a report for every live escrow, and a
+client acting on it would clear the record while the funds stayed locked to the
+escrow's own deadline. A participant that has pruned the archive event answers a
+genuine reclaim the same way and so stalls the client on a 404, which is the
+safe direction of the two.
+
+Nothing on-ledger backs the report, so two further rules keep it from being
+forged into an abort that would not otherwise be allowed: the reported branch
+runs the same gate the escrow-returning branch would (which is why cancel keeps
+sending its early-release signal), and the report is read only on a choice the
+escrow's owner authorizes. Transfer reject fails the second, being the receiver's alone,
 and the first cannot stand in for it: reject's escrow-returning branch runs no
 gate at all, so honoring the report there would buy an abort that refunds
 nothing rather than one that comes early. It ignores the report, and its route
@@ -379,8 +398,8 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 197 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
-| End-to-end, 17 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers |
+| Registry unit, 205 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
+| End-to-end, 18 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers, including a misconfigured escrow template id that must not produce a reclaim report |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
 neither reads nor disturbs seeded state, and it reports every test as skipped
@@ -397,11 +416,11 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 60 Daml scenarios
-cd registry && npm install && npm test   # 197 unit tests, no ledger needed
+cd registry && npm install && npm test   # 205 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
-cd registry && npm run test:e2e   # 17 tests against that sandbox
+cd registry && npm run test:e2e   # 18 tests against that sandbox
 ```
 
 The sandbox runs in the foreground, so the seed and the end-to-end suite go in a
@@ -469,11 +488,27 @@ Stated plainly, because they are what an evaluation turns on.
   route. Unvetting is not one of these: vetting gates what a participant will
   accept in a transaction, and an unvetted package's contracts still read back,
   so a service that submits nothing serves them unchanged.
-- **A template id naming a real but different template is not caught.** It
-  resolves, so no boot check can see it, and every read through it comes back as
-  an absent contract, which the abort choice-contexts report as an escrow its
-  owner already reclaimed. Closing it means requiring positive evidence of the
-  archive rather than inferring the reclaim from an absent contract. Tracked.
+- **A template id naming a real but different template is not caught at boot.**
+  It resolves, so no startup check can see it, and what it costs then depends on
+  what the read does with the rows it gets back. Two of the three shapes fail
+  closed. A by-id read comes back empty: the participant answers a lookup whose
+  template filter does not match the contract with the same `404` it gives an
+  absent contract, and nothing in that answer tells the two apart, so the service
+  reads it as absent rather than inferring a reclaim from it. A misconfigured
+  `LOCKED_TOKEN_TEMPLATE_ID` therefore leaves the abort contexts answering `404
+  escrow not found` instead of reporting a reclaim that never happened. An active-set read
+  whose rows are then matched on a payload field finds nothing to match, the
+  foreign rows carrying no such field, so a misconfigured preapproval id costs a
+  direct transfer its fast path rather than its safety: every transfer to
+  another party comes back as an `offer`. What does not fail closed is an
+  active-set read whose rows are served as they come: a misconfigured
+  `INSTRUMENT_CONFIG_TEMPLATE_ID` comes back with the other template's
+  contracts, whose payloads carry none of the fields an instrument is built
+  from. They collapse under one identity of `undefined::undefined`, and
+  `GET /registry/metadata/v1/instruments` answers 200 with a single entry
+  holding a null `decimals` and the static `supportedApis`. Response validation
+  is off, so nothing catches it on the way out; get-by-id escapes only because
+  no id can match such a row.
 - **No CI pipeline yet.** The three suites are run by hand. Tracked.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.

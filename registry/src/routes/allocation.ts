@@ -59,14 +59,20 @@ export function allocationRouter(deps: ServerDeps): Router {
         if (!alloc) return res.status(404).json(notFound)
 
         const escrow = await findEscrow(deps.ledger, deps.config, alloc.payload.lockedCid)
-        if (!escrow) {
-          // execute-transfer settles the leg out of the escrow, so an absent one
-          // leaves it nothing to do. The two aborts only clear the record and
-          // report the reclaim. Cancel keeps its early-release signal alongside
-          // that report: the signal is what authorizes acting before
-          // settleBefore, and the record still has to be cleared then whether or
-          // not there is an escrow left to release.
-          if (choice === 'execute-transfer') {
+        if (escrow.state !== 'live') {
+          // execute-transfer settles the leg out of the escrow, so an escrow
+          // that is not live leaves it nothing to do. The two aborts only clear
+          // the record and report the reclaim. Cancel keeps its early-release
+          // signal alongside that report: the signal is what authorizes acting
+          // before settleBefore, and the record still has to be cleared then
+          // whether or not there is an escrow left to release.
+          //
+          // Both of them need the archive event first. The report and the
+          // signal together are what let a client clear the allocation record,
+          // and a lookup that merely found nothing is no evidence the sender
+          // ever got the escrow back: a LOCKED_TOKEN_TEMPLATE_ID naming another
+          // template the participant hosts reads every live escrow that way.
+          if (choice === 'execute-transfer' || escrow.state !== 'archived') {
             return res.status(404).json({ error: 'escrow not found' })
           }
           const reclaimed = { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) }
@@ -81,7 +87,7 @@ export function allocationRouter(deps: ServerDeps): Router {
 
         const choiceContextData =
           choice === 'cancel' ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {}
-        res.json({ choiceContextData, disclosedContracts: [toDisclosed(escrow)] })
+        res.json({ choiceContextData, disclosedContracts: [toDisclosed(escrow.entry)] })
       }),
     )
   }

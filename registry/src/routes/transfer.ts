@@ -120,20 +120,30 @@ export function transferRouter(deps: ServerDeps): Router {
         if (!instr) return res.status(404).json(notFound)
 
         const escrow = await findEscrow(deps.ledger, deps.config, instr.payload.lockedCid)
-        if (!escrow) {
+        if (escrow.state !== 'live') {
           // Only the sender's withdraw can act on an escrow that is gone. It is
           // the one choice here the escrow's owner authorizes, so it is the only
           // one the on-ledger side lets a reclaim report clear: accept has
           // nothing left to settle out of, and reject, controlled by the
           // receiver alone, has nothing left to refund.
-          if (choice !== 'withdraw') return res.status(404).json({ error: 'escrow not found' })
+          //
+          // And it may only clear it on the archived state. The report is a
+          // positive claim that the sender already took the escrow back, which
+          // the client acts on by archiving the instruction; a lookup that
+          // found nothing is not that claim. A LOCKED_TOKEN_TEMPLATE_ID naming
+          // another template the participant hosts reads every live escrow as
+          // absent, and reporting a reclaim there would clear the record while
+          // the funds stayed locked until the escrow's own expiry.
+          if (choice !== 'withdraw' || escrow.state !== 'archived') {
+            return res.status(404).json({ error: 'escrow not found' })
+          }
           return res.json({
             choiceContextData: { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) },
             disclosedContracts: [],
           })
         }
 
-        res.json({ choiceContextData: {}, disclosedContracts: [toDisclosed(escrow)] })
+        res.json({ choiceContextData: {}, disclosedContracts: [toDisclosed(escrow.entry)] })
       }),
     )
   }

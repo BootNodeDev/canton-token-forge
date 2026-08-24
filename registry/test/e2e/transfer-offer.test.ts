@@ -1,5 +1,6 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
+import { createServer } from '../../src/server'
 import type { LockedPayload } from './helpers/fixture'
 import {
   createOfferInstruction,
@@ -111,6 +112,38 @@ describe.skipIf(!live)('live offer transfer', () => {
     expect((await holdingsOf(fx, dan)).map((h) => Number(h.payload.amount))).toEqual([60])
     expect(await fx.ledger.activeContracts(fx.ids.lockedToken, fx.admin)).toEqual([])
     expect(await fx.ledger.activeContracts(fx.ids.transferInstruction, fx.admin)).toEqual([])
+  })
+
+  // The reclaim report above is only sound because the participant separates an
+  // escrow that was archived from one it cannot find, and a template id that
+  // resolves to a real template other than the escrow's is the case that makes
+  // the difference visible: the participant answers the by-id read 404, exactly
+  // as it answers one for a contract that never existed. The escrow here is
+  // untouched on the ledger, so a reclaim report would be a pure fabrication,
+  // and a client acting on it would archive the instruction while the funds
+  // stayed locked to the offer's own deadline.
+  it('404s a withdraw context whose configured escrow template names another real template', async () => {
+    const fx = await setupInstrument()
+    const suffix = uniqueSuffix()
+    const dan = await allocateParty(`e2e-dan-${suffix}`)
+    const erin = await allocateParty(`e2e-erin-${suffix}`)
+    const { instructionCid, escrowCid } = await createOfferInstruction(fx, dan, erin, '40.0')
+
+    const misconfigured = createServer({
+      ledger: fx.ledger,
+      config: { ...fx.config, lockedTokenTemplateId: fx.ids.token },
+    })
+    const res = await request(misconfigured)
+      .post(`/registry/transfer-instruction/v1/${instructionCid}/choice-contexts/withdraw`)
+      .send({ meta: {} })
+
+    expect(res.status).toBe(404)
+    expect(res.body.error).toBe('escrow not found')
+    // The escrow the fabricated report would have been about is still sitting
+    // there, which is the whole point of refusing to send one.
+    expect(
+      (await fx.ledger.activeContracts(fx.ids.lockedToken, fx.admin)).map((e) => e.contractId),
+    ).toEqual([escrowCid])
   })
 
   // The sender can reclaim an escrow directly once the offer window closes,
