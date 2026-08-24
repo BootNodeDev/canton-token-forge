@@ -10,9 +10,10 @@ permissions:
   contents: read
 
 # Superseded pull-request runs are worth cancelling; a push to main is not.
-# Pull requests skip whole jobs through the scope gate, so the main-push run is
-# the only place the merged tree is verified unconditionally, and cancelling it
-# when a second commit lands leaves that commit with no full verification.
+# A pull request's scope gate skips the work one step at a time, so the
+# main-push run is the only place the merged tree is verified unconditionally,
+# and cancelling it when a second commit lands leaves that commit with no full
+# verification.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -21,7 +22,10 @@ jobs:
   # This job's name is the status check context that branch protection or a
   # ruleset would match on. Renaming it, including a capitalisation change,
   # stops that check from reporting on every pull request, this rename's own
-  # included.
+  # included. The scope gate is per-step for the same reason: folding those
+  # repeated `if:` conditions into a single job-level `if:` would leave a
+  # scoped-out pull request waiting on a required check that never reports,
+  # instead of passing it in seconds.
   registry:
     name: registry
     runs-on: ubuntu-latest
@@ -104,7 +108,10 @@ jobs:
   # This job's name is the status check context that branch protection or a
   # ruleset would match on. Renaming it, including a capitalisation change,
   # stops that check from reporting on every pull request, this rename's own
-  # included.
+  # included. The scope gate is per-step for the same reason: folding those
+  # repeated `if:` conditions into a single job-level `if:` would leave a
+  # scoped-out pull request waiting on a required check that never reports,
+  # instead of passing it in seconds.
   daml:
     name: daml
     runs-on: ubuntu-latest
