@@ -134,7 +134,7 @@ export function transferRouter(deps: ServerDeps): Router {
           // another template the participant hosts reads every live escrow as
           // absent, and reporting a reclaim there would clear the record while
           // the funds stayed locked until the escrow's own expiry.
-          if (choice !== 'withdraw' || escrow.state === 'absent') {
+          if (choice !== 'withdraw' || escrow.state !== 'archived') {
             return res.status(404).json({ error: 'escrow not found' })
           }
           return res.json({

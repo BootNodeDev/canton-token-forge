@@ -72,7 +72,7 @@ export function allocationRouter(deps: ServerDeps): Router {
           // and a lookup that merely found nothing is no evidence the sender
           // ever got the escrow back: a LOCKED_TOKEN_TEMPLATE_ID naming another
           // template the participant hosts reads every live escrow that way.
-          if (choice === 'execute-transfer' || escrow.state === 'absent') {
+          if (choice === 'execute-transfer' || escrow.state !== 'archived') {
             return res.status(404).json({ error: 'escrow not found' })
           }
           const reclaimed = { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) }
