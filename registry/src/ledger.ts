@@ -138,7 +138,7 @@ interface EventsByContractIdResponse {
     createdEvent: CreatedEvent
     synchronizerId: string
   }
-  archived?: unknown
+  archived?: { archivedEvent?: unknown } | null
 }
 
 // The party-and-template filter every read sends. Requesting the created event
@@ -338,14 +338,18 @@ export class HttpLedgerClient implements LedgerClient {
     const body = (await res.json()) as EventsByContractIdResponse
     // An archived contract is still answered with its created event, so the
     // archive event is the only thing separating it from a live one. Verified
-    // on Canton 3.5.12: `archived` is null on a live contract and carries the
-    // archive event on an archived one, and the template filter is applied to
-    // both alike, so a contract of another template is refused above rather
-    // than answered here. That is what makes the archive event evidence about
-    // the configured template without comparing a package-id-qualified id from
-    // the response against a package-name-qualified configuration.
+    // on Canton 3.5.12: `archived` is null on a live contract and holds the
+    // event under `archivedEvent` on an archived one, and the template filter
+    // is applied to both alike, so a contract of another template is refused
+    // above rather than answered here. That is what makes the archive event
+    // evidence about the configured template without comparing a
+    // package-id-qualified id from the response against a configuration that
+    // names the package. The test is on the event and not on the field around
+    // it because this answer is the sole authority for a reclaim report: were
+    // that field ever filled with something else for a live contract, a bare
+    // presence check would report every live escrow reclaimed.
     if (!body.created) return { state: 'absent' }
-    if (body.archived) return { state: 'archived' }
+    if (body.archived?.archivedEvent) return { state: 'archived' }
     return { state: 'live', entry: toEntry(body.created.createdEvent, body.created.synchronizerId) }
   }
 
