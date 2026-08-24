@@ -82,3 +82,108 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         working-directory: registry
         run: npm test
+
+  daml:
+    name: daml
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # damlc regenerates data-dependency interface source on every build and
+      # dies with a UTF-8 decoding error under a C or POSIX locale.
+      LANG: C.UTF-8
+      DPM_SDK_VERSION: '3.4.11'
+      DPM_TARBALL_SHA256: '177328b8d8b5781a6eee37fbd172a8445f18e07b46292c40fe32207d4cd72ccd'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request: verifying unconditionally."
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --prune origin \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          echo "Changed files:"
+          echo "$changed"
+          if printf '%s\n' "$changed" \
+             | grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)'; then
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "run=false" | tee -a "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The published tarball is fetched by exact version and checked against a
+      # recorded digest instead of piping an installer into a shell. Pinning is
+      # also a correctness requirement, not only a supply-chain one: the
+      # installer's "latest" resolves to 3.5.5, while both daml.yaml files pin
+      # 3.4.11.
+      - name: Install dpm
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
+          url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
+          curl -SLf "$url" --output "${RUNNER_TEMP}/${tarball}"
+          echo "${DPM_TARBALL_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/dpm-extracted"
+          tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/dpm-extracted" --strip-components 1
+          "${RUNNER_TEMP}/dpm-extracted/bin/dpm" bootstrap "${RUNNER_TEMP}/dpm-extracted"
+          rm -rf "${RUNNER_TEMP}/${tarball}" "${RUNNER_TEMP}/dpm-extracted"
+          echo "$HOME/.dpm/bin" >> "$GITHUB_PATH"
+
+      - name: Report the installed SDK
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          dpm version
+          du -sh "$HOME/.dpm"
+
+      # The tag decides what is fetched and the script decides how it is laid
+      # out and which stable-name symlinks exist, so both are cache inputs.
+      - name: Restore vendored deps
+        id: deps
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: deps-${{ runner.os }}-${{ hashFiles('versions.env', 'scripts/fetch-dep.sh') }}
+
+      - name: Vendor deps
+        if: steps.scope.outputs.run == 'true' && steps.deps.outputs.cache-hit != 'true'
+        run: bash scripts/fetch-dep.sh
+
+      - name: Verify the stable-name symlinks
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          for dar in holding metadata transfer-instruction allocation \
+                     allocation-instruction allocation-request burn-mint; do
+            path="deps/splice-daml/dars/splice-api-token-${dar}-v1.dar"
+            test -L "$path"
+            test -f "$path"
+            echo "ok: $path -> $(readlink "$path")"
+          done
+
+      - name: Build
+        if: steps.scope.outputs.run == 'true'
+        run: npm run build
+
+      - name: Test
+        if: steps.scope.outputs.run == 'true'
+        run: npm test
