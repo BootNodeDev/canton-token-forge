@@ -345,9 +345,12 @@ Three context keys are ours rather than the standard's:
 | allocation cancel whose escrow the participant reports archived | the report and the early-release signal | nothing |
 | any of these whose escrow lookup finds nothing at all | 404 `escrow not found` | nothing |
 
-The last three rows are what keep a record clearable after its owner reclaims the
-escrow directly, which the settlement deadline lets them do. The choice then
-skips the escrow instead of reaching for a contract that is gone.
+The first two of those rows are what keep a record clearable after its owner
+reclaims the escrow directly, which the settlement deadline lets them do: the
+choice skips the escrow instead of reaching for a contract that is gone. The
+third row is the opposite case. A lookup that comes back empty says nothing
+about whether the escrow was ever there, so the route refuses instead of
+guessing, and the record stays until its escrow can be accounted for.
 
 The report is sent only on the participant's own evidence that the escrow was
 archived, never on a lookup that merely found nothing. A by-id read separates
@@ -416,7 +419,7 @@ cd registry && npm install && npm test   # 203 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
-cd registry && npm run test:e2e   # 17 tests against that sandbox
+cd registry && npm run test:e2e   # 18 tests against that sandbox
 ```
 
 The sandbox runs in the foreground, so the seed and the end-to-end suite go in a
@@ -485,12 +488,19 @@ Stated plainly, because they are what an evaluation turns on.
   accept in a transaction, and an unvetted package's contracts still read back,
   so a service that submits nothing serves them unchanged.
 - **A template id naming a real but different template is not caught at boot.**
-  It resolves, so no startup check can see it, and every read through it comes
-  back as a contract the participant cannot find. That now fails closed on every
-  route rather than silently: the escrow-dependent contexts answer `404 escrow
-  not found` instead of reporting a reclaim, and a misconfigured preapproval id
-  costs a direct transfer its fast path rather than its safety. The service is
-  broken under such a configuration, but it is broken loudly.
+  It resolves, so no startup check can see it, and what it costs then depends on
+  how that id is read. The by-id reads fail closed: the participant refuses a
+  lookup whose template filter does not match the contract, so a misconfigured
+  `LOCKED_TOKEN_TEMPLATE_ID` leaves the abort contexts answering `404 escrow not
+  found` instead of reporting a reclaim that never happened, and a misconfigured
+  preapproval id costs a direct transfer its fast path rather than its safety.
+  The active-set reads do not: a misconfigured `INSTRUMENT_CONFIG_TEMPLATE_ID`
+  comes back with the other template's contracts, whose payloads carry none of
+  the fields an instrument is built from. They collapse under one identity of
+  `undefined::undefined`, and `GET /registry/metadata/v1/instruments` answers
+  200 with a single entry holding a null `decimals` and the static
+  `supportedApis`. Response validation is off, so nothing catches it on the way
+  out; get-by-id escapes only because no id can match such a row.
 - **No CI pipeline yet.** The three suites are run by hand. Tracked.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
