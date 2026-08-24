@@ -497,6 +497,34 @@ describe('HttpLedgerClient.lookupByContractId', () => {
       client.lookupByContractId('pkg:Canton.TokenForge.Locked:LockedToken', '00locked', 'admin::1'),
     ).resolves.toEqual({ state: 'archived' })
   })
+
+  // The archive event is the evidence, not the field that carries it. This
+  // answer is the whole basis of a reclaim report, so reading a non-null
+  // `archived` as archived without looking inside it would let a participant
+  // that ever filled the field for a live contract have every live escrow
+  // reported reclaimed. Live is also the safe way to be wrong here: it hands
+  // the escrow to the choice, which the participant refuses if the contract
+  // really is gone.
+  it('answers live for a contract whose archived field carries no archive event', async () => {
+    const { fakeFetch } = recordingFetch({
+      [BY_CONTRACT_ID]: {
+        ok: true,
+        json: async () => ({ ...createdEventFor('00locked'), archived: {} }),
+      },
+    })
+    const client = new HttpLedgerClient(
+      { ledgerApiUrl: 'http://ledger', ledgerApiToken: 't' },
+      fakeFetch,
+    )
+
+    const found = await client.lookupByContractId(
+      'pkg:Canton.TokenForge.Locked:LockedToken',
+      '00locked',
+      'admin::1',
+    )
+
+    expect(found.state).toBe('live')
+  })
 })
 
 const ADMIN = 'admin::1220620ff05a58be80fcc36c085660b788ec6380759d88f1ec72547ed38d3d6c7656'
