@@ -144,11 +144,51 @@ jobs:
           changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
-          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|scripts/seed\.mjs$|registry/test/e2e/helpers/sandbox\.ts$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
           fi
+
+      # scripts/seed.mjs and the end-to-end helper name our templates as
+      # '<module>:<entity>' string literals. Nothing compiles or typechecks
+      # those: renaming a module or a template in daml/ leaves both dangling
+      # and still passes everything, because this job only builds daml/ and
+      # runs its own suite, the registry job's unit suite is stub-backed, and
+      # its end-to-end suite is typechecked but not run. The break surfaces
+      # first at a manual `npm run seed`. Check the strings against the source
+      # instead. This runs before the toolchain install so it fails in seconds.
+      - name: Verify the hardcoded template ids
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          src=daml/canton-token-forge/daml/Canton/TokenForge
+          status=0
+          for file in scripts/seed.mjs registry/test/e2e/helpers/sandbox.ts; do
+            test -f "$file"
+            # No match makes grep exit 1, which under pipefail would kill the
+            # step before the report below ever runs.
+            ids="$(grep -Eo 'Canton\.TokenForge\.[A-Za-z0-9_]+:[A-Za-z0-9_]+' "$file" | sort -u || true)"
+            # Without this a file that stopped matching the pattern, say
+            # because its ids moved behind an interpolation, would check
+            # nothing and report ok.
+            if [ -z "$ids" ]; then
+              echo "no template ids found in ${file}: the pattern is stale" >&2
+              exit 1
+            fi
+            while read -r id; do
+              module="${id#Canton.TokenForge.}"
+              module="${module%%:*}"
+              entity="${id##*:}"
+              if grep -q "^template ${entity}\$" "${src}/${module}.daml" 2>/dev/null; then
+                echo "ok: ${file} -> ${module}:${entity}"
+              else
+                echo "${file} names ${module}:${entity}, which daml/ does not declare" >&2
+                status=1
+              fi
+            done <<<"$ids"
+          done
+          exit "$status"
 
       - uses: actions/setup-java@v4
         if: steps.scope.outputs.run == 'true'
