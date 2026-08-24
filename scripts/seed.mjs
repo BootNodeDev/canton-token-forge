@@ -107,9 +107,11 @@ const headers = {
 // `#<name>:<module>:<entity>`. A package-id-qualified identifier is rejected
 // outright ("expected a package name"), so every id below uses the name form.
 const pkg = `#${packageName}`
-const tid = (entity) => `${pkg}:Canton.TokenForge.Registry:${entity}`
-const INSTRUMENT_CONFIG = tid('InstrumentConfig')
-const PREAPPROVAL = tid('TokenTransferPreapproval')
+// Every id is spelled out rather than built from a helper: CI checks these
+// strings against daml/ with a pattern that reads literals only, and an
+// interpolated entity would be skipped while the file still reported ok.
+const INSTRUMENT_CONFIG = `${pkg}:Canton.TokenForge.Registry:InstrumentConfig`
+const PREAPPROVAL = `${pkg}:Canton.TokenForge.Registry:TokenTransferPreapproval`
 const TOKEN = `${pkg}:Canton.TokenForge.Token:Token`
 const LOCKED_TOKEN = `${pkg}:Canton.TokenForge.Locked:LockedToken`
 const TRANSFER_INSTRUCTION = `${pkg}:Canton.TokenForge.Instruction:TokenTransferInstruction`

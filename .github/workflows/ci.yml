@@ -144,43 +144,83 @@ jobs:
           changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
-          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|scripts/seed\.mjs$|registry/test/e2e/helpers/sandbox\.ts$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|scripts/seed\.mjs$|registry/\.env\.example$|registry/test/e2e/helpers/sandbox\.ts$|registry/test/helpers/fixtures\.ts$|registry/test/ledger\.test\.ts$|RUNBOOK\.md$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
           fi
 
-      # scripts/seed.mjs and the end-to-end helper name our templates as
+      # A handful of files outside daml/ name our templates as
       # '<module>:<entity>' string literals. Nothing compiles or typechecks
-      # those: renaming a module or a template in daml/ leaves both dangling
-      # and still passes everything, because this job only builds daml/ and
-      # runs its own suite, the registry job's unit suite is stub-backed, and
-      # its end-to-end suite is typechecked but not run. The break surfaces
-      # first at a manual `npm run seed`. Check the strings against the source
-      # instead. This runs before the toolchain install so it fails in seconds.
+      # those: renaming a module or a template in daml/ leaves every one of
+      # them dangling and still passes everything, because this job only
+      # builds daml/ and runs its own suite, the registry job's unit suite is
+      # stub-backed against those same literals, and its end-to-end suite is
+      # typechecked but not run. The break surfaces first at a manual
+      # `npm run seed`. Check the strings against the source instead. This
+      # runs before the toolchain install so it fails in seconds.
       - name: Verify the hardcoded template ids
         if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           src=daml/canton-token-forge/daml/Canton/TokenForge
+          # A dot is allowed inside the module so that moving a template into
+          # a nested module keeps it matched rather than quietly dropping it.
+          pattern='Canton\.TokenForge\.[A-Za-z0-9_.]+:[A-Za-z0-9_]+'
+          checked=(
+            RUNBOOK.md
+            registry/.env.example
+            registry/test/e2e/helpers/sandbox.ts
+            registry/test/helpers/fixtures.ts
+            registry/test/ledger.test.ts
+            scripts/seed.mjs
+          )
+          # Two more files carry the prefix and must not be checked against
+          # daml/: this workflow strips it in the loop below, and the
+          # end-to-end suite deliberately names templates the package does not
+          # declare, to prove the boot check rejects them.
+          skipped=(
+            .github/workflows/ci.yml
+            registry/test/e2e/sandbox.test.ts
+          )
+          # A file that starts naming template ids and is listed in neither
+          # array would go unchecked and report nothing, so the two are held
+          # exhaustive here. daml/ is the source of truth and carries the
+          # prefix in its own module headers, so only the rest of the tree is
+          # compared. A pull request that touches such a file without
+          # tripping this job's scope gate still slips through, so the gate
+          # lists every path in `checked`.
+          if ! diff \
+            <(printf '%s\n' "${checked[@]}" "${skipped[@]}" | sort) \
+            <(git grep -lE 'Canton\.TokenForge\.' -- ':!daml/' | sort); then
+            echo "the file list above is out of date: '<' names no ids any more, '>' names ids and goes unchecked" >&2
+            exit 1
+          fi
           status=0
-          for file in scripts/seed.mjs registry/test/e2e/helpers/sandbox.ts; do
+          for file in "${checked[@]}"; do
             test -f "$file"
             # No match makes grep exit 1, which under pipefail would kill the
-            # step before the report below ever runs.
-            ids="$(grep -Eo 'Canton\.TokenForge\.[A-Za-z0-9_]+:[A-Za-z0-9_]+' "$file" | sort -u || true)"
-            # Without this a file that stopped matching the pattern, say
-            # because its ids moved behind an interpolation, would check
-            # nothing and report ok.
-            if [ -z "$ids" ]; then
-              echo "no template ids found in ${file}: the pattern is stale" >&2
-              exit 1
+            # step before the report below ever runs. Occurrences are counted
+            # rather than matching lines, because grep -c would collapse two
+            # ids on one line and make the comparison below read as a miss.
+            mentions="$({ grep -Eo 'Canton\.TokenForge\.' "$file" || true; } | wc -l)"
+            found="$({ grep -Eo "$pattern" "$file" || true; } | wc -l)"
+            ids="$({ grep -Eo "$pattern" "$file" || true; } | sort -u)"
+            # Counting the bare prefix separately is what catches the partial
+            # case: an id built by interpolation, as scripts/seed.mjs once
+            # did, leaves its file matching on the other ids and reporting ok
+            # on those alone. A file that stops matching altogether is caught
+            # a step earlier, by dropping out of the comparison above.
+            if [ "$found" -ne "$mentions" ]; then
+              echo "${file} names ${mentions} template ids but ${found} are readable as literals: one is built by interpolation" >&2
+              status=1
+              continue
             fi
             while read -r id; do
               module="${id#Canton.TokenForge.}"
               module="${module%%:*}"
               entity="${id##*:}"
-              if grep -q "^template ${entity}\$" "${src}/${module}.daml" 2>/dev/null; then
+              if grep -q "^template ${entity}\$" "${src}/${module//./\/}.daml" 2>/dev/null; then
                 echo "ok: ${file} -> ${module}:${entity}"
               else
                 echo "${file} names ${module}:${entity}, which daml/ does not declare" >&2
