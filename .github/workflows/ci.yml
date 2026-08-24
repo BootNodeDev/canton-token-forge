@@ -194,15 +194,47 @@ jobs:
           dpm version
           du -sh "$HOME/.dpm"
 
-      # The tag decides what is fetched and the script decides how it is laid
-      # out and which stable-name symlinks exist, so both are cache inputs.
+      # A git tag can be re-pointed upstream. Keying the cache on versions.env
+      # alone would then restore the tree the old tag pointed at for as long as
+      # the entry keeps being touched, with no way to invalidate it short of
+      # editing one of the key's own inputs, while a local `npm run setup`
+      # picks up the new commit: CI green, working copy red, nothing to see.
+      # Resolving the tag here puts the commit itself in the key.
+      - name: Resolve the Splice tag
+        id: splice
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source versions.env
+          for attempt in 1 2 3; do
+            refs="$(git ls-remote "https://github.com/canton-network/splice.git" \
+                      "refs/tags/${SPLICE_TAG}" "refs/tags/${SPLICE_TAG}^{}")" && break
+            echo "git ls-remote attempt ${attempt} of 3 failed" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
+          # An annotated tag lists the tag object and then the commit it peels
+          # to; a lightweight tag lists only itself. Either way the commit is
+          # the last line.
+          sha="$(tail -n1 <<<"$refs" | cut -f1)"
+          if [ -z "$sha" ]; then
+            echo "no such tag upstream: ${SPLICE_TAG}" >&2
+            exit 1
+          fi
+          echo "${SPLICE_TAG} -> ${sha}"
+          echo "sha=${sha}" | tee -a "$GITHUB_OUTPUT"
+
+      # The commit decides what is fetched and the script decides how it is
+      # laid out and which stable-name symlinks exist, so both are cache
+      # inputs. versions.env stays in the key for whatever it grows next.
       - name: Restore vendored deps
         id: deps
         if: steps.scope.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: deps
-          key: deps-${{ runner.os }}-${{ hashFiles('versions.env', 'scripts/fetch-dep.sh') }}
+          key: deps-${{ runner.os }}-${{ steps.splice.outputs.sha }}-${{ hashFiles('versions.env', 'scripts/fetch-dep.sh') }}
 
       - name: Vendor deps
         if: steps.scope.outputs.run == 'true' && steps.deps.outputs.cache-hit != 'true'
