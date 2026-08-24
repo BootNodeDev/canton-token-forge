@@ -160,9 +160,12 @@ jobs:
       # stub-backed against those same literals, and its end-to-end suite is
       # typechecked but not run. The break surfaces first at a manual
       # `npm run seed`. Check the strings against the source instead. This
-      # runs before the toolchain install so it fails in seconds.
+      # runs before the toolchain install so it fails in seconds, and it is
+      # deliberately not gated on the scope step: the comparison below ranges
+      # over the whole tree, so a file the gate does not list - a new one, or
+      # the end-to-end suite - would otherwise fail here on the merge to main
+      # having passed on the pull request that broke it.
       - name: Verify the hardcoded template ids
-        if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           src=daml/canton-token-forge/daml/Canton/TokenForge
@@ -189,9 +192,9 @@ jobs:
           # array would go unchecked and report nothing, so the two are held
           # exhaustive here. daml/ is the source of truth and carries the
           # prefix in its own module headers, so only the rest of the tree is
-          # compared. A pull request that touches such a file without
-          # tripping this job's scope gate still slips through, so the gate
-          # lists every path in `checked`.
+          # compared. Ranging over the whole tree is why the step above it is
+          # ungated: no path list written today can name the file a later
+          # pull request adds.
           if ! diff \
             <(printf '%s\n' "${checked[@]}" "${skipped[@]}" | sort) \
             <(git grep -lE 'Canton\.TokenForge\.' -- ':!daml/' | sort); then
