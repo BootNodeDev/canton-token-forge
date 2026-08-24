@@ -511,9 +511,10 @@ Stated plainly, because they are what an evaluation turns on.
   no id can match such a row.
 - **One of the three suites above is still run by hand, and so is a further
   check outside them.** A pull request that touches `daml/` runs the Daml
-  script suite as the `daml` check; one that touches `registry/` runs the
-  registry unit suite as the `registry` check. The end-to-end suite needs a
-  live participant, so it stays off the pull-request path, and so does
+  script suite as the `daml` check; one that touches `registry/` runs that
+  package's lint, its typechecks and the registry unit suite as the `registry`
+  check. The end-to-end suite needs a live participant, so only its types are
+  checked there and it is never run; off the pull-request path too is
   `npm run test:coverage`, which re-runs Splice's own suites and is not one of
   the three above.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and

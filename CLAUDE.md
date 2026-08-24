@@ -102,7 +102,8 @@ that directory.
 | `npm install` | Install the service's own dependencies. |
 | `npm test` | Unit suites against an in-process server with a stub ledger. No sandbox needed. |
 | `npm run test:e2e` | Drive both transfer paths against a live participant. Skips itself when nothing is listening. |
-| `npm run build` | Typecheck and emit `dist/`. |
+| `npm run build` | Typecheck `src/` and emit `dist/`. |
+| `npm run typecheck:test` | Typecheck the suites, which `build` leaves out and vitest does not check. |
 | `npm start` / `npm run dev` | Run the built service / run it from source. |
 | `npm run lint` | Biome check (`lint:fix` to write). |
 
@@ -256,10 +257,12 @@ Run before declaring work done:
 
 A pull request that touches `daml/` or the root build inputs runs the first
 three of these automatically, as the `daml` check. One that touches
-`registry/` runs that package's own lint, typecheck, and unit suite as the
-`registry` check, not the root commands above. `npm run test:coverage` and the
-registry's `npm run test:e2e` stay manual: the first re-runs Splice's own
-suites, and the second needs a live participant.
+`registry/` runs that package's own lint, both typechecks, and unit suite as
+the `registry` check, not the root commands above. `npm run test:coverage` and
+the registry's `npm run test:e2e` stay manual: the first re-runs Splice's own
+suites, and the second needs a live participant. The end-to-end suite is
+typechecked on that path even so, which is the point of typechecking it
+separately from the run.
 
 ## References
 
