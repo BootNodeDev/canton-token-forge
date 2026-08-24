@@ -159,6 +159,17 @@ jobs:
         run: |
           set -euo pipefail
           test "$(uname -m)" = "x86_64"
+          # DPM_SDK_VERSION is a third copy of a pin whose other two homes are
+          # the daml.yaml files. Assert rather than trust: bumping those and
+          # forgetting this one otherwise fails much later, or silently makes
+          # dpm download a second SDK.
+          for pkg in canton-token-forge canton-token-forge-test; do
+            pinned="$(awk '/^sdk-version:/ {print $2; exit}' "daml/${pkg}/daml.yaml")"
+            if [ "$pinned" != "$DPM_SDK_VERSION" ]; then
+              echo "daml/${pkg}/daml.yaml pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
+              exit 1
+            fi
+          done
           tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
           url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
           curl -SLf "$url" --output "${RUNNER_TEMP}/${tarball}"
