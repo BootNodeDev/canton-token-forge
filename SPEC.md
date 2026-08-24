@@ -489,18 +489,23 @@ Stated plainly, because they are what an evaluation turns on.
   so a service that submits nothing serves them unchanged.
 - **A template id naming a real but different template is not caught at boot.**
   It resolves, so no startup check can see it, and what it costs then depends on
-  how that id is read. The by-id reads fail closed: the participant refuses a
-  lookup whose template filter does not match the contract, so a misconfigured
+  what the read does with the rows it gets back. Two of the three shapes fail
+  closed. A by-id read is refused outright: the participant declines a lookup
+  whose template filter does not match the contract, so a misconfigured
   `LOCKED_TOKEN_TEMPLATE_ID` leaves the abort contexts answering `404 escrow not
-  found` instead of reporting a reclaim that never happened, and a misconfigured
-  preapproval id costs a direct transfer its fast path rather than its safety.
-  The active-set reads do not: a misconfigured `INSTRUMENT_CONFIG_TEMPLATE_ID`
-  comes back with the other template's contracts, whose payloads carry none of
-  the fields an instrument is built from. They collapse under one identity of
-  `undefined::undefined`, and `GET /registry/metadata/v1/instruments` answers
-  200 with a single entry holding a null `decimals` and the static
-  `supportedApis`. Response validation is off, so nothing catches it on the way
-  out; get-by-id escapes only because no id can match such a row.
+  found` instead of reporting a reclaim that never happened. An active-set read
+  whose rows are then matched on a payload field finds nothing to match, the
+  foreign rows carrying no such field, so a misconfigured preapproval id costs a
+  direct transfer its fast path rather than its safety: every transfer to
+  another party comes back as an `offer`. What does not fail closed is an
+  active-set read whose rows are served as they come: a misconfigured
+  `INSTRUMENT_CONFIG_TEMPLATE_ID` comes back with the other template's
+  contracts, whose payloads carry none of the fields an instrument is built
+  from. They collapse under one identity of `undefined::undefined`, and
+  `GET /registry/metadata/v1/instruments` answers 200 with a single entry
+  holding a null `decimals` and the static `supportedApis`. Response validation
+  is off, so nothing catches it on the way out; get-by-id escapes only because
+  no id can match such a row.
 - **No CI pipeline yet.** The three suites are run by hand. Tracked.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
