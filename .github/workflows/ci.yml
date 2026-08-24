@@ -9,9 +9,13 @@ on:
 permissions:
   contents: read
 
+# Superseded pull-request runs are worth cancelling; a push to main is not.
+# Pull requests skip whole jobs through the scope gate, so the main-push run is
+# the only place the merged tree is verified unconditionally, and cancelling it
+# when a second commit lands leaves that commit with no full verification.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # This job's name is the status check context that branch protection or a
