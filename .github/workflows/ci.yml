@@ -22,10 +22,11 @@ jobs:
   # This job's name is the status check context that branch protection or a
   # ruleset would match on. Renaming it, including a capitalisation change,
   # stops that check from reporting on every pull request, this rename's own
-  # included. The scope gate is per-step for the same reason: folding those
-  # repeated `if:` conditions into a single job-level `if:` would leave a
-  # scoped-out pull request waiting on a required check that never reports,
-  # instead of passing it in seconds.
+  # included. The scope gate is per-step rather than one job-level `if:` so
+  # that a scoped-out pull request still reports a green check carrying the
+  # scope log that says which paths it looked at. A job-level `if:` would
+  # report `skipped` instead, which a required check accepts but which reads
+  # on the pull request as though the job never ran.
   registry:
     name: registry
     runs-on: ubuntu-latest
@@ -108,10 +109,11 @@ jobs:
   # This job's name is the status check context that branch protection or a
   # ruleset would match on. Renaming it, including a capitalisation change,
   # stops that check from reporting on every pull request, this rename's own
-  # included. The scope gate is per-step for the same reason: folding those
-  # repeated `if:` conditions into a single job-level `if:` would leave a
-  # scoped-out pull request waiting on a required check that never reports,
-  # instead of passing it in seconds.
+  # included. The scope gate is per-step rather than one job-level `if:` so
+  # that a scoped-out pull request still reports a green check carrying the
+  # scope log that says which paths it looked at. A job-level `if:` would
+  # report `skipped` instead, which a required check accepts but which reads
+  # on the pull request as though the job never ran.
   daml:
     name: daml
     runs-on: ubuntu-latest
