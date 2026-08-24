@@ -125,3 +125,4 @@ in the two `daml.yaml` files (see CLAUDE.md).
 ## License
 
 MIT - see [`LICENSE`](LICENSE).
+
