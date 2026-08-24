@@ -51,7 +51,7 @@ All three suites were re-run at commit `807ac4a`, exit 0:
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
-| Registry unit | **204 tests**, 10 files | nothing, in-process server with a stub ledger |
+| Registry unit | **205 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **18 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -62,7 +62,7 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 ### Size and status
 
 786 lines of production Daml, 1665 lines of Daml tests, 1724 lines of TypeScript
-service, 4312 lines of TypeScript tests. MIT licensed. Pre-release: the package
+service, 4336 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -365,11 +365,10 @@ genuine reclaim the same way and so stalls the client on a 404, which is the
 safe direction of the two.
 
 Nothing on-ledger backs the report, so two further rules keep it from being
-forged into an
-abort that would not otherwise be allowed: the reported branch runs the same
-gate the escrow-returning branch would (which is why cancel keeps sending its
-early-release signal), and the report is read only on a choice the escrow's
-owner authorizes. Transfer reject fails the second, being the receiver's alone,
+forged into an abort that would not otherwise be allowed: the reported branch
+runs the same gate the escrow-returning branch would (which is why cancel keeps
+sending its early-release signal), and the report is read only on a choice the
+escrow's owner authorizes. Transfer reject fails the second, being the receiver's alone,
 and the first cannot stand in for it: reject's escrow-returning branch runs no
 gate at all, so honoring the report there would buy an abort that refunds
 nothing rather than one that comes early. It ignores the report, and its route
@@ -397,7 +396,7 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
-| Registry unit, 204 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
+| Registry unit, 205 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
 | End-to-end, 18 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers, including a misconfigured escrow template id that must not produce a reclaim report |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -415,7 +414,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 60 Daml scenarios
-cd registry && npm install && npm test   # 204 unit tests, no ledger needed
+cd registry && npm install && npm test   # 205 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument
@@ -490,10 +489,12 @@ Stated plainly, because they are what an evaluation turns on.
 - **A template id naming a real but different template is not caught at boot.**
   It resolves, so no startup check can see it, and what it costs then depends on
   what the read does with the rows it gets back. Two of the three shapes fail
-  closed. A by-id read is refused outright: the participant declines a lookup
-  whose template filter does not match the contract, so a misconfigured
-  `LOCKED_TOKEN_TEMPLATE_ID` leaves the abort contexts answering `404 escrow not
-  found` instead of reporting a reclaim that never happened. An active-set read
+  closed. A by-id read comes back empty: the participant answers a lookup whose
+  template filter does not match the contract with the same `404` it gives an
+  absent contract, and nothing in that answer tells the two apart, so the service
+  reads it as absent rather than inferring a reclaim from it. A misconfigured
+  `LOCKED_TOKEN_TEMPLATE_ID` therefore leaves the abort contexts answering `404
+  escrow not found` instead of reporting a reclaim that never happened. An active-set read
   whose rows are then matched on a payload field finds nothing to match, the
   foreign rows carrying no such field, so a misconfigured preapproval id costs a
   direct transfer its fast path rather than its safety: every transfer to
