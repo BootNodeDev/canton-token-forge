@@ -215,9 +215,12 @@ jobs:
             # case: an id built by interpolation, as scripts/seed.mjs once
             # did, leaves its file matching on the other ids and reporting ok
             # on those alone. A file that stops matching altogether is caught
-            # a step earlier, by dropping out of the comparison above.
+            # a step earlier, by dropping out of the comparison above. What
+            # neither catches is a file whose every id interpolates a prefix
+            # defined in some other file: it holds no literal to count and
+            # never enters the comparison. No grep sees that one.
             if [ "$found" -ne "$mentions" ]; then
-              echo "${file} names ${mentions} template ids but ${found} are readable as literals: one is built by interpolation" >&2
+              echo "${file} has ${mentions} occurrences of the module prefix but only ${found} full '<module>:<entity>' ids: one is built by interpolation, or named without its entity" >&2
               status=1
               continue
             fi
