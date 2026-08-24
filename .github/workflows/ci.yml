@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  registry:
+    name: registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The scope step diffs against the merge base, so it needs history,
+          # not just the tip. .git is 14 MB, so this is cheap.
+          fetch-depth: 0
+
+      - name: Scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request: verifying unconditionally."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --prune origin \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          echo "Changed files:"
+          echo "$changed"
+          if printf '%s\n' "$changed" \
+             | grep -Eq '^(registry/|\.github/workflows/ci\.yml$)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: registry/package-lock.json
+
+      # npm ci, not npm install: it is deterministic and fails loudly on a
+      # lockfile that has drifted from package.json. Only the npm download
+      # cache is reused across runs; node_modules is rebuilt every time,
+      # because Biome ships platform-specific optional binaries and a stale
+      # copy of one is an arch mismatch waiting to happen.
+      - name: Install
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm ci
+
+      - name: Lint
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm run lint
+
+      - name: Typecheck
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm run build
+
+      # vitest run, not the e2e config: test:e2e needs a live participant and
+      # skips itself when nothing answers, which would report green having
+      # verified nothing.
+      - name: Test
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm test
