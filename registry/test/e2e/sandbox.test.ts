@@ -55,6 +55,13 @@ describe.skipIf(!live)('template id probe', () => {
     ledgerApiToken: 'placeholder',
   })
 
+  // A missing package has to be the only thing wrong with the id, or the
+  // participant could be answering for the template instead and the two codes
+  // below would not be telling apart what they claim to. Taking the module and
+  // entity from the same helper the passing case uses keeps them real, and
+  // keeps a rename in daml/ from stranding a literal here that nothing checks.
+  const underAMissingPackage = (id: string) => `#no-such-package:${id.slice(id.indexOf(':') + 1)}`
+
   const refusalFor = async (templateId: string): Promise<LedgerRequestError> => {
     const party = await allocateParty(`e2e-probe-${uniqueSuffix()}`)
     const err = await ledger.probeTemplate(templateId, party).then(
@@ -75,7 +82,7 @@ describe.skipIf(!live)('template id probe', () => {
   })
 
   it('refuses an id naming a package it does not host, and names it', async () => {
-    const err = await refusalFor('#no-such-package:Canton.TokenForge.Locked:LockedToken')
+    const err = await refusalFor(underAMissingPackage(templateIds().lockedToken))
 
     expect(err.ledgerStatus).toBe(404)
     expect(err.detail).toContain('PACKAGE_NAMES_NOT_FOUND')
@@ -109,7 +116,7 @@ describe.skipIf(!live)('template id probe', () => {
     // verdict that stops the service starting.
     const drifted = {
       ...configured,
-      lockedTokenTemplateId: '#no-such-package:Canton.TokenForge.Locked:LockedToken',
+      lockedTokenTemplateId: underAMissingPackage(ids.lockedToken),
       allocationTemplateId: `#${packageName()}:Canton.TokenForge.Allocation:NoSuchTemplate`,
     }
     const { logger: driftedLogger, errors: driftedErrors } = recordingLogger()

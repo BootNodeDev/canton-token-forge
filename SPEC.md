@@ -5,7 +5,8 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `9f33e82`.
+checked against the tree at commit `9f33e82`, apart from what section 9 says
+about the pull-request checks: the workflow that runs them landed after it.
 
 ---
 
@@ -509,7 +510,14 @@ Stated plainly, because they are what an evaluation turns on.
   holding a null `decimals` and the static `supportedApis`. Response validation
   is off, so nothing catches it on the way out; get-by-id escapes only because
   no id can match such a row.
-- **No CI pipeline yet.** The three suites are run by hand. Tracked.
+- **One of the three suites above is still run by hand, and so is a further
+  check outside them.** A pull request that touches `daml/` runs the Daml
+  script suite as the `daml` check; one that touches `registry/` runs that
+  package's lint, its typechecks and the registry unit suite as the `registry`
+  check. The end-to-end suite needs a live participant, so only its types are
+  checked there and it is never run; off the pull-request path too is
+  `npm run test:coverage`, which re-runs Splice's own suites and is not one of
+  the three above.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 

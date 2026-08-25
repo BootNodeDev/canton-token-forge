@@ -1,0 +1,455 @@
+name: ci
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Superseded pull-request runs are worth cancelling; a push to main is not.
+# A pull request's scope gate skips the work one step at a time, so the
+# main-push run is the only place the merged tree is verified unconditionally,
+# and cancelling it when a second commit lands leaves that commit with no full
+# verification. Holding cancel-in-progress off does not achieve that on its
+# own: GitHub keeps at most one pending run per group and cancels the
+# previously pending one whatever the flag says, so three merges in quick
+# succession would drop the middle commit's run while it waited. Keying a push
+# on its own commit gives every one of them a group to itself, with nothing to
+# queue behind and nothing to supersede.
+concurrency:
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # This job's name is the status check context that branch protection or a
+  # ruleset would match on. Renaming it, including a capitalisation change,
+  # stops that check from reporting on every pull request, this rename's own
+  # included. The scope gate is per-step rather than one job-level `if:` so
+  # that a scoped-out pull request still reports a green check carrying the
+  # scope log that says which paths it looked at. A job-level `if:` would
+  # report `skipped` instead, which a required check accepts but which reads
+  # on the pull request as though the job never ran.
+  registry:
+    name: registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The scope step diffs against the merge base, so it needs history,
+          # not just the tip. .git is 14 MB, so this is cheap.
+          fetch-depth: 0
+
+      - name: Scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request: verifying unconditionally."
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A blip on this fetch reds a required check having verified
+          # nothing, so retry rather than let one red the pull request.
+          for attempt in 1 2 3; do
+            git fetch --no-tags --prune origin \
+              "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
+            echo "git fetch attempt ${attempt} of 3 failed" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
+          changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
+          echo "Changed files:"
+          echo "$changed"
+          if grep -Eq '^(registry/|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "run=false" | tee -a "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: registry/package-lock.json
+
+      # npm ci, not npm install: it is deterministic and fails loudly on a
+      # lockfile that has drifted from package.json. Only the npm download
+      # cache is reused across runs; node_modules is rebuilt every time,
+      # because Biome ships platform-specific optional binaries and a stale
+      # copy of one is an arch mismatch waiting to happen.
+      - name: Install
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm ci
+
+      - name: Lint
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm run lint
+
+      - name: Typecheck
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm run build
+
+      # npm run build emits dist/ and so is scoped to src/. Nothing else
+      # typechecks test/: vitest strips types instead of checking them, its
+      # default config excludes test/e2e/** from the run, and Biome does not
+      # typecheck at all. Without this step a hard type error in a suite is
+      # green on all three.
+      - name: Typecheck the suites
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm run typecheck:test
+
+      # vitest run, not the e2e config: test:e2e needs a live participant and
+      # skips itself when nothing answers, which would report green having
+      # verified nothing.
+      - name: Test
+        if: steps.scope.outputs.run == 'true'
+        working-directory: registry
+        run: npm test
+
+  # This job's name is the status check context that branch protection or a
+  # ruleset would match on. Renaming it, including a capitalisation change,
+  # stops that check from reporting on every pull request, this rename's own
+  # included. The scope gate is per-step rather than one job-level `if:` so
+  # that a scoped-out pull request still reports a green check carrying the
+  # scope log that says which paths it looked at. A job-level `if:` would
+  # report `skipped` instead, which a required check accepts but which reads
+  # on the pull request as though the job never ran.
+  daml:
+    name: daml
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # damlc regenerates data-dependency interface source on every build and
+      # dies with a UTF-8 decoding error under a C or POSIX locale.
+      LANG: C.UTF-8
+      DPM_SDK_VERSION: '3.4.11'
+      DPM_TARBALL_SHA256: '177328b8d8b5781a6eee37fbd172a8445f18e07b46292c40fe32207d4cd72ccd'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A handful of files outside daml/ name our templates as
+      # '<module>:<entity>' string literals. Nothing compiles or typechecks
+      # those: renaming a module or a template in daml/ leaves every one of
+      # them dangling and still passes everything, because this job only
+      # builds daml/ and runs its own suite, the registry job's unit suite is
+      # stub-backed against those same literals, and its end-to-end suite is
+      # typechecked but not run. The break surfaces first at a manual
+      # `npm run seed`. Check the strings against the source instead. This
+      # runs ahead of both the scope step and the toolchain install, so it
+      # fails in seconds and nothing it needs can fail first: it reads the
+      # checkout, daml.yaml and git grep, while the scope step below reaches
+      # the network and reds the whole job when that blips. Being placed first
+      # is deliberate, and so is being ungated: the comparison below ranges
+      # over the whole tree, so a file the gate does not list - a new one, or
+      # the end-to-end suite - would otherwise fail here on the merge to main
+      # having passed on the pull request that broke it.
+      - name: Verify the hardcoded template ids
+        run: |
+          set -euo pipefail
+          src=daml/canton-token-forge/daml/Canton/TokenForge
+          # A dot is allowed inside the module so that moving a template into
+          # a nested module keeps it matched rather than quietly dropping it.
+          pattern='Canton\.TokenForge\.[A-Za-z0-9_.]+:[A-Za-z0-9_]+'
+          # The leading '#<package-name>' half of an id names the package
+          # rather than a module, so it is answered by daml.yaml and read
+          # once here.
+          pkg="$(awk '$1 == "name:" { print $2; exit }' \
+                 daml/canton-token-forge/daml.yaml)"
+          if [ -z "$pkg" ]; then
+            echo "daml/canton-token-forge/daml.yaml names no package" >&2
+            exit 1
+          fi
+          checked=(
+            RUNBOOK.md
+            registry/.env.example
+            registry/test/e2e/helpers/sandbox.ts
+            registry/test/helpers/fixtures.ts
+            registry/test/ledger.test.ts
+            scripts/seed.mjs
+          )
+          # Two more files carry the prefix and must not be checked against
+          # daml/: this workflow strips it in the loop below, and every id
+          # left in the end-to-end suite names a template the package does not
+          # declare, to prove the boot check rejects them. That suite also
+          # needs an id whose module and entity are real and whose package is
+          # not; it builds those from helpers/sandbox.ts, which is checked, so
+          # skipping the file here hides no literal that daml/ could strand.
+          skipped=(
+            .github/workflows/ci.yml
+            registry/test/e2e/sandbox.test.ts
+          )
+          # A file that starts naming template ids and is listed in neither
+          # array would go unchecked and report nothing, so the two are held
+          # exhaustive here. daml/ is the source of truth and carries the
+          # prefix in its own module headers, so only the rest of the tree is
+          # compared. Ranging over the whole tree is why this step is ungated:
+          # no path list written today can name the file a later pull request
+          # adds.
+          if ! diff \
+            <(printf '%s\n' "${checked[@]}" "${skipped[@]}" | sort) \
+            <(git grep -lE 'Canton\.TokenForge\.' -- ':!daml/' | sort); then
+            echo "the file list above is out of date: '<' names no ids any more, '>' names ids and goes unchecked" >&2
+            exit 1
+          fi
+          status=0
+          for file in "${checked[@]}"; do
+            test -f "$file"
+            # No match makes grep exit 1, which under pipefail would kill the
+            # step before the report below ever runs.
+            ids="$({ grep -Eo "$pattern" "$file" || true; } | sort -u)"
+            # An id built by interpolation, as scripts/seed.mjs once did,
+            # leaves its file matching on its other ids and reporting ok on
+            # those alone, so the half-written form is looked for directly.
+            # It takes two shapes. A substitution opener straight after the
+            # prefix, or after the module, can only be interpolation: prose
+            # never writes one there. A quote is ambiguous, closing an id as
+            # readily as cutting one short, so the quoted form counts only
+            # once a ':' has committed the text to an id and no entity
+            # follows. Matching a quote unconditionally is what made a
+            # sentence that merely quotes the module name, or takes its
+            # possessive, red the check. The price of the narrower rule is
+            # that a concatenation breaking at the module boundary,
+            # 'Canton.TokenForge.Registry' + ':' + entity, reads exactly like
+            # that sentence and goes unseen. A whole id reaches the quoted
+            # pattern through its closing quote and is dropped again on the
+            # way out, by a rule that spells the quote rather than any
+            # character and runs on that grep alone: a whole id followed by a
+            # substitution opener is not an id that ended, it is its entity
+            # being interpolated, which is the one thing the other grep is
+            # here to catch.
+            # A file that stops matching altogether is caught a step earlier,
+            # by dropping out of the comparison above; a file whose every id
+            # interpolates a prefix defined somewhere else holds no literal
+            # at all, and no grep sees that one.
+            partial="$({ grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.:]*[{+%\$]" "$file" || true
+                         { grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.]*:[A-Za-z0-9_]*['\"]" "$file" || true; } \
+                           | { grep -Ev "^${pattern}['\"]\$" || true; }; } | sort -u)"
+            if [ -n "$partial" ]; then
+              echo "${file} spells a template id in parts rather than in full:" >&2
+              echo "$partial" >&2
+              status=1
+              continue
+            fi
+            # The extraction above starts at the module, so the package
+            # name in front of it is never compared by the loop below. It
+            # is the same dangling literal: nothing typechecks it either,
+            # and a rename in daml.yaml surfaces first at a manual
+            # `npm run seed`. Only a qualifier attached to a module is read,
+            # which leaves prose quoting the prefix on its own unchecked; a
+            # qualifier without the '#' is a package id, a form these files
+            # only ever fake in a stub, so it is left alone.
+            quals="$({ grep -Eo "#[A-Za-z0-9_.-]+:Canton\.TokenForge\." "$file" || true; } \
+                      | sed -e 's/^#//' -e 's/:.*$//' | sort -u)"
+            while read -r qual; do
+              [ -n "$qual" ] || continue
+              if [ "$qual" = "$pkg" ]; then
+                echo "ok: ${file} -> #${qual}"
+              else
+                echo "${file} qualifies a template id with #${qual}, which daml.yaml does not name" >&2
+                status=1
+              fi
+            done <<<"$quals"
+            # An empty list would otherwise reach the loop below as one
+            # blank line and be reported as an undeclared '' template. A file
+            # reaches here holding the prefix, by the comparison above, so
+            # this is the case where every occurrence of it is prose.
+            if [ -z "$ids" ]; then
+              echo "ok: ${file} names the module but no ids"
+              continue
+            fi
+            while read -r id; do
+              module="${id#Canton.TokenForge.}"
+              module="${module%%:*}"
+              entity="${id##*:}"
+              # The entity is not always the last token on the line:
+              # `template Foo with` is as valid as breaking before the `with`,
+              # so anchoring on end-of-line alone would report a formatting
+              # change as an undeclared template. Interfaces travel over the
+              # JSON Ledger API in the same '<module>:<entity>' form as
+              # templates, so a declaration of either resolves the id.
+              if grep -Eq "^(template|interface)[[:space:]]+${entity}([[:space:]]|\$)" "${src}/${module//./\/}.daml" 2>/dev/null; then
+                echo "ok: ${file} -> ${module}:${entity}"
+              else
+                echo "${file} names ${module}:${entity}, which daml/ does not declare" >&2
+                status=1
+              fi
+            done <<<"$ids"
+          done
+          exit "$status"
+
+      - name: Scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request: verifying unconditionally."
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A blip on this fetch reds the job having verified nothing, so it
+          # is retried rather than taken at its word. The template-id step is
+          # ungated so that it runs whatever the change touches; it sits above
+          # this one so that a red here finds it already run and reported,
+          # rather than never run at all.
+          for attempt in 1 2 3; do
+            git fetch --no-tags --prune origin \
+              "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
+            echo "git fetch attempt ${attempt} of 3 failed" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
+          changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
+          echo "Changed files:"
+          echo "$changed"
+          # Build and test inputs only. The files that merely name template
+          # ids are not listed: the check that reads them runs ahead of this
+          # gate and ignores it, so listing them here would install a
+          # toolchain and build both packages to verify nothing the change can
+          # reach.
+          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "run=false" | tee -a "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The published tarball is fetched by exact version and checked against a
+      # recorded digest instead of piping an installer into a shell. Pinning is
+      # also a correctness requirement, not only a supply-chain one: the
+      # installer's "latest" resolves to 3.5.5, while both daml.yaml files pin
+      # 3.4.11.
+      - name: Install dpm
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          # DPM_SDK_VERSION is a third copy of a pin whose other two homes are
+          # the daml.yaml files. Assert rather than trust: bumping those and
+          # forgetting this one otherwise fails much later, or silently makes
+          # dpm download a second SDK.
+          for pkg in canton-token-forge canton-token-forge-test; do
+            pinned="$(awk '/^sdk-version:/ {print $2; exit}' "daml/${pkg}/daml.yaml")"
+            if [ "$pinned" != "$DPM_SDK_VERSION" ]; then
+              echo "daml/${pkg}/daml.yaml pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
+              exit 1
+            fi
+          done
+          tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
+          url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
+          curl -SLf --retry 3 --retry-all-errors --retry-delay 5 \
+            "$url" --output "${RUNNER_TEMP}/${tarball}"
+          echo "${DPM_TARBALL_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/dpm-extracted"
+          tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/dpm-extracted" --strip-components 1
+          "${RUNNER_TEMP}/dpm-extracted/bin/dpm" bootstrap "${RUNNER_TEMP}/dpm-extracted"
+          rm -rf "${RUNNER_TEMP}/${tarball}" "${RUNNER_TEMP}/dpm-extracted"
+          echo "$HOME/.dpm/bin" >> "$GITHUB_PATH"
+
+      - name: Report the installed SDK
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          dpm version
+          du -sh "$HOME/.dpm"
+
+      # A git tag can be re-pointed upstream. Keying the cache on versions.env
+      # alone would then restore the tree the old tag pointed at for as long as
+      # the entry keeps being touched, with no way to invalidate it short of
+      # editing one of the key's own inputs, while a local `npm run setup`
+      # picks up the new commit: CI green, working copy red, nothing to see.
+      # Resolving the tag here puts the commit itself in the key.
+      - name: Resolve the Splice tag
+        id: splice
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source versions.env
+          for attempt in 1 2 3; do
+            refs="$(git ls-remote "https://github.com/canton-network/splice.git" \
+                      "refs/tags/${SPLICE_TAG}" "refs/tags/${SPLICE_TAG}^{}")" && break
+            echo "git ls-remote attempt ${attempt} of 3 failed" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
+          # An annotated tag lists the tag object and then the commit it peels
+          # to; a lightweight tag lists only itself. Either way the commit is
+          # the last line.
+          sha="$(tail -n1 <<<"$refs" | cut -f1)"
+          if [ -z "$sha" ]; then
+            echo "no such tag upstream: ${SPLICE_TAG}" >&2
+            exit 1
+          fi
+          echo "${SPLICE_TAG} -> ${sha}"
+          echo "sha=${sha}" | tee -a "$GITHUB_OUTPUT"
+
+      # The commit decides what is fetched and the script decides how it is
+      # laid out and which stable-name symlinks exist, so both are cache
+      # inputs. versions.env stays in the key for whatever it grows next.
+      - name: Restore vendored deps
+        id: deps
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: deps
+          key: deps-${{ runner.os }}-${{ steps.splice.outputs.sha }}-${{ hashFiles('versions.env', 'scripts/fetch-dep.sh') }}
+
+      - name: Vendor deps
+        if: steps.scope.outputs.run == 'true' && steps.deps.outputs.cache-hit != 'true'
+        run: bash scripts/fetch-dep.sh
+
+      - name: Verify the stable-name symlinks
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          for dar in holding metadata transfer-instruction allocation \
+                     allocation-instruction allocation-request burn-mint; do
+            path="deps/splice-daml/dars/splice-api-token-${dar}-v1.dar"
+            test -L "$path"
+            test -f "$path"
+            echo "ok: $path -> $(readlink "$path")"
+          done
+
+      # actions/cache's own post step saves even when the job has already
+      # failed, and this key has no restore-keys, so a fetch-dep.sh that dies
+      # partway through would publish a half-vendored deps/ that every later
+      # run for the same tag hits exactly, skipping the vendor step and
+      # failing the verification above with no key input left to change.
+      # Saving here instead, once the layout is verified, keeps a broken tree
+      # out of the cache. A step-level `if:` applies success() on its own; it
+      # is spelled out here because it is the half doing that work.
+      - name: Save vendored deps
+        if: success() && steps.scope.outputs.run == 'true' && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: deps
+          key: ${{ steps.deps.outputs.cache-primary-key }}
+
+      - name: Build
+        if: steps.scope.outputs.run == 'true'
+        run: npm run build
+
+      - name: Test
+        if: steps.scope.outputs.run == 'true'
+        run: npm test

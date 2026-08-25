@@ -15,10 +15,32 @@ source versions.env   # provides SPLICE_TAG
 REPO="https://github.com/canton-network/splice.git"
 DARS="deps/splice-daml/dars"
 
+# Both fetch paths retry. This is the only network step in the setup and it has
+# nothing to resume from, so on a cold CI cache a single DNS or 5xx blip is
+# worth a second attempt rather than a failed run. A third is not: the failure
+# that is not a blip is a transport that stays broken for as long as that
+# environment does, and every attempt pays for it with a full transfer before
+# the tarball fallback below is even reached.
+retry() {
+  local attempt max=2
+  for ((attempt = 1; attempt <= max; attempt++)); do
+    if "$@"; then return 0; fi
+    echo "attempt ${attempt} of ${max} failed: $*" >&2
+    if [ "$attempt" -lt "$max" ]; then sleep 5; fi
+  done
+  return 1
+}
+
+# --filter=blob:none defers the blobs to the sparse-checkout, so both halves
+# touch the network and the retry has to cover them together, from a clean dir.
+sparse_clone() {
+  rm -rf .tmp-splice
+  git clone --filter=blob:none --sparse --depth=1 --branch "$SPLICE_TAG" "$REPO" .tmp-splice \
+    && ( cd .tmp-splice && git sparse-checkout set daml token-standard )
+}
+
 echo "Fetching daml/ + token-standard/ from canton-network/splice@${SPLICE_TAG}..."
-rm -rf .tmp-splice
-if git clone --filter=blob:none --sparse --depth=1 --branch "$SPLICE_TAG" "$REPO" .tmp-splice \
-     && ( cd .tmp-splice && git sparse-checkout set daml token-standard ); then
+if retry sparse_clone; then
   :
 else
   # Fallback for environments where git's smart-HTTP pack transfer is broken
@@ -26,9 +48,14 @@ else
   echo "git sparse-clone failed; falling back to tarball fetch..." >&2
   rm -rf .tmp-splice
   mkdir -p .tmp-splice
-  curl -fsSL "https://codeload.github.com/canton-network/splice/tar.gz/refs/tags/${SPLICE_TAG}" \
-    | tar -xz -C .tmp-splice --strip-components=1 \
-        "splice-${SPLICE_TAG}/daml" "splice-${SPLICE_TAG}/token-standard"
+  # To a file rather than into tar's stdin: a retried transfer restarts from
+  # the top, and the pipe has already swallowed the bytes of the attempt that
+  # failed.
+  curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 \
+    "https://codeload.github.com/canton-network/splice/tar.gz/refs/tags/${SPLICE_TAG}" \
+    --output .tmp-splice/source.tar.gz
+  tar -xzf .tmp-splice/source.tar.gz -C .tmp-splice --strip-components=1 \
+      "splice-${SPLICE_TAG}/daml" "splice-${SPLICE_TAG}/token-standard"
 fi
 
 # Vendor: daml/ -> deps/splice-daml ; token-standard/ -> deps/token-standard (siblings).
