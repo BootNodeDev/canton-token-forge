@@ -151,7 +151,12 @@ jobs:
           changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
-          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|scripts/seed\.mjs$|registry/\.env\.example$|registry/test/e2e/helpers/sandbox\.ts$|registry/test/helpers/fixtures\.ts$|registry/test/ledger\.test\.ts$|RUNBOOK\.md$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          # Build and test inputs only. The files that merely name template
+          # ids are not listed: the check that reads them runs ahead of this
+          # gate and ignores it, so listing them here would install a
+          # toolchain and build both packages to verify nothing the change can
+          # reach.
+          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
