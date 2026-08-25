@@ -238,7 +238,11 @@ jobs:
               module="${id#Canton.TokenForge.}"
               module="${module%%:*}"
               entity="${id##*:}"
-              if grep -q "^template ${entity}\$" "${src}/${module//./\/}.daml" 2>/dev/null; then
+              # The entity is not always the last token on the line:
+              # `template Foo with` is as valid as breaking before the `with`,
+              # so anchoring on end-of-line alone would report a formatting
+              # change as an undeclared template.
+              if grep -Eq "^template[[:space:]]+${entity}([[:space:]]|\$)" "${src}/${module//./\/}.daml" 2>/dev/null; then
                 echo "ok: ${file} -> ${module}:${entity}"
               else
                 echo "${file} names ${module}:${entity}, which daml/ does not declare" >&2
