@@ -13,9 +13,14 @@ permissions:
 # A pull request's scope gate skips the work one step at a time, so the
 # main-push run is the only place the merged tree is verified unconditionally,
 # and cancelling it when a second commit lands leaves that commit with no full
-# verification.
+# verification. Holding cancel-in-progress off does not achieve that on its
+# own: GitHub keeps at most one pending run per group and cancels the
+# previously pending one whatever the flag says, so three merges in quick
+# succession would drop the middle commit's run while it waited. Keying a push
+# on its own commit gives every one of them a group to itself, with nothing to
+# queue behind and nothing to supersede.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
