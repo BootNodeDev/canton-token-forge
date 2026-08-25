@@ -55,8 +55,15 @@ jobs:
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
-          git fetch --no-tags --prune origin \
-            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          # A blip on this fetch reds a required check having verified
+          # nothing, so retry rather than let one red the pull request.
+          for attempt in 1 2 3; do
+            git fetch --no-tags --prune origin \
+              "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
+            echo "git fetch attempt ${attempt} of 3 failed" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
           changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
@@ -146,8 +153,17 @@ jobs:
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
-          git fetch --no-tags --prune origin \
-            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          # A blip on this fetch reds a required check having verified
+          # nothing, and it would take the template-id step below down with
+          # it: that step is deliberately ungated so that it runs whatever
+          # the change touches, but it still sits after this one.
+          for attempt in 1 2 3; do
+            git fetch --no-tags --prune origin \
+              "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
+            echo "git fetch attempt ${attempt} of 3 failed" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
           changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
