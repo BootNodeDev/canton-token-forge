@@ -141,43 +141,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Scope
-        id: scope
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "Not a pull request: verifying unconditionally."
-            echo "run=true" | tee -a "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # A blip on this fetch reds a required check having verified
-          # nothing, and it would take the template-id step below down with
-          # it: that step is deliberately ungated so that it runs whatever
-          # the change touches, but it still sits after this one.
-          for attempt in 1 2 3; do
-            git fetch --no-tags --prune origin \
-              "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
-            echo "git fetch attempt ${attempt} of 3 failed" >&2
-            [ "$attempt" -lt 3 ] || exit 1
-            sleep 5
-          done
-          changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
-          echo "Changed files:"
-          echo "$changed"
-          # Build and test inputs only. The files that merely name template
-          # ids are not listed: the check that reads them runs ahead of this
-          # gate and ignores it, so listing them here would install a
-          # toolchain and build both packages to verify nothing the change can
-          # reach.
-          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
-            echo "run=true" | tee -a "$GITHUB_OUTPUT"
-          else
-            echo "run=false" | tee -a "$GITHUB_OUTPUT"
-          fi
-
       # A handful of files outside daml/ name our templates as
       # '<module>:<entity>' string literals. Nothing compiles or typechecks
       # those: renaming a module or a template in daml/ leaves every one of
@@ -186,8 +149,11 @@ jobs:
       # stub-backed against those same literals, and its end-to-end suite is
       # typechecked but not run. The break surfaces first at a manual
       # `npm run seed`. Check the strings against the source instead. This
-      # runs before the toolchain install so it fails in seconds, and it is
-      # deliberately not gated on the scope step: the comparison below ranges
+      # runs ahead of both the scope step and the toolchain install, so it
+      # fails in seconds and nothing it needs can fail first: it reads the
+      # checkout, daml.yaml and git grep, while the scope step below reaches
+      # the network and reds the whole job when that blips. Being placed first
+      # is deliberate, and so is being ungated: the comparison below ranges
       # over the whole tree, so a file the gate does not list - a new one, or
       # the end-to-end suite - would otherwise fail here on the merge to main
       # having passed on the pull request that broke it.
@@ -216,9 +182,12 @@ jobs:
             scripts/seed.mjs
           )
           # Two more files carry the prefix and must not be checked against
-          # daml/: this workflow strips it in the loop below, and the
-          # end-to-end suite deliberately names templates the package does not
-          # declare, to prove the boot check rejects them.
+          # daml/: this workflow strips it in the loop below, and every id
+          # left in the end-to-end suite names a template the package does not
+          # declare, to prove the boot check rejects them. That suite also
+          # needs an id whose module and entity are real and whose package is
+          # not; it builds those from helpers/sandbox.ts, which is checked, so
+          # skipping the file here hides no literal that daml/ could strand.
           skipped=(
             .github/workflows/ci.yml
             registry/test/e2e/sandbox.test.ts
@@ -227,9 +196,9 @@ jobs:
           # array would go unchecked and report nothing, so the two are held
           # exhaustive here. daml/ is the source of truth and carries the
           # prefix in its own module headers, so only the rest of the tree is
-          # compared. Ranging over the whole tree is why the step above it is
-          # ungated: no path list written today can name the file a later
-          # pull request adds.
+          # compared. Ranging over the whole tree is why this step is ungated:
+          # no path list written today can name the file a later pull request
+          # adds.
           if ! diff \
             <(printf '%s\n' "${checked[@]}" "${skipped[@]}" | sort) \
             <(git grep -lE 'Canton\.TokenForge\.' -- ':!daml/' | sort); then
@@ -321,6 +290,44 @@ jobs:
             done <<<"$ids"
           done
           exit "$status"
+
+      - name: Scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request: verifying unconditionally."
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A blip on this fetch reds the job having verified nothing, so it
+          # is retried rather than taken at its word. The template-id step is
+          # ungated so that it runs whatever the change touches; it sits above
+          # this one so that a red here finds it already run and reported,
+          # rather than never run at all.
+          for attempt in 1 2 3; do
+            git fetch --no-tags --prune origin \
+              "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
+            echo "git fetch attempt ${attempt} of 3 failed" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
+          changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
+          echo "Changed files:"
+          echo "$changed"
+          # Build and test inputs only. The files that merely name template
+          # ids are not listed: the check that reads them runs ahead of this
+          # gate and ignores it, so listing them here would install a
+          # toolchain and build both packages to verify nothing the change can
+          # reach.
+          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "run=false" | tee -a "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-java@v4
         if: steps.scope.outputs.run == 'true'
