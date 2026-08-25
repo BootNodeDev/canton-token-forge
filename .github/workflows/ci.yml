@@ -255,15 +255,20 @@ jobs:
             # possessive, red the check. The price of the narrower rule is
             # that a concatenation breaking at the module boundary,
             # 'Canton.TokenForge.Registry' + ':' + entity, reads exactly like
-            # that sentence and goes unseen. A whole id reaches both patterns
-            # through its closing quote and is dropped again on the way out.
+            # that sentence and goes unseen. A whole id reaches the quoted
+            # pattern through its closing quote and is dropped again on the
+            # way out, by a rule that spells the quote rather than any
+            # character and runs on that grep alone: a whole id followed by a
+            # substitution opener is not an id that ended, it is its entity
+            # being interpolated, which is the one thing the other grep is
+            # here to catch.
             # A file that stops matching altogether is caught a step earlier,
             # by dropping out of the comparison above; a file whose every id
             # interpolates a prefix defined somewhere else holds no literal
             # at all, and no grep sees that one.
             partial="$({ grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.:]*[{+%\$]" "$file" || true
-                         grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.]*:[A-Za-z0-9_]*['\"]" "$file" || true; } \
-                        | { grep -Ev "^${pattern}.\$" || true; } | sort -u)"
+                         { grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.]*:[A-Za-z0-9_]*['\"]" "$file" || true; } \
+                           | { grep -Ev "^${pattern}['\"]\$" || true; }; } | sort -u)"
             if [ -n "$partial" ]; then
               echo "${file} spells a template id in parts rather than in full:" >&2
               echo "$partial" >&2
