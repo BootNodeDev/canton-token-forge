@@ -235,18 +235,25 @@ jobs:
             ids="$({ grep -Eo "$pattern" "$file" || true; } | sort -u)"
             # An id built by interpolation, as scripts/seed.mjs once did,
             # leaves its file matching on its other ids and reporting ok on
-            # those alone, so the half-written form is looked for directly:
-            # the prefix, as much of the id as is spelled out, then a
-            # character that opens a substitution or a concatenation. A whole
-            # id reaches that same pattern through its closing quote and is
-            # dropped again on the way out. Prose and imports carry no such
-            # character after the prefix, which is why naming the module in a
-            # sentence does not red the check. A file that stops matching
-            # altogether is caught a step earlier, by dropping out of the
-            # comparison above; a file whose every id interpolates a prefix
-            # defined somewhere else holds no literal at all, and no grep
-            # sees that one.
-            partial="$({ grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.:]*[\$'\"{+%]" "$file" || true; } \
+            # those alone, so the half-written form is looked for directly.
+            # It takes two shapes. A substitution opener straight after the
+            # prefix, or after the module, can only be interpolation: prose
+            # never writes one there. A quote is ambiguous, closing an id as
+            # readily as cutting one short, so the quoted form counts only
+            # once a ':' has committed the text to an id and no entity
+            # follows. Matching a quote unconditionally is what made a
+            # sentence that merely quotes the module name, or takes its
+            # possessive, red the check. The price of the narrower rule is
+            # that a concatenation breaking at the module boundary,
+            # 'Canton.TokenForge.Registry' + ':' + entity, reads exactly like
+            # that sentence and goes unseen. A whole id reaches both patterns
+            # through its closing quote and is dropped again on the way out.
+            # A file that stops matching altogether is caught a step earlier,
+            # by dropping out of the comparison above; a file whose every id
+            # interpolates a prefix defined somewhere else holds no literal
+            # at all, and no grep sees that one.
+            partial="$({ grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.:]*[{+%\$]" "$file" || true
+                         grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.]*:[A-Za-z0-9_]*['\"]" "$file" || true; } \
                         | { grep -Ev "^${pattern}.\$" || true; } | sort -u)"
             if [ -n "$partial" ]; then
               echo "${file} spells a template id in parts rather than in full:" >&2
