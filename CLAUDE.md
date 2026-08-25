@@ -256,9 +256,10 @@ Run before declaring work done:
 - `npm run test:coverage` - when you touched or added templates
 
 Every pull request has the strings that spell a template id verified against
-`daml/`, whatever it touches, as the first step of the `daml` check. One that
-touches `daml/` or the root build inputs runs the first three of these
-automatically in that same check, after that step. One that touches
+`daml/`, whatever it touches: the `daml` check runs that comparison ahead of
+its toolchain install and ignores its own scope gate. One that touches
+`daml/` or the root build inputs runs the first three of these automatically
+in that same check, after that step. One that touches
 `registry/` runs that package's own lint, both typechecks, and unit suite as
 the `registry` check, not the root commands above. `npm run test:coverage` and
 the registry's `npm run test:e2e` stay manual: the first re-runs Splice's own
