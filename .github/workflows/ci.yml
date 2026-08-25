@@ -231,23 +231,35 @@ jobs:
           for file in "${checked[@]}"; do
             test -f "$file"
             # No match makes grep exit 1, which under pipefail would kill the
-            # step before the report below ever runs. Occurrences are counted
-            # rather than matching lines, because grep -c would collapse two
-            # ids on one line and make the comparison below read as a miss.
-            mentions="$({ grep -Eo 'Canton\.TokenForge\.' "$file" || true; } | wc -l)"
-            found="$({ grep -Eo "$pattern" "$file" || true; } | wc -l)"
+            # step before the report below ever runs.
             ids="$({ grep -Eo "$pattern" "$file" || true; } | sort -u)"
-            # Counting the bare prefix separately is what catches the partial
-            # case: an id built by interpolation, as scripts/seed.mjs once
-            # did, leaves its file matching on the other ids and reporting ok
-            # on those alone. A file that stops matching altogether is caught
-            # a step earlier, by dropping out of the comparison above. What
-            # neither catches is a file whose every id interpolates a prefix
-            # defined in some other file: it holds no literal to count and
-            # never enters the comparison. No grep sees that one.
-            if [ "$found" -ne "$mentions" ]; then
-              echo "${file} has ${mentions} occurrences of the module prefix but only ${found} full '<module>:<entity>' ids: one is built by interpolation, or named without its entity" >&2
+            # An id built by interpolation, as scripts/seed.mjs once did,
+            # leaves its file matching on its other ids and reporting ok on
+            # those alone, so the half-written form is looked for directly:
+            # the prefix, as much of the id as is spelled out, then a
+            # character that opens a substitution or a concatenation. A whole
+            # id reaches that same pattern through its closing quote and is
+            # dropped again on the way out. Prose and imports carry no such
+            # character after the prefix, which is why naming the module in a
+            # sentence does not red the check. A file that stops matching
+            # altogether is caught a step earlier, by dropping out of the
+            # comparison above; a file whose every id interpolates a prefix
+            # defined somewhere else holds no literal at all, and no grep
+            # sees that one.
+            partial="$({ grep -Eo "Canton\.TokenForge\.[A-Za-z0-9_.:]*[\$'\"{+%]" "$file" || true; } \
+                        | { grep -Ev "^${pattern}.\$" || true; } | sort -u)"
+            if [ -n "$partial" ]; then
+              echo "${file} spells a template id in parts rather than in full:" >&2
+              echo "$partial" >&2
               status=1
+              continue
+            fi
+            # An empty list would otherwise reach the loop below as one
+            # blank line and be reported as an undeclared '' template. A file
+            # reaches here holding the prefix, by the comparison above, so
+            # this is the case where every occurrence of it is prose.
+            if [ -z "$ids" ]; then
+              echo "ok: ${file} names the module but no ids"
               continue
             fi
             while read -r id; do
