@@ -198,6 +198,15 @@ jobs:
           # A dot is allowed inside the module so that moving a template into
           # a nested module keeps it matched rather than quietly dropping it.
           pattern='Canton\.TokenForge\.[A-Za-z0-9_.]+:[A-Za-z0-9_]+'
+          # The leading '#<package-name>' half of an id names the package
+          # rather than a module, so it is answered by daml.yaml and read
+          # once here.
+          pkg="$(awk '$1 == "name:" { print $2; exit }' \
+                 daml/canton-token-forge/daml.yaml)"
+          if [ -z "$pkg" ]; then
+            echo "daml/canton-token-forge/daml.yaml names no package" >&2
+            exit 1
+          fi
           checked=(
             RUNBOOK.md
             registry/.env.example
@@ -261,6 +270,25 @@ jobs:
               status=1
               continue
             fi
+            # The extraction above starts at the module, so the package
+            # name in front of it is never compared by the loop below. It
+            # is the same dangling literal: nothing typechecks it either,
+            # and a rename in daml.yaml surfaces first at a manual
+            # `npm run seed`. Only a qualifier attached to a module is read,
+            # which leaves prose quoting the prefix on its own unchecked; a
+            # qualifier without the '#' is a package id, a form these files
+            # only ever fake in a stub, so it is left alone.
+            quals="$({ grep -Eo "#[A-Za-z0-9_.-]+:Canton\.TokenForge\." "$file" || true; } \
+                      | sed -e 's/^#//' -e 's/:.*$//' | sort -u)"
+            while read -r qual; do
+              [ -n "$qual" ] || continue
+              if [ "$qual" = "$pkg" ]; then
+                echo "ok: ${file} -> #${qual}"
+              else
+                echo "${file} qualifies a template id with #${qual}, which daml.yaml does not name" >&2
+                status=1
+              fi
+            done <<<"$quals"
             # An empty list would otherwise reach the loop below as one
             # blank line and be reported as an undeclared '' template. A file
             # reaches here holding the prefix, by the comparison above, so
