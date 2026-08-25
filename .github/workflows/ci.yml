@@ -269,8 +269,10 @@ jobs:
               # The entity is not always the last token on the line:
               # `template Foo with` is as valid as breaking before the `with`,
               # so anchoring on end-of-line alone would report a formatting
-              # change as an undeclared template.
-              if grep -Eq "^template[[:space:]]+${entity}([[:space:]]|\$)" "${src}/${module//./\/}.daml" 2>/dev/null; then
+              # change as an undeclared template. Interfaces travel over the
+              # JSON Ledger API in the same '<module>:<entity>' form as
+              # templates, so a declaration of either resolves the id.
+              if grep -Eq "^(template|interface)[[:space:]]+${entity}([[:space:]]|\$)" "${src}/${module//./\/}.daml" 2>/dev/null; then
                 echo "ok: ${file} -> ${module}:${entity}"
               else
                 echo "${file} names ${module}:${entity}, which daml/ does not declare" >&2
