@@ -216,8 +216,9 @@ mergeInputsIntoOneLockWithChange = do
     assertMsg "every input must be archived" (isNone spent)
 
 -- No minting: outputs plus change equal the inputs exactly, so outputs beyond
--- the inputs must be refused. 50.01 against 50.0 is the smallest overspend the
--- instrument's ten decimals can express.
+-- the inputs must be refused. 50.01 is an arbitrary overspend, not a minimal
+-- one: Decimal carries ten fractional digits, and the instrument's `decimals`
+-- is never applied to an amount anywhere.
 transferRejectsOutputsExceedingInputs : Script ()
 transferRejectsOutputsExceedingInputs = do
   admin <- allocateParty "admin"
