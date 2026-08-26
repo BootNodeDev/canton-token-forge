@@ -3,6 +3,7 @@ module Canton.TokenForge.Test.AllocationTest where
 import Daml.Script
 import DA.Assert ((===))
 import DA.Optional (isNone, isSome)
+import DA.Text qualified as T
 import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
@@ -140,13 +141,19 @@ allocationRejectsDuplicateInputs = do
       spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
   setTime now
   Some cfgDisclosure <- queryDisclosure admin cfg
-  submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+  -- Matched on the message rather than submitMustFail: with the guard removed
+  -- the submission still fails, on the ledger refusing the second archive of
+  -- the same contract, so a bare submitMustFail accepts a missing guard.
+  res <- trySubmit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
     expectedAdmin = admin; allocation = spec; requestedAt = now
     inputHoldingCids =
       [ toInterfaceContractId @HoldingV1.Holding tok
       , toInterfaceContractId @HoldingV1.Holding tok
       ]
     extraArgs = xargs
+  case res of
+    Left (FailureStatusError fs) | "input holdings must not contain duplicates" `T.isInfixOf` fs.message -> pure ()
+    _ -> abort ("expected the duplicate-input refusal, got: " <> show res)
 
 -- From settleBefore on, the escrow is only sender-reclaimable; the executor can
 -- no longer settle the leg even with full authorization. The same instant opens
