@@ -66,6 +66,11 @@ tokenTransferControllers transfer =
 -- input cids are upcast here; a caller that coerced a LockedToken cid into a
 -- ContractId Token still lands in the rejecting branch, which is what keeps an
 -- in-flight escrow unreachable through this door.
+--
+-- Amulet's maxNumInputs, maxNumOutputs and maxNumLockHolders caps are
+-- deliberately not ported: they bound fee computation on TransferConfigV2, the
+-- economics config this token has no analog of, and the standard's own factory
+-- entry points here already take unbounded input lists.
 executeTokenTransfer
   : Party    -- ^ admin (config signatory)
   -> Text    -- ^ instrumentId
