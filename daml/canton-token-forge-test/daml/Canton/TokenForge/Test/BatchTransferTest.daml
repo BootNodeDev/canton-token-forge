@@ -295,6 +295,28 @@ transferMustFailAsWith cfg admin actors expectedAdmin expectedMessage transfer =
     Left (FailureStatusError fs) | expectedMessage `T.isInfixOf` fs.message -> pure ()
     _ -> abort ("expected a rejection matching " <> show expectedMessage <> ", got: " <> show res)
 
+-- Like transferMustFailAs, but pins the refusal on the choice's own node. The
+-- controller rule is guarded in depth: Token is `signatory admin, owner` and
+-- LockedToken `signatory admin, owner, holders`, so dropping a party from
+-- tokenTransferControllers still fails, only later and on the create of the
+-- holding. Matching the InstrumentConfig node in the authorization message is
+-- what tells the two apart. The constructor differs from transferMustFailAsWith's
+-- because an authorization refusal is not a FailureStatusError.
+transferMustFailAsUnauthorized
+  : ContractId InstrumentConfig
+  -> Party            -- ^ admin
+  -> [Party]          -- ^ actors
+  -> Party            -- ^ expectedAdmin
+  -> TokenTransfer
+  -> Script ()
+transferMustFailAsUnauthorized cfg admin actors expectedAdmin transfer = do
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- trySubmit (actAs actors <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
+  case res of
+    Left (AuthorizationError msg) | "Registry:InstrumentConfig" `T.isInfixOf` msg -> pure ()
+    _ -> abort ("expected the InstrumentConfig node to be unauthorized, got: " <> show res)
+
 -- No binding an unwilling party: a receiver and a lock holder are both
 -- controllers, so a holding is never created for someone who did not sign.
 -- This is stricter than the preapproval path, so it opens no bypass of it.
@@ -308,14 +330,14 @@ transferRequiresEveryOutputPartyToAuthorize = do
   tok <- tokenWithMeta admin alice 50.0 emptyMetadata
 
   -- an output receiver who does not authorize
-  transferMustFailAs cfg admin [alice] admin (TokenTransfer with
+  transferMustFailAsUnauthorized cfg admin [alice] admin (TokenTransfer with
     sender = alice
     inputs = [tok]
     outputs = [ TokenTransferOutput with
                   receiver = bob; amount = 50.0; lock = None; meta = emptyMetadata ])
 
   -- an output lock holder who does not authorize
-  transferMustFailAs cfg admin [alice] admin (TokenTransfer with
+  transferMustFailAsUnauthorized cfg admin [alice] admin (TokenTransfer with
     sender = alice
     inputs = [tok]
     outputs = [ TokenTransferOutput with
