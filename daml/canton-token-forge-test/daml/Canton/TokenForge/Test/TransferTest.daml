@@ -10,8 +10,8 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata, emptyChoiceContext, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (InstrumentConfig_LockHolding(..), preapprovalContextKey)
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken, preapprove)
+import Canton.TokenForge.Registry (preapprovalContextKey)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, preapprove, lockToken)
 
 directTransferCompletes : Script ()
 directTransferCompletes = do
@@ -137,10 +137,9 @@ transferRejectsBadInputs = do
     expectedAdmin = admin; transfer = dupTransfer; extraArgs = xargs
   -- locked holding passed as an input
   lockedTok <- mintToken cfg admin alice 10.0
-  lock <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
-    owner = alice; tokenCid = lockedTok; holders = [admin]; expiresAt = later
+  lockedCid <- lockToken cfg admin alice lockedTok [admin] later
   let lockedTransfer = (mkTransfer 5.0) with
-        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding lock.lockedCid]
+        inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding lockedCid]
   submitMustFail (actAs alice <> disclosures) $ exerciseCmd factoryCid TransferFactory_Transfer with
     expectedAdmin = admin; transfer = lockedTransfer; extraArgs = xargs
 
