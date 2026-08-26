@@ -409,18 +409,22 @@ transferRejectsInputsItMayNotSpend = do
   -- authorized; the ownership assert is what refuses it. Acting as bob in the
   -- submission would not be enough: only the controller set carries authority
   -- past the choice boundary.
-  transferMustFailAs cfg admin admin (TokenTransfer with
-    sender = alice
-    inputs = [bobTok]
-    outputs = [ TokenTransferOutput with
-                  receiver = bob; amount = 50.0; lock = None; meta = emptyMetadata ])
+  transferMustFailAsWith cfg admin [alice, bob] admin "input holding must be owned by the sender"
+    (TokenTransfer with
+      sender = alice
+      inputs = [bobTok]
+      outputs = [ TokenTransferOutput with
+                    receiver = bob; amount = 50.0; lock = None; meta = emptyMetadata ])
   -- the same input twice
   transferMustFailAsWith cfg admin [alice] admin "input holdings must not contain duplicates"
     (spend [aliceTok, aliceTok] 100.0)
   -- an input of another instrument under the same admin
   transferMustFailAs cfg admin admin (spend [foreignTok] 50.0)
-  -- an escrowed LockedToken coerced into a Token cid
-  transferMustFailAs cfg admin admin (spend [coerceContractId lockedCid] 50.0)
+  -- an escrowed LockedToken coerced into a Token cid. Pinned on the downcast's
+  -- own refusal: an unchecked coercion in fetchInputs aborts on the wrongly
+  -- typed contract, which a bare submitMustFail would accept as a pass.
+  transferMustFailAsWith cfg admin [alice] admin "input holding is not a spendable Token"
+    (spend [coerceContractId lockedCid] 50.0)
 
 -- A negative output is the direction that matters: inputTotal >= outputTotal
 -- still holds and inputTotal - outputTotal grows, so without the positivity
