@@ -5,9 +5,10 @@
 module Canton.TokenForge.Transfer where
 
 import DA.List (dedup)
-import Splice.Api.Token.MetadataV1 (Metadata)
-import Canton.TokenForge.Token (Token)
-import Canton.TokenForge.Locked (LockedToken)
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import Canton.TokenForge.Token (Token, mkToken, consumeInputs)
+import Canton.TokenForge.Locked (LockedToken(..))
 
 -- | Splice.Expiry.TimeLock.
 data TokenLock = TokenLock
@@ -53,3 +54,42 @@ tokenTransferControllers transfer =
     dedup (transfer.sender :: concatMap outputParties transfer.outputs)
   where
     outputParties o = o.receiver :: optional [] (.holders) o.lock
+
+-- | Archive the sender's inputs, create the outputs in order, and return any
+-- leftover input value to the sender as change (which carries no memo, being
+-- the sender's own funds rather than delivered value).
+--
+-- consumeInputs does the whole input half: it rejects duplicates, rejects
+-- anything that is not a spendable Token of this instrument, and requires every
+-- input to be owned by the sender. Its Holding-interface parameter is why the
+-- input cids are upcast here; a caller that coerced a LockedToken cid into a
+-- ContractId Token still lands in the rejecting branch, which is what keeps an
+-- in-flight escrow unreachable through this door.
+executeTokenTransfer
+  : Party    -- ^ admin (config signatory)
+  -> Text    -- ^ instrumentId
+  -> TokenTransfer
+  -> Update ([CreatedHolding], Optional (ContractId Token))
+executeTokenTransfer admin instrumentId transfer = do
+  amounts <- consumeInputs admin instrumentId transfer.sender
+    (map (toInterfaceContractId @HoldingV1.Holding) transfer.inputs)
+  let inputTotal = sum amounts
+      outputTotal = sum (map (.amount) transfer.outputs)
+  assertMsg "outputs must not exceed the inputs" (inputTotal >= outputTotal)
+
+  createdHoldings <- forA transfer.outputs \o -> do
+    assertMsg "output amount must be positive" (o.amount > 0.0)
+    case o.lock of
+      None -> TransferResultToken <$>
+        create (mkToken admin o.receiver instrumentId o.amount o.meta)
+      Some l -> TransferResultLockedToken <$>
+        create LockedToken with
+          admin; owner = o.receiver; instrumentId; amount = o.amount
+          holders = l.holders; expiresAt = l.expiresAt; optContext = l.optContext
+          meta = o.meta
+
+  senderChangeCid <-
+    if inputTotal > outputTotal
+      then Some <$> create (mkToken admin transfer.sender instrumentId (inputTotal - outputTotal) emptyMetadata)
+      else pure None
+  pure (createdHoldings, senderChangeCid)
