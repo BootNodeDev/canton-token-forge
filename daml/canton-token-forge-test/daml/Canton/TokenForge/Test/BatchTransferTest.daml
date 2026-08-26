@@ -260,19 +260,20 @@ transferRejectsAnAlreadyExpiredLock = do
   submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin
 
--- Exercise the batch transfer as an explicit actor set. The authorization
--- negatives need this: they submit as fewer parties than the transfer names,
--- which runTransfer cannot express.
+-- Exercise the batch transfer as the transfer's own controller set and require
+-- a refusal. The actor set is derived rather than passed in: submitting as
+-- fewer parties than the transfer names is refused at the InstrumentConfig node
+-- before the choice body runs, so a hand-written list that drifts out of step
+-- would leave the negative green without ever reaching the guard it names.
 transferMustFailAs
   : ContractId InstrumentConfig
   -> Party            -- ^ admin
-  -> [Party]          -- ^ actors
   -> Party            -- ^ expectedAdmin
   -> TokenTransfer
   -> Script ()
-transferMustFailAs cfg admin actors expectedAdmin transfer = do
+transferMustFailAs cfg admin expectedAdmin transfer = do
   Some cfgDisclosure <- queryDisclosure admin cfg
-  submitMustFail (actAs actors <> disclose cfgDisclosure) $
+  submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
 
 -- Like transferMustFailAs, but pins the rejection message. A refusal that is
@@ -360,7 +361,7 @@ transferRejectsWrongExpectedAdmin = do
         inputs = [tok]
         outputs = [ TokenTransferOutput with
                       receiver = alice; amount = 50.0; lock = None; meta = emptyMetadata ]
-  transferMustFailAs cfg admin (tokenTransferControllers transfer) bob transfer
+  transferMustFailAs cfg admin bob transfer
 
 -- consumeInputs enforces all four of these; none had been driven through this
 -- entry point. The locked input is the one that matters most: a contract id is
@@ -391,7 +392,7 @@ transferRejectsInputsItMayNotSpend = do
   -- authorized; the ownership assert is what refuses it. Acting as bob in the
   -- submission would not be enough: only the controller set carries authority
   -- past the choice boundary.
-  transferMustFailAs cfg admin [alice, bob] admin (TokenTransfer with
+  transferMustFailAs cfg admin admin (TokenTransfer with
     sender = alice
     inputs = [bobTok]
     outputs = [ TokenTransferOutput with
@@ -400,9 +401,9 @@ transferRejectsInputsItMayNotSpend = do
   transferMustFailAsWith cfg admin [alice] admin "input holdings must not contain duplicates"
     (spend [aliceTok, aliceTok] 100.0)
   -- an input of another instrument under the same admin
-  transferMustFailAs cfg admin [alice] admin (spend [foreignTok] 50.0)
+  transferMustFailAs cfg admin admin (spend [foreignTok] 50.0)
   -- an escrowed LockedToken coerced into a Token cid
-  transferMustFailAs cfg admin [alice] admin (spend [coerceContractId lockedCid] 50.0)
+  transferMustFailAs cfg admin admin (spend [coerceContractId lockedCid] 50.0)
 
 -- A negative output is the direction that matters: inputTotal >= outputTotal
 -- still holds and inputTotal - outputTotal grows, so without the positivity
