@@ -228,3 +228,28 @@ transferRejectsOutputsExceedingInputs = do
                       receiver = alice; amount = 50.01; lock = None; meta = emptyMetadata ]
   submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin
+
+-- A lock whose expiry has already passed is releasable by its owner alone the
+-- moment it is created, since that is exactly the gate LockedToken_ExpireLock
+-- opens. AmuletRules refuses to create one (preprocessOutputs) and so do we.
+transferRejectsAnAlreadyExpiredLock : Script ()
+transferRejectsAnAlreadyExpiredLock = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  provider <- allocateParty "provider"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  let transfer = TokenTransfer with
+        sender = alice
+        inputs = [tok]
+        outputs = [ TokenTransferOutput with
+                      receiver = alice; amount = 50.0
+                      lock = Some TokenLock with
+                        holders = [provider]; expiresAt = lockUntil; optContext = None
+                      meta = emptyMetadata ]
+  -- the instant the lock expires, not merely past it: a lock expiring now is
+  -- already expirable, so the refusal has to cover the boundary itself
+  setTime lockUntil
+  submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin

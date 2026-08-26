@@ -4,6 +4,7 @@
 -- choice and calls in here, the way it delegates allocation to Allocation.daml.
 module Canton.TokenForge.Transfer where
 
+import DA.Assert (assertWithinDeadline)
 import DA.List (dedup)
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
@@ -82,7 +83,10 @@ executeTokenTransfer admin instrumentId transfer = do
     case o.lock of
       None -> TransferResultToken <$>
         create (mkToken admin o.receiver instrumentId o.amount o.meta)
-      Some l -> TransferResultLockedToken <$>
+      Some l -> TransferResultLockedToken <$> do
+        -- A lock at or past its expiry is one LockedToken_ExpireLock away from
+        -- being the owner's again, so creating one escrows nothing.
+        assertWithinDeadline "lock.expiresAt" l.expiresAt
         create LockedToken with
           admin; owner = o.receiver; instrumentId; amount = o.amount
           holders = l.holders; expiresAt = l.expiresAt; optContext = l.optContext
