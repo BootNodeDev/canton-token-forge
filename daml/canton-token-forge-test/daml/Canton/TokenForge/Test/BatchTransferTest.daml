@@ -5,15 +5,16 @@ import DA.Assert ((===))
 import DA.Foldable (forA_)
 import DA.List (sort)
 import DA.Optional (isNone)
+import DA.Text qualified as T
 import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata)
-import Canton.TokenForge.Registry (InstrumentConfig_Transfer(..))
+import Canton.TokenForge.Registry (InstrumentConfig, InstrumentConfig_Transfer(..))
 import Canton.TokenForge.Token (Token(..))
 import Canton.TokenForge.Transfer (TokenTransfer(..), TokenTransferOutput(..), TokenLock(..), CreatedHolding(..), tokenTransferControllers)
-import Canton.TokenForge.Test.Util (registerInstrument, runTransfer)
+import Canton.TokenForge.Test.Util (lockToken, registerInstrument, runTransfer)
 
 lockUntil : Time
 lockUntil = time (date 2026 Jan 2) 0 0 0
@@ -258,3 +259,217 @@ transferRejectsAnAlreadyExpiredLock = do
   setTime lockUntil
   submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin
+
+-- Exercise the batch transfer as the transfer's own controller set and require
+-- a refusal. The actor set is derived rather than passed in: submitting as
+-- fewer parties than the transfer names is refused at the InstrumentConfig node
+-- before the choice body runs, so a hand-written list that drifts out of step
+-- would leave the negative green without ever reaching the guard it names.
+transferMustFailAs
+  : ContractId InstrumentConfig
+  -> Party            -- ^ admin
+  -> Party            -- ^ expectedAdmin
+  -> TokenTransfer
+  -> Script ()
+transferMustFailAs cfg admin expectedAdmin transfer = do
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
+
+-- Like transferMustFailAs, but pins the rejection message. A refusal that is
+-- guarded in depth needs this: the duplicate-input case below still fails with
+-- its assert removed, on the ledger refusing the second archive of the same
+-- contract, so a bare submitMustFail accepts a missing guard.
+transferMustFailAsWith
+  : ContractId InstrumentConfig
+  -> Party            -- ^ admin
+  -> [Party]          -- ^ actors
+  -> Party            -- ^ expectedAdmin
+  -> Text             -- ^ expected rejection message
+  -> TokenTransfer
+  -> Script ()
+transferMustFailAsWith cfg admin actors expectedAdmin expectedMessage transfer = do
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- trySubmit (actAs actors <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
+  case res of
+    Left (FailureStatusError fs) | expectedMessage `T.isInfixOf` fs.message -> pure ()
+    _ -> abort ("expected a rejection matching " <> show expectedMessage <> ", got: " <> show res)
+
+-- Whether an authorization message names the party as one it required and did
+-- not get. It reports both sets in one sentence ("requires authorizers a,b, but
+-- only a were given"), so an infix match over the whole message is satisfied by
+-- a party that did authorize, and a case naming such a party would pin nothing.
+requiredButNotGiven : Party -> Text -> Bool
+requiredButNotGiven missing msg = case T.splitOn "but only" msg of
+  [required, given] ->
+    partyToText missing `T.isInfixOf` required && not (partyToText missing `T.isInfixOf` given)
+  _ -> False
+
+-- Like transferMustFailAs, but pins the refusal on the choice's own node. The
+-- controller rule is guarded in depth: Token is `signatory admin, owner` and
+-- LockedToken `signatory admin, owner, holders`, so dropping a party from
+-- tokenTransferControllers still fails, only later and on the create of the
+-- holding. Matching the InstrumentConfig node in the authorization message is
+-- what tells the two apart. The constructor differs from transferMustFailAsWith's
+-- because an authorization refusal is not a FailureStatusError. The missing
+-- party is pinned as well: the node alone would still be refused if the choice
+-- ever gained an unrelated controller, which would leave these cases green
+-- while no longer binding on the output-party rule at all.
+transferMustFailAsUnauthorized
+  : ContractId InstrumentConfig
+  -> Party            -- ^ admin
+  -> [Party]          -- ^ actors
+  -> Party            -- ^ the party whose authorization must be the one missing
+  -> Party            -- ^ expectedAdmin
+  -> TokenTransfer
+  -> Script ()
+transferMustFailAsUnauthorized cfg admin actors missing expectedAdmin transfer = do
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- trySubmit (actAs actors <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
+  case res of
+    Left (AuthorizationError msg)
+      | "Registry:InstrumentConfig" `T.isInfixOf` msg
+      , requiredButNotGiven missing msg -> pure ()
+    _ -> abort ("expected the InstrumentConfig node to require " <> show missing
+                <> ", got: " <> show res)
+
+-- No binding an unwilling party: a receiver and a lock holder are both
+-- controllers, so a holding is never created for someone who did not sign.
+-- This is stricter than the preapproval path, so it opens no bypass of it.
+transferRequiresEveryOutputPartyToAuthorize : Script ()
+transferRequiresEveryOutputPartyToAuthorize = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  provider <- allocateParty "provider"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 50.0 emptyMetadata
+
+  -- an output receiver who does not authorize
+  transferMustFailAsUnauthorized cfg admin [alice] bob admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs = [ TokenTransferOutput with
+                  receiver = bob; amount = 50.0; lock = None; meta = emptyMetadata ])
+
+  -- an output lock holder who does not authorize
+  transferMustFailAsUnauthorized cfg admin [alice] provider admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs = [ TokenTransferOutput with
+                  receiver = alice; amount = 50.0
+                  lock = Some TokenLock with
+                    holders = [provider]; expiresAt = lockUntil; optContext = None
+                  meta = emptyMetadata ])
+
+-- The instrument is named by the config the choice is exercised on, and
+-- expectedAdmin is how a caller pins that it reached the config it meant to.
+transferRejectsWrongExpectedAdmin : Script ()
+transferRejectsWrongExpectedAdmin = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  let transfer = TokenTransfer with
+        sender = alice
+        inputs = [tok]
+        outputs = [ TokenTransferOutput with
+                      receiver = alice; amount = 50.0; lock = None; meta = emptyMetadata ]
+  transferMustFailAs cfg admin bob transfer
+
+-- consumeInputs enforces all five of these; none had been driven through this
+-- entry point. The instrument guard is two conjuncts, so a holding of another
+-- instrument and one of another admin's instrument of the SAME name are both
+-- here: without the admin half, a second registry's "CC" would spend as ours.
+-- The locked input is the one that matters most: a contract id is untyped at
+-- runtime, so the coercion below is exactly what an attacker would write, and
+-- fetchFromInterface's None branch is what refuses it. It is why an in-flight
+-- TransferInstruction or Allocation escrow is unreachable here.
+transferRejectsInputsItMayNotSpend : Script ()
+transferRejectsInputsItMayNotSpend = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  aliceTok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  bobTok <- tokenWithMeta admin bob 50.0 emptyMetadata
+  foreignTok <- submit (actAs [admin, alice]) $ createCmd Token with
+    admin; owner = alice; instrumentId = "XX"; amount = 50.0; meta = emptyMetadata
+  otherAdmin <- allocateParty "otherAdmin"
+  otherAdminTok <- submit (actAs [otherAdmin, alice]) $ createCmd Token with
+    admin = otherAdmin; owner = alice; instrumentId = "CC"; amount = 50.0; meta = emptyMetadata
+  toLock <- tokenWithMeta admin alice 50.0 emptyMetadata
+  lockedCid <- lockToken cfg admin alice toLock [admin] lockUntil
+
+  let spend cids amount = TokenTransfer with
+        sender = alice
+        inputs = cids
+        outputs = [ TokenTransferOutput with
+                      receiver = alice; amount; lock = None; meta = emptyMetadata ]
+
+  -- an input not owned by the sender. bob is an output receiver, so his
+  -- authority is delegated into the choice body and archiving his token is
+  -- authorized; the ownership assert is what refuses it. Acting as bob in the
+  -- submission would not be enough: only the controller set carries authority
+  -- past the choice boundary.
+  transferMustFailAsWith cfg admin [alice, bob] admin "input holding must be owned by the sender"
+    (TokenTransfer with
+      sender = alice
+      inputs = [bobTok]
+      outputs = [ TokenTransferOutput with
+                    receiver = bob; amount = 50.0; lock = None; meta = emptyMetadata ])
+  -- the same input twice
+  transferMustFailAsWith cfg admin [alice] admin "input holdings must not contain duplicates"
+    (spend [aliceTok, aliceTok] 100.0)
+  -- an input of another instrument under the same admin
+  transferMustFailAs cfg admin admin (spend [foreignTok] 50.0)
+  -- an input of another admin's instrument of the same name. The foreign admin
+  -- is an output receiver, so archiving his holding is authorized and the admin
+  -- conjunct is the only thing refusing the spend: without it this transfer
+  -- succeeds and mints our "CC" against a holding we never issued.
+  transferMustFailAsWith cfg admin [alice, otherAdmin] admin
+    "input holding must belong to this instrument"
+    (TokenTransfer with
+      sender = alice
+      inputs = [otherAdminTok]
+      outputs = [ TokenTransferOutput with
+                    receiver = otherAdmin; amount = 50.0; lock = None; meta = emptyMetadata ])
+  -- an escrowed LockedToken coerced into a Token cid. Pinned on the downcast's
+  -- own refusal: an unchecked coercion in fetchInputs aborts on the wrongly
+  -- typed contract, which a bare submitMustFail would accept as a pass.
+  transferMustFailAsWith cfg admin [alice] admin "input holding is not a spendable Token"
+    (spend [coerceContractId lockedCid] 50.0)
+
+-- A negative output is the direction that matters: inputTotal >= outputTotal
+-- still holds and inputTotal - outputTotal grows, so without the positivity
+-- guard the sender's own change output inflates by the amount it hands away.
+-- Token's `ensure amount > 0.0` refuses both cases too, which is why the
+-- message is pinned rather than left to a bare submitMustFail.
+transferRejectsNonPositiveOutputs : Script ()
+transferRejectsNonPositiveOutputs = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+
+  negTok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  transferMustFailAsWith cfg admin [alice, bob] admin "output amount must be positive"
+    (TokenTransfer with
+      sender = alice
+      inputs = [negTok]
+      outputs =
+        [ TokenTransferOutput with
+            receiver = bob; amount = -10.0; lock = None; meta = emptyMetadata
+        , TokenTransferOutput with
+            receiver = alice; amount = 50.0; lock = None; meta = emptyMetadata ])
+
+  zeroTok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  transferMustFailAsWith cfg admin [alice, bob] admin "output amount must be positive"
+    (TokenTransfer with
+      sender = alice
+      inputs = [zeroTok]
+      outputs = [ TokenTransferOutput with
+                    receiver = bob; amount = 0.0; lock = None; meta = emptyMetadata ])
