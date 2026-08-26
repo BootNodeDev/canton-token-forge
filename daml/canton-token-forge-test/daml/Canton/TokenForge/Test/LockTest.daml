@@ -5,10 +5,11 @@ import DA.Assert ((===))
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
-import Canton.TokenForge.Registry (InstrumentConfig_LockHolding(..))
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
+import Canton.TokenForge.Registry (InstrumentConfig_Transfer(..))
+import Canton.TokenForge.Transfer (TokenTransfer(..), TokenTransferOutput(..), TokenLock(..))
 import Canton.TokenForge.Locked (LockedToken(..), LockedToken_Unlock(..), LockedToken_ExpireLock(..))
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, lockToken)
 
 lockThenUnlock : Script ()
 lockThenUnlock = do
@@ -18,17 +19,14 @@ lockThenUnlock = do
   tok <- mintToken cfg admin alice 50.0
 
   let expiresAt = time (date 2026 Jan 2) 0 0 0
-  -- The owner is not a stakeholder of the config, so it is disclosed explicitly.
-  Some cfgDisclosure <- queryDisclosure admin cfg
-  lock <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
-    owner = alice; tokenCid = tok; holders = [admin]; expiresAt
+  lockedCid <- lockToken cfg admin alice tok [admin] expiresAt
   -- the locked holding exposes lock in its Holding view
-  let lhcid = toInterfaceContractId @HoldingV1.Holding lock.lockedCid
+  let lhcid = toInterfaceContractId @HoldingV1.Holding lockedCid
   Some lv <- queryInterfaceContractId alice lhcid
   ((.holders) <$> lv.lock) === Some [admin]
   lv.amount === 50.0
   -- holder unlocks, returning a Token to the owner
-  back <- submit (actAs [alice, admin]) $ exerciseCmd lock.lockedCid LockedToken_Unlock
+  back <- submit (actAs [alice, admin]) $ exerciseCmd lockedCid LockedToken_Unlock
   Some hv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding back.tokenCid)
   hv.owner === alice
   hv.amount === 50.0
@@ -42,23 +40,23 @@ lockRejectsAndExpires = do
   tok <- mintToken cfg admin alice 50.0
 
   let expiresAt = time (date 2026 Jan 2) 0 0 0
-  Some cfgDisclosure <- queryDisclosure admin cfg
-  lock <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
-    owner = alice; tokenCid = tok; holders = [admin]; expiresAt
+  lockedCid <- lockToken cfg admin alice tok [admin] expiresAt
   -- the owner alone cannot unlock; a holder (admin) must co-authorize
-  submitMustFail alice $ exerciseCmd lock.lockedCid LockedToken_Unlock
+  submitMustFail alice $ exerciseCmd lockedCid LockedToken_Unlock
   -- owner cannot reclaim before expiry (ledger time is still 1970)
-  submitMustFail alice $ exerciseCmd lock.lockedCid LockedToken_ExpireLock
+  submitMustFail alice $ exerciseCmd lockedCid LockedToken_ExpireLock
   -- at expiry the owner reclaims a Token; expiresAt itself is the earliest
   -- instant that works, and the only one a strictly-after check would refuse
   setTime expiresAt
-  back <- submit alice $ exerciseCmd lock.lockedCid LockedToken_ExpireLock
+  back <- submit alice $ exerciseCmd lockedCid LockedToken_ExpireLock
   Some hv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding back.tokenCid)
   hv.owner === alice
   hv.amount === 50.0
 
--- Holders now sign the lock, so an owner cannot bind a holder that did not
--- authorize the lock. charlie is named as a holder but does not act.
+-- Holders sign the lock, so an owner cannot bind a holder that did not
+-- authorize it. charlie is named as a lock holder but does not act, and the
+-- controller set the transfer computes includes him, so the submission fails
+-- before anything is fetched.
 lockRequiresHolderConsent : Script ()
 lockRequiresHolderConsent = do
   admin <- allocateParty "admin"
@@ -68,13 +66,23 @@ lockRequiresHolderConsent = do
   tok <- mintToken cfg admin alice 50.0
   let expiresAt = time (date 2026 Jan 2) 0 0 0
   Some cfgDisclosure <- queryDisclosure admin cfg
-  submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
-    owner = alice; tokenCid = tok; holders = [charlie]; expiresAt
+  submitMustFail (actAs alice <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with
+      expectedAdmin = admin
+      transfer = TokenTransfer with
+        sender = alice
+        inputs = [tok]
+        outputs =
+          [ TokenTransferOutput with
+              receiver = alice; amount = 50.0
+              lock = Some TokenLock with holders = [charlie]; expiresAt; optContext = None
+              meta = emptyMetadata
+          ]
 
 -- The lock context is what a wallet shows a user as the reason a holding is
 -- locked, so it has to survive the trip through the standard Holding view.
--- Both LockedTokens are created directly: the escrow paths deliberately pass
--- None, and no choice sets a context.
+-- Both LockedTokens here are created directly, so the view is exercised
+-- without going through a choice.
 lockContextSurfacesInView : Script ()
 lockContextSurfacesInView = do
   admin <- allocateParty "admin"

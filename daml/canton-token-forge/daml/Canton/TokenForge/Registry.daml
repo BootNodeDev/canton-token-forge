@@ -69,12 +69,6 @@ data InstrumentConfig_TransferResult = InstrumentConfig_TransferResult
     meta : Optional Metadata
   deriving (Eq, Show)
 
-data InstrumentConfig_LockHoldingResult = InstrumentConfig_LockHoldingResult
-  with
-    lockedCid : ContractId LockedToken
-    meta : Optional Metadata
-  deriving (Eq, Show)
-
 -- | Per-instrument rules/factory contract (the AmuletRules analog). Signed by
 -- the instrument admin, which is also the registry identity the metadata API
 -- reports as `adminId`. Implements the standard factory interfaces.
@@ -124,27 +118,6 @@ template InstrumentConfig
           createdHoldings
           senderChangeCid
           meta = Some (holdingTxMeta TxKind_Transfer None (Some transfer.sender))
-
-    -- Owner-consented locking, co-authorized by the holders now that they sign
-    -- the lock. Admin authority flows from this admin-signed config.
-    nonconsuming choice InstrumentConfig_LockHolding : InstrumentConfig_LockHoldingResult
-      with
-        owner : Party
-        tokenCid : ContractId Token
-        holders : [Party]
-        expiresAt : Time
-      controller owner :: holders
-      do
-        token <- fetch tokenCid
-        assertMsg "token belongs to this instrument" (token.admin == admin && token.instrumentId == instrumentId)
-        assertMsg "caller must own the token" (token.owner == owner)
-        archive tokenCid
-        lockedCid <- create LockedToken with
-          admin; owner; instrumentId; amount = token.amount; holders; expiresAt
-          optContext = None; meta = token.meta
-        pure InstrumentConfig_LockHoldingResult with
-          lockedCid
-          meta = Some (holdingTxMeta TxKind_Transfer (Some "holding locked") (Some owner))
 
     -- The receiver alone opts in. Admin authority comes from this admin-signed
     -- config, so naming the admin a controller would add nothing but a joint
