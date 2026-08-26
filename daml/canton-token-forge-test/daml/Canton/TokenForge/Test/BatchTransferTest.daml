@@ -134,7 +134,11 @@ releaseAndRelockRemainder = do
       released.owner === alice
       Some relocked <- queryContractId alice relockedCid
       relocked.amount === 70.0
-      relocked.holders === [provider, alice]
+      -- alice is the receiver, so naming her a holder adds nothing to the
+      -- owner authority LockedToken_Unlock already needs; the stored set is
+      -- the honest one the Holding view reports (AmuletRules
+      -- dedupOutputLockHolders).
+      relocked.holders === [provider]
       relocked.optContext === Some "vesting-withdraw-remainder"
     _ -> abort "expected an unlocked release followed by a re-lock, in that order"
 
