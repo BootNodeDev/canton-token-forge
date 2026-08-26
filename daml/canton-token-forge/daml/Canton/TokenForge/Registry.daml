@@ -10,6 +10,7 @@ import Canton.TokenForge.Token (Token(..), mkToken, fetchInputs, spendInputs)
 import Canton.TokenForge.Locked (LockedToken(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
 import Canton.TokenForge.Allocation (allocateImpl)
+import Canton.TokenForge.Transfer (TokenTransfer, CreatedHolding, tokenTransferControllers, executeTokenTransfer)
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.TxMeta (TxKind(..), holdingTxMeta)
 
@@ -61,6 +62,13 @@ data InstrumentConfig_TapResult = InstrumentConfig_TapResult
     meta : Optional Metadata
   deriving (Eq, Show)
 
+data InstrumentConfig_TransferResult = InstrumentConfig_TransferResult
+  with
+    createdHoldings : [CreatedHolding]
+    senderChangeCid : Optional (ContractId Token)
+    meta : Optional Metadata
+  deriving (Eq, Show)
+
 data InstrumentConfig_LockHoldingResult = InstrumentConfig_LockHoldingResult
   with
     lockedCid : ContractId LockedToken
@@ -96,6 +104,26 @@ template InstrumentConfig
         pure InstrumentConfig_MintResult with
           tokenCid
           meta = Some (holdingTxMeta TxKind_Mint None None)
+
+    -- The multi-output transfer (AmuletRules_Transfer), the one mechanism the
+    -- standard's v1 interfaces cannot express. Nonconsuming on this
+    -- admin-signed config, so the signatory's authority reaches the body and
+    -- the admin never has to sign a caller's transfer; every receiver and every
+    -- lock holder is a controller, so no holding is created for a party that
+    -- did not authorize it. createdHoldings comes back in `outputs` order,
+    -- which callers pattern match on positionally.
+    nonconsuming choice InstrumentConfig_Transfer : InstrumentConfig_TransferResult
+      with
+        transfer : TokenTransfer
+        expectedAdmin : Party
+      controller tokenTransferControllers transfer
+      do
+        assertMsg "expectedAdmin must match the instrument admin" (expectedAdmin == admin)
+        (createdHoldings, senderChangeCid) <- executeTokenTransfer admin instrumentId transfer
+        pure InstrumentConfig_TransferResult with
+          createdHoldings
+          senderChangeCid
+          meta = Some (holdingTxMeta TxKind_Transfer None (Some transfer.sender))
 
     -- Owner-consented locking, co-authorized by the holders now that they sign
     -- the lock. Admin authority flows from this admin-signed config.

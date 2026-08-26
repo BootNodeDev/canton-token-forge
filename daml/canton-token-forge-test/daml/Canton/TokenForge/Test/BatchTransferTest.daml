@@ -1,0 +1,260 @@
+module Canton.TokenForge.Test.BatchTransferTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.Foldable (forA_)
+import DA.List (sort)
+import DA.Optional (isNone)
+import DA.TextMap qualified as TextMap
+import DA.Time (time)
+import DA.Date (date, Month(Jan))
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata)
+import Canton.TokenForge.Registry (InstrumentConfig_Transfer(..))
+import Canton.TokenForge.Token (Token(..))
+import Canton.TokenForge.Transfer (TokenTransfer(..), TokenTransferOutput(..), TokenLock(..), CreatedHolding(..), tokenTransferControllers)
+import Canton.TokenForge.Test.Util (registerInstrument, runTransfer)
+
+lockUntil : Time
+lockUntil = time (date 2026 Jan 2) 0 0 0
+
+-- The controller set is computed from the argument before anything is fetched,
+-- which is what makes it impossible for the choice to create a holding for a
+-- party that did not authorize the transaction. Sorted before comparing: the
+-- set is what matters, not the order the parties happen to come out in.
+controllersAreSenderReceiversAndHolders : Script ()
+controllersAreSenderReceiversAndHolders = do
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  provider <- allocateParty "provider"
+
+  -- an unlocked output names its receiver
+  let plain = TokenTransfer with
+        sender = alice
+        inputs = []
+        outputs = [ TokenTransferOutput with
+                      receiver = bob; amount = 1.0; lock = None; meta = emptyMetadata ]
+  sort (tokenTransferControllers plain) === sort [alice, bob]
+
+  -- a locked output names its receiver and every one of its holders
+  let locked = TokenTransfer with
+        sender = alice
+        inputs = []
+        outputs = [ TokenTransferOutput with
+                      receiver = bob; amount = 1.0
+                      lock = Some TokenLock with
+                        holders = [provider]; expiresAt = lockUntil; optContext = None
+                      meta = emptyMetadata ]
+  sort (tokenTransferControllers locked) === sort [alice, bob, provider]
+
+  -- a party filling several roles at once appears exactly once
+  let selfLock = TokenTransfer with
+        sender = alice
+        inputs = []
+        outputs =
+          [ TokenTransferOutput with
+              receiver = alice; amount = 1.0; lock = None; meta = emptyMetadata
+          , TokenTransferOutput with
+              receiver = alice; amount = 1.0
+              lock = Some TokenLock with
+                holders = [alice, provider]; expiresAt = lockUntil; optContext = None
+              meta = emptyMetadata
+          ]
+  sort (tokenTransferControllers selfLock) === sort [alice, provider]
+
+memo : Metadata
+memo = Metadata with values = TextMap.fromList [("memo", "vesting")]
+
+-- Create a Token directly, which the mint helper cannot do with a memo
+-- attached: InstrumentConfig_Mint always mints empty metadata.
+tokenWithMeta : Party -> Party -> Decimal -> Metadata -> Script (ContractId Token)
+tokenWithMeta admin owner amount meta =
+  submit (actAs [admin, owner]) $ createCmd Token with
+    admin; owner; instrumentId = "CC"; amount; meta
+
+-- Locking is a self-transfer with a single locked output, which is how vesting
+-- Accept locks the funder's holding. The memo has to survive it: it is what
+-- keeps a transfer memo alive across an escrow.
+selfTransferIntoOneLock : Script ()
+selfTransferIntoOneLock = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 50.0 memo
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = alice; amount = 50.0
+          lock = Some TokenLock with
+            holders = [admin]; expiresAt = lockUntil; optContext = Some "vesting-escrow"
+          meta = memo
+      ])
+  -- outputs exhaust the inputs exactly, so there is nothing to return
+  result.senderChangeCid === None
+  case result.createdHoldings of
+    [TransferResultLockedToken lockedCid] -> do
+      Some lv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding lockedCid)
+      lv.owner === alice
+      lv.amount === 50.0
+      ((.holders) <$> lv.lock) === Some [admin]
+      ((.context) <$> lv.lock) === Some (Some "vesting-escrow")
+      lv.meta === memo
+    _ -> abort "expected a single locked output"
+
+-- Vesting Withdraw: the escrow is unlocked, part is released to the
+-- beneficiary, and the remainder is locked straight back. The positional match
+-- is the ordering assertion: createdHoldings comes back in outputs order.
+releaseAndRelockRemainder : Script ()
+releaseAndRelockRemainder = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  provider <- allocateParty "provider"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 100.0 emptyMetadata
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = alice; amount = 30.0; lock = None; meta = emptyMetadata
+      , TokenTransferOutput with
+          receiver = alice; amount = 70.0
+          lock = Some TokenLock with
+            holders = [provider, alice]; expiresAt = lockUntil
+            optContext = Some "vesting-withdraw-remainder"
+          meta = emptyMetadata
+      ])
+  result.senderChangeCid === None
+  case result.createdHoldings of
+    [TransferResultToken releasedCid, TransferResultLockedToken relockedCid] -> do
+      Some released <- queryContractId alice releasedCid
+      released.amount === 30.0
+      released.owner === alice
+      Some relocked <- queryContractId alice relockedCid
+      relocked.amount === 70.0
+      -- alice is the receiver, so naming her a holder adds nothing to the
+      -- owner authority LockedToken_Unlock already needs; the stored set is
+      -- the honest one the Holding view reports (AmuletRules
+      -- dedupOutputLockHolders).
+      relocked.holders === [provider]
+      relocked.optContext === Some "vesting-withdraw-remainder"
+    _ -> abort "expected an unlocked release followed by a re-lock, in that order"
+
+-- Vesting Cancel: the beneficiary's escrow is clawed back to the funder, part
+-- unlocked and part re-locked to a DIFFERENT owner under a DIFFERENT holder
+-- set. Nothing about the output parties is derived from the sender.
+clawbackToDifferentOwnerAndHolders : Script ()
+clawbackToDifferentOwnerAndHolders = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  funder <- allocateParty "funder"
+  provider <- allocateParty "provider"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 100.0 emptyMetadata
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = funder; amount = 60.0; lock = None; meta = emptyMetadata
+      , TokenTransferOutput with
+          receiver = funder; amount = 40.0
+          lock = Some TokenLock with
+            holders = [provider]; expiresAt = lockUntil; optContext = Some "vesting-cancel-owed"
+          meta = emptyMetadata
+      ])
+  result.senderChangeCid === None
+  case result.createdHoldings of
+    [TransferResultToken clawedCid, TransferResultLockedToken owedCid] -> do
+      Some clawed <- queryContractId funder clawedCid
+      clawed.owner === funder
+      clawed.amount === 60.0
+      Some owed <- queryContractId funder owedCid
+      owed.owner === funder
+      owed.amount === 40.0
+      owed.holders === [provider]
+    _ -> abort "expected an unlocked clawback followed by a re-lock, in that order"
+
+-- Vesting Accept: several holdings merge into one lock and the leftover comes
+-- back as change. Amulet does not require exact conservation and neither do we.
+mergeInputsIntoOneLockWithChange : Script ()
+mergeInputsIntoOneLockWithChange = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  provider <- allocateParty "provider"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  t1 <- tokenWithMeta admin alice 40.0 emptyMetadata
+  t2 <- tokenWithMeta admin alice 30.0 emptyMetadata
+  t3 <- tokenWithMeta admin alice 30.0 emptyMetadata
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [t1, t2, t3]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = alice; amount = 90.0
+          lock = Some TokenLock with
+            holders = [provider, bob]; expiresAt = lockUntil; optContext = Some "vesting-escrow"
+          meta = emptyMetadata
+      ])
+  case result.createdHoldings of
+    [TransferResultLockedToken lockedCid] -> do
+      Some locked <- queryContractId alice lockedCid
+      locked.amount === 90.0
+    _ -> abort "expected a single locked output"
+  case result.senderChangeCid of
+    Some changeCid -> do
+      Some change <- queryContractId alice changeCid
+      change.owner === alice
+      change.amount === 10.0
+    None -> abort "expected the leftover input value back as change"
+  -- every input is gone
+  forA_ [t1, t2, t3] \cid -> do
+    spent <- queryContractId alice cid
+    assertMsg "every input must be archived" (isNone spent)
+
+-- No minting: outputs plus change equal the inputs exactly, so outputs beyond
+-- the inputs must be refused. 50.01 is an arbitrary overspend, not a minimal
+-- one: Decimal carries ten fractional digits, and the instrument's `decimals`
+-- is never applied to an amount anywhere.
+transferRejectsOutputsExceedingInputs : Script ()
+transferRejectsOutputsExceedingInputs = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  let transfer = TokenTransfer with
+        sender = alice
+        inputs = [tok]
+        outputs = [ TokenTransferOutput with
+                      receiver = alice; amount = 50.01; lock = None; meta = emptyMetadata ]
+  submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin
+
+-- A lock whose expiry has already passed is releasable by its owner alone the
+-- moment it is created, since that is exactly the gate LockedToken_ExpireLock
+-- opens. AmuletRules refuses to create one (preprocessOutputs) and so do we.
+transferRejectsAnAlreadyExpiredLock : Script ()
+transferRejectsAnAlreadyExpiredLock = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  provider <- allocateParty "provider"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  let transfer = TokenTransfer with
+        sender = alice
+        inputs = [tok]
+        outputs = [ TokenTransferOutput with
+                      receiver = alice; amount = 50.0
+                      lock = Some TokenLock with
+                        holders = [provider]; expiresAt = lockUntil; optContext = None
+                      meta = emptyMetadata ]
+  -- the instant the lock expires, not merely past it: a lock expiring now is
+  -- already expirable, so the refusal has to cover the boundary itself
+  setTime lockUntil
+  submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin
