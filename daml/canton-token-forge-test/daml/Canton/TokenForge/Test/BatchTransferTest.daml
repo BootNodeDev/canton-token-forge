@@ -5,6 +5,7 @@ import DA.Assert ((===))
 import DA.Foldable (forA_)
 import DA.List (sort)
 import DA.Optional (isNone)
+import DA.Text qualified as T
 import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
@@ -274,6 +275,26 @@ transferMustFailAs cfg admin actors expectedAdmin transfer = do
   submitMustFail (actAs actors <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
 
+-- Like transferMustFailAs, but pins the rejection message. A refusal that is
+-- guarded in depth needs this: the duplicate-input case below still fails with
+-- its assert removed, on the ledger refusing the second archive of the same
+-- contract, so a bare submitMustFail accepts a missing guard.
+transferMustFailAsWith
+  : ContractId InstrumentConfig
+  -> Party            -- ^ admin
+  -> [Party]          -- ^ actors
+  -> Party            -- ^ expectedAdmin
+  -> Text             -- ^ expected rejection message
+  -> TokenTransfer
+  -> Script ()
+transferMustFailAsWith cfg admin actors expectedAdmin expectedMessage transfer = do
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- trySubmit (actAs actors <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
+  case res of
+    Left (FailureStatusError fs) | expectedMessage `T.isInfixOf` fs.message -> pure ()
+    _ -> abort ("expected a rejection matching " <> show expectedMessage <> ", got: " <> show res)
+
 -- No binding an unwilling party: a receiver and a lock holder are both
 -- controllers, so a holding is never created for someone who did not sign.
 -- This is stricter than the preapproval path, so it opens no bypass of it.
@@ -354,7 +375,8 @@ transferRejectsInputsItMayNotSpend = do
     outputs = [ TokenTransferOutput with
                   receiver = bob; amount = 50.0; lock = None; meta = emptyMetadata ])
   -- the same input twice
-  transferMustFailAs cfg admin [alice] admin (spend [aliceTok, aliceTok] 100.0)
+  transferMustFailAsWith cfg admin [alice] admin "input holdings must not contain duplicates"
+    (spend [aliceTok, aliceTok] 100.0)
   -- an input of another instrument under the same admin
   transferMustFailAs cfg admin [alice] admin (spend [foreignTok] 50.0)
   -- an escrowed LockedToken coerced into a Token cid
