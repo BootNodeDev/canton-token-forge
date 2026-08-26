@@ -403,3 +403,34 @@ transferRejectsInputsItMayNotSpend = do
   transferMustFailAs cfg admin [alice] admin (spend [foreignTok] 50.0)
   -- an escrowed LockedToken coerced into a Token cid
   transferMustFailAs cfg admin [alice] admin (spend [coerceContractId lockedCid] 50.0)
+
+-- A negative output is the direction that matters: inputTotal >= outputTotal
+-- still holds and inputTotal - outputTotal grows, so without the positivity
+-- guard the sender's own change output inflates by the amount it hands away.
+-- Token's `ensure amount > 0.0` refuses both cases too, which is why the
+-- message is pinned rather than left to a bare submitMustFail.
+transferRejectsNonPositiveOutputs : Script ()
+transferRejectsNonPositiveOutputs = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+
+  negTok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  transferMustFailAsWith cfg admin [alice, bob] admin "output amount must be positive"
+    (TokenTransfer with
+      sender = alice
+      inputs = [negTok]
+      outputs =
+        [ TokenTransferOutput with
+            receiver = bob; amount = -10.0; lock = None; meta = emptyMetadata
+        , TokenTransferOutput with
+            receiver = alice; amount = 50.0; lock = None; meta = emptyMetadata ])
+
+  zeroTok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  transferMustFailAsWith cfg admin [alice, bob] admin "output amount must be positive"
+    (TokenTransfer with
+      sender = alice
+      inputs = [zeroTok]
+      outputs = [ TokenTransferOutput with
+                    receiver = bob; amount = 0.0; lock = None; meta = emptyMetadata ])
