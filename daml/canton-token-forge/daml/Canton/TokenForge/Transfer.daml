@@ -1,0 +1,55 @@
+-- | The multi-output transfer (the Splice.AmuletRules analog): the one
+-- mechanism the CN Token Standard v1 cannot express, since HoldingV1 declares
+-- no choices and its Lock is view-only metadata. Registry.daml declares the
+-- choice and calls in here, the way it delegates allocation to Allocation.daml.
+module Canton.TokenForge.Transfer where
+
+import DA.List (dedup)
+import Splice.Api.Token.MetadataV1 (Metadata)
+import Canton.TokenForge.Token (Token)
+import Canton.TokenForge.Locked (LockedToken)
+
+-- | Splice.Expiry.TimeLock.
+data TokenLock = TokenLock
+  with
+    holders : [Party]
+    expiresAt : Time
+    optContext : Optional Text
+  deriving (Eq, Show)
+
+-- | AmuletRules.TransferOutput. `meta` has no Amulet counterpart: an amulet's
+-- metadata is derived from its economics, ours is a template field, and without
+-- it a lock output would silently drop the memo a holding carries.
+data TokenTransferOutput = TokenTransferOutput
+  with
+    receiver : Party
+    amount : Decimal
+    lock : Optional TokenLock
+    meta : Metadata
+  deriving (Eq, Show)
+
+-- | AmuletRules.Transfer. Inputs are Token contract ids directly, since
+-- InputAmulet is the only Amulet input variant with an analog here.
+data TokenTransfer = TokenTransfer
+  with
+    sender : Party
+    inputs : [ContractId Token]
+    outputs : [TokenTransferOutput]
+  deriving (Eq, Show)
+
+-- | AmuletRules.CreatedAmulet. Returned in `outputs` order, because the ported
+-- vesting code pattern matches on it positionally.
+data CreatedHolding
+  = TransferResultToken (ContractId Token)
+  | TransferResultLockedToken (ContractId LockedToken)
+  deriving (Eq, Show)
+
+-- | AmuletRules.transferControllers, minus the `provider` entry we have no use
+-- for. Every party a transfer would bind into a holding is here, and it is
+-- computed from the argument alone, so a receiver or a lock holder can never be
+-- given a holding without authorizing the transaction that creates it.
+tokenTransferControllers : TokenTransfer -> [Party]
+tokenTransferControllers transfer =
+    dedup (transfer.sender :: concatMap outputParties transfer.outputs)
+  where
+    outputParties o = o.receiver :: optional [] (.holders) o.lock

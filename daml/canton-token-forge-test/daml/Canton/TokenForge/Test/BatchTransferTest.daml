@@ -1,0 +1,56 @@
+module Canton.TokenForge.Test.BatchTransferTest where
+
+import Daml.Script
+import DA.Assert ((===))
+import DA.List (sort)
+import DA.Time (time)
+import DA.Date (date, Month(Jan))
+import Splice.Api.Token.MetadataV1 (emptyMetadata)
+import Canton.TokenForge.Transfer (TokenTransfer(..), TokenTransferOutput(..), TokenLock(..), tokenTransferControllers)
+
+lockUntil : Time
+lockUntil = time (date 2026 Jan 2) 0 0 0
+
+-- The controller set is computed from the argument before anything is fetched,
+-- which is what makes it impossible for the choice to create a holding for a
+-- party that did not authorize the transaction. Sorted before comparing: the
+-- set is what matters, not the order the parties happen to come out in.
+controllersAreSenderReceiversAndHolders : Script ()
+controllersAreSenderReceiversAndHolders = do
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  provider <- allocateParty "provider"
+
+  -- an unlocked output names its receiver
+  let plain = TokenTransfer with
+        sender = alice
+        inputs = []
+        outputs = [ TokenTransferOutput with
+                      receiver = bob; amount = 1.0; lock = None; meta = emptyMetadata ]
+  sort (tokenTransferControllers plain) === sort [alice, bob]
+
+  -- a locked output names its receiver and every one of its holders
+  let locked = TokenTransfer with
+        sender = alice
+        inputs = []
+        outputs = [ TokenTransferOutput with
+                      receiver = bob; amount = 1.0
+                      lock = Some TokenLock with
+                        holders = [provider]; expiresAt = lockUntil; optContext = None
+                      meta = emptyMetadata ]
+  sort (tokenTransferControllers locked) === sort [alice, bob, provider]
+
+  -- a party filling several roles at once appears exactly once
+  let selfLock = TokenTransfer with
+        sender = alice
+        inputs = []
+        outputs =
+          [ TokenTransferOutput with
+              receiver = alice; amount = 1.0; lock = None; meta = emptyMetadata
+          , TokenTransferOutput with
+              receiver = alice; amount = 1.0
+              lock = Some TokenLock with
+                holders = [alice, provider]; expiresAt = lockUntil; optContext = None
+              meta = emptyMetadata
+          ]
+  sort (tokenTransferControllers selfLock) === sort [alice, provider]
