@@ -6,7 +6,8 @@ import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Canton.TokenForge.Registry (InstrumentConfig_LockHolding(..))
-import Canton.TokenForge.Locked (LockedToken_Unlock(..), LockedToken_ExpireLock(..))
+import Splice.Api.Token.MetadataV1 (emptyMetadata)
+import Canton.TokenForge.Locked (LockedToken(..), LockedToken_Unlock(..), LockedToken_ExpireLock(..))
 import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
 
 lockThenUnlock : Script ()
@@ -69,3 +70,26 @@ lockRequiresHolderConsent = do
   Some cfgDisclosure <- queryDisclosure admin cfg
   submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
     owner = alice; tokenCid = tok; holders = [charlie]; expiresAt
+
+-- The lock context is what a wallet shows a user as the reason a holding is
+-- locked, so it has to survive the trip through the standard Holding view.
+-- Both LockedTokens are created directly: the escrow paths deliberately pass
+-- None, and no choice sets a context.
+lockContextSurfacesInView : Script ()
+lockContextSurfacesInView = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  let expiresAt = time (date 2026 Jan 2) 0 0 0
+  tagged <- submit (actAs [alice, admin]) $ createCmd LockedToken with
+    admin; owner = alice; instrumentId = "CC"; amount = 50.0
+    holders = [admin]; expiresAt; optContext = Some "vesting-escrow"
+    meta = emptyMetadata
+  Some tv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding tagged)
+  ((.context) <$> tv.lock) === Some (Some "vesting-escrow")
+
+  untagged <- submit (actAs [alice, admin]) $ createCmd LockedToken with
+    admin; owner = alice; instrumentId = "CC"; amount = 50.0
+    holders = [admin]; expiresAt; optContext = None
+    meta = emptyMetadata
+  Some uv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding untagged)
+  ((.context) <$> uv.lock) === Some None

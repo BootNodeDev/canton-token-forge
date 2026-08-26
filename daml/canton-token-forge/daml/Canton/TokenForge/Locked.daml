@@ -32,6 +32,7 @@ template LockedToken
     amount : Decimal
     holders : [Party]
     expiresAt : Time
+    optContext : Optional Text
     meta : Metadata
   where
     signatory admin, owner, holders
@@ -43,7 +44,7 @@ template LockedToken
         instrumentId = mkInstrumentId admin instrumentId
         amount
         lock = Some HoldingV1.Lock with
-          holders; expiresAt = Some expiresAt; expiresAfter = None; context = None
+          holders; expiresAt = Some expiresAt; expiresAfter = None; context = optContext
         meta
 
     -- Cooperative release (Amulet LockedAmulet_UnlockV2): owner and holders
