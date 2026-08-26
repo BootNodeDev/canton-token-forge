@@ -380,8 +380,10 @@ transferRejectsWrongExpectedAdmin = do
                       receiver = alice; amount = 50.0; lock = None; meta = emptyMetadata ]
   transferMustFailAs cfg admin bob transfer
 
--- consumeInputs enforces all four of these; none had been driven through this
--- entry point. The locked input is the one that matters most: a contract id is
+-- consumeInputs enforces all five of these; none had been driven through this
+-- entry point. The instrument guard is two conjuncts, so a holding of another
+-- instrument and one of another admin's instrument of the SAME name are both
+-- here: without the admin half, a second registry's "CC" would spend as ours. The locked input is the one that matters most: a contract id is
 -- untyped at runtime, so the coercion below is exactly what an attacker would
 -- write, and fetchFromInterface's None branch is what refuses it. It is why an
 -- in-flight TransferInstruction or Allocation escrow is unreachable here.
@@ -395,6 +397,9 @@ transferRejectsInputsItMayNotSpend = do
   bobTok <- tokenWithMeta admin bob 50.0 emptyMetadata
   foreignTok <- submit (actAs [admin, alice]) $ createCmd Token with
     admin; owner = alice; instrumentId = "XX"; amount = 50.0; meta = emptyMetadata
+  otherAdmin <- allocateParty "otherAdmin"
+  otherAdminTok <- submit (actAs [otherAdmin, alice]) $ createCmd Token with
+    admin = otherAdmin; owner = alice; instrumentId = "CC"; amount = 50.0; meta = emptyMetadata
   toLock <- tokenWithMeta admin alice 50.0 emptyMetadata
   lockedCid <- lockToken cfg admin alice toLock [admin] lockUntil
 
@@ -420,6 +425,9 @@ transferRejectsInputsItMayNotSpend = do
     (spend [aliceTok, aliceTok] 100.0)
   -- an input of another instrument under the same admin
   transferMustFailAs cfg admin admin (spend [foreignTok] 50.0)
+  -- an input of another admin's instrument of the same name
+  transferMustFailAsWith cfg admin [alice] admin "input holding must belong to this instrument"
+    (spend [otherAdminTok] 50.0)
   -- an escrowed LockedToken coerced into a Token cid. Pinned on the downcast's
   -- own refusal: an unchecked coercion in fetchInputs aborts on the wrongly
   -- typed contract, which a bare submitMustFail would accept as a pass.
