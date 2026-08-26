@@ -296,6 +296,16 @@ transferMustFailAsWith cfg admin actors expectedAdmin expectedMessage transfer =
     Left (FailureStatusError fs) | expectedMessage `T.isInfixOf` fs.message -> pure ()
     _ -> abort ("expected a rejection matching " <> show expectedMessage <> ", got: " <> show res)
 
+-- Whether an authorization message names the party as one it required and did
+-- not get. It reports both sets in one sentence ("requires authorizers a,b, but
+-- only a were given"), so an infix match over the whole message is satisfied by
+-- a party that did authorize, and a case naming such a party would pin nothing.
+requiredButNotGiven : Party -> Text -> Bool
+requiredButNotGiven missing msg = case T.splitOn "but only" msg of
+  [required, given] ->
+    partyToText missing `T.isInfixOf` required && not (partyToText missing `T.isInfixOf` given)
+  _ -> False
+
 -- Like transferMustFailAs, but pins the refusal on the choice's own node. The
 -- controller rule is guarded in depth: Token is `signatory admin, owner` and
 -- LockedToken `signatory admin, owner, holders`, so dropping a party from
@@ -321,7 +331,7 @@ transferMustFailAsUnauthorized cfg admin actors missing expectedAdmin transfer =
   case res of
     Left (AuthorizationError msg)
       | "Registry:InstrumentConfig" `T.isInfixOf` msg
-      , partyToText missing `T.isInfixOf` msg -> pure ()
+      , requiredButNotGiven missing msg -> pure ()
     _ -> abort ("expected the InstrumentConfig node to require " <> show missing
                 <> ", got: " <> show res)
 
