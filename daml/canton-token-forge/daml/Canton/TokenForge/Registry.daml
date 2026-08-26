@@ -112,7 +112,8 @@ template InstrumentConfig
         assertMsg "caller must own the token" (token.owner == owner)
         archive tokenCid
         lockedCid <- create LockedToken with
-          admin; owner; instrumentId; amount = token.amount; holders; expiresAt; meta = token.meta
+          admin; owner; instrumentId; amount = token.amount; holders; expiresAt
+          optContext = None; meta = token.meta
         pure InstrumentConfig_LockHoldingResult with
           lockedCid
           meta = Some (holdingTxMeta TxKind_Transfer (Some "holding locked") (Some owner))
@@ -266,7 +267,8 @@ transferImpl admin instrumentId arg = do
       -- app backend's report that the escrow is already gone.
       locked <- create LockedToken with
         admin; owner = transfer.sender; instrumentId; amount = transfer.amount
-        holders = [admin]; expiresAt = transfer.executeBefore; meta = transfer.meta
+        holders = [admin]; expiresAt = transfer.executeBefore
+        optContext = None; meta = transfer.meta
       instr <- create TokenTransferInstruction with admin; transfer; lockedCid = locked
       pure TransferInstructionResult with
         output = TransferInstructionResult_Pending with
