@@ -233,7 +233,8 @@ transferRejectsOutputsExceedingInputs = do
         outputs = [ TokenTransferOutput with
                       receiver = alice; amount = 50.01; lock = None; meta = emptyMetadata ]
   submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
-    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin
+    exerciseCmd cfg InstrumentConfig_Transfer with
+      transfer; expectedAdmin = admin; expectedInstrumentId = "CC"
 
 -- A lock whose expiry has already passed is releasable by its owner alone the
 -- moment it is created, since that is exactly the gate LockedToken_ExpireLock
@@ -258,7 +259,8 @@ transferRejectsAnAlreadyExpiredLock = do
   -- already expirable, so the refusal has to cover the boundary itself
   setTime lockUntil
   submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
-    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin
+    exerciseCmd cfg InstrumentConfig_Transfer with
+      transfer; expectedAdmin = admin; expectedInstrumentId = "CC"
 
 -- Exercise the batch transfer as the transfer's own controller set and require
 -- a refusal. The actor set is derived rather than passed in: submitting as
@@ -273,8 +275,10 @@ transferMustFailAs
   -> Script ()
 transferMustFailAs cfg admin expectedAdmin transfer = do
   Some cfgDisclosure <- queryDisclosure admin cfg
+  Some config <- queryContractId admin cfg
   submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
-    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
+    exerciseCmd cfg InstrumentConfig_Transfer with
+      transfer; expectedAdmin; expectedInstrumentId = config.instrumentId
 
 -- Like transferMustFailAs, but pins the rejection message. A refusal that is
 -- guarded in depth needs this: the duplicate-input case below still fails with
@@ -290,8 +294,10 @@ transferMustFailAsWith
   -> Script ()
 transferMustFailAsWith cfg admin actors expectedAdmin expectedMessage transfer = do
   Some cfgDisclosure <- queryDisclosure admin cfg
+  Some config <- queryContractId admin cfg
   res <- trySubmit (actAs actors <> disclose cfgDisclosure) $
-    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
+    exerciseCmd cfg InstrumentConfig_Transfer with
+      transfer; expectedAdmin; expectedInstrumentId = config.instrumentId
   case res of
     Left (FailureStatusError fs) | expectedMessage `T.isInfixOf` fs.message -> pure ()
     _ -> abort ("expected a rejection matching " <> show expectedMessage <> ", got: " <> show res)
@@ -326,8 +332,10 @@ transferMustFailAsUnauthorized
   -> Script ()
 transferMustFailAsUnauthorized cfg admin actors missing expectedAdmin transfer = do
   Some cfgDisclosure <- queryDisclosure admin cfg
+  Some config <- queryContractId admin cfg
   res <- trySubmit (actAs actors <> disclose cfgDisclosure) $
-    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin
+    exerciseCmd cfg InstrumentConfig_Transfer with
+      transfer; expectedAdmin; expectedInstrumentId = config.instrumentId
   case res of
     Left (AuthorizationError msg)
       | "Registry:InstrumentConfig" `T.isInfixOf` msg
@@ -364,8 +372,9 @@ transferRequiresEveryOutputPartyToAuthorize = do
                     holders = [provider]; expiresAt = lockUntil; optContext = None
                   meta = emptyMetadata ])
 
--- The instrument is named by the config the choice is exercised on, and
--- expectedAdmin is how a caller pins that it reached the config it meant to.
+-- expectedAdmin is how a caller pins that it reached a config of the admin it
+-- meant to. Which of that admin's instruments it reached is a separate pin, in
+-- transferRejectsWrongExpectedInstrumentId below.
 transferRejectsWrongExpectedAdmin : Script ()
 transferRejectsWrongExpectedAdmin = do
   admin <- allocateParty "admin"
@@ -379,6 +388,42 @@ transferRejectsWrongExpectedAdmin = do
         outputs = [ TokenTransferOutput with
                       receiver = alice; amount = 50.0; lock = None; meta = emptyMetadata ]
   transferMustFailAs cfg admin bob transfer
+
+-- An admin may run several instruments and TokenTransfer names none of them, so
+-- pinning the admin alone leaves a controller authorizing an amount with no
+-- field saying which instrument it is paid in. Bob agrees to 50 CC; routing the
+-- same argument through the same admin's XX config would pay him 50 XX.
+transferRejectsWrongExpectedInstrumentId : Script ()
+transferRejectsWrongExpectedInstrumentId = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfgCC <- registerInstrument admin "CC" "CC" "CC" 10 None
+  cfgXX <- registerInstrument admin "XX" "XX" "XX" 10 None
+  tokCC <- tokenWithMeta admin alice 50.0 emptyMetadata
+  tokXX <- submit (actAs [admin, alice]) $ createCmd Token with
+    admin; owner = alice; instrumentId = "XX"; amount = 50.0; meta = emptyMetadata
+
+  let payBob input = TokenTransfer with
+        sender = alice
+        inputs = [input]
+        outputs = [ TokenTransferOutput with
+                      receiver = bob; amount = 50.0; lock = None; meta = emptyMetadata ]
+
+  Some xxDisclosure <- queryDisclosure admin cfgXX
+  res <- trySubmit (actAs (tokenTransferControllers (payBob tokXX)) <> disclose xxDisclosure) $
+    exerciseCmd cfgXX InstrumentConfig_Transfer with
+      transfer = payBob tokXX; expectedAdmin = admin; expectedInstrumentId = "CC"
+  case res of
+    Left (FailureStatusError fs)
+      | "expectedInstrumentId must match the config instrument" `T.isInfixOf` fs.message -> pure ()
+    _ -> abort ("expected the instrument pin to refuse, got: " <> show res)
+
+  -- the control: the same shape against the config bob's authorization named
+  result <- runTransfer cfgCC admin (payBob tokCC)
+  [TransferResultToken paid] <- pure result.createdHoldings
+  Some paidToken <- queryContractId bob paid
+  paidToken.instrumentId === "CC"
 
 -- consumeInputs enforces all five of these; none had been driven through this
 -- entry point. The instrument guard is two conjuncts, so a holding of another

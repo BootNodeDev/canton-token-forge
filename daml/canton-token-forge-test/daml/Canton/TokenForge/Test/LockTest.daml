@@ -69,6 +69,7 @@ lockRequiresHolderConsent = do
   submitMustFail (actAs alice <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Transfer with
       expectedAdmin = admin
+      expectedInstrumentId = "CC"
       transfer = TokenTransfer with
         sender = alice
         inputs = [tok]

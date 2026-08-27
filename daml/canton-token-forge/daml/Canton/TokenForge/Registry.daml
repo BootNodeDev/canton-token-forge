@@ -106,13 +106,23 @@ template InstrumentConfig
     -- lock holder is a controller, so no holding is created for a party that
     -- did not authorize it. createdHoldings comes back in `outputs` order,
     -- which callers pattern match on positionally.
+    --
+    -- Amulet pins only expectedDso because AmuletRules is single-instrument.
+    -- An admin here may run several instruments, and TokenTransfer names none,
+    -- so expectedAdmin alone would let a controller authorize an amount and be
+    -- paid it in a different instrument of the same admin. expectedInstrumentId
+    -- is what makes the argument name the config it is exercised against, the
+    -- same pinning transferImpl, burnMintImpl and allocateImpl each do against
+    -- an instrument the standard puts in their argument.
     nonconsuming choice InstrumentConfig_Transfer : InstrumentConfig_TransferResult
       with
         transfer : TokenTransfer
         expectedAdmin : Party
+        expectedInstrumentId : Text
       controller tokenTransferControllers transfer
       do
         assertMsg "expectedAdmin must match the instrument admin" (expectedAdmin == admin)
+        assertMsg "expectedInstrumentId must match the config instrument" (expectedInstrumentId == instrumentId)
         (createdHoldings, senderChangeCid) <- executeTokenTransfer admin instrumentId transfer
         pure InstrumentConfig_TransferResult with
           createdHoldings

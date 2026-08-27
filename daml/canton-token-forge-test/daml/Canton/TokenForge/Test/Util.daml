@@ -55,8 +55,10 @@ runTransfer
   -> Script InstrumentConfig_TransferResult
 runTransfer cfg admin transfer = do
   Some cfgDisclosure <- queryDisclosure admin cfg
+  Some config <- queryContractId admin cfg
   submit (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
-    exerciseCmd cfg InstrumentConfig_Transfer with transfer; expectedAdmin = admin
+    exerciseCmd cfg InstrumentConfig_Transfer with
+      transfer; expectedAdmin = admin; expectedInstrumentId = config.instrumentId
 
 -- | Choice-context args carrying the early-release signal, so an escrow can be
 -- returned before its deadline (Amulet's expire-lock path). Honored only by the
