@@ -68,10 +68,12 @@ tokenTransferControllers transfer =
 -- ContractId Token still lands in the rejecting branch, which is what keeps an
 -- in-flight escrow unreachable through this door.
 --
--- Amulet's maxNumInputs, maxNumOutputs and maxNumLockHolders caps are
--- deliberately not ported: they bound fee computation on TransferConfigV2, the
--- economics config this token has no analog of, and the standard's own factory
--- entry points here already take unbounded input lists.
+-- Amulet's maxNumInputs, maxNumOutputs and maxNumLockHolders caps are not
+-- ported. They are guards in their own right rather than a consequence of fee
+-- arithmetic (checkTransferConstraints tests the first two beside, not inside,
+-- the sender-change fee arm), but all three are configured on TransferConfigV2,
+-- and this token has no economics config to hang a configurable bound on.
+-- Inputs, outputs and lock holders are therefore all unbounded here.
 executeTokenTransfer
   : Party    -- ^ admin (config signatory)
   -> Text    -- ^ instrumentId
