@@ -183,13 +183,13 @@ classify them without registry-specific knowledge: `mint` for issuance and the
 faucet, `unlock` for both releases, and either `merge-split` or `transfer` for
 the batch transfer, depending on what it moves. A transfer whose every output
 stays under the sender's control (the sender is the receiver, and any lock on
-that output names only the sender as holder) reads as `merge-split` and
-carries no sender key; any other shape reads as `transfer` and carries
-`.../sender`, which the parser's transfer path requires and cannot read off a
-registry-native choice argument. The two exemptions: `InstrumentConfig_Preapprove`
-creates no holding, and this registry exercises `TokenTransferPreapproval_Send`
-only inside the standardized transfer that the parser already recognizes by
-name.
+that output names no holder other than the sender, which an empty holder list
+also satisfies) reads as `merge-split` and carries no sender key; any other
+shape reads as `transfer` and carries `.../sender`, which the parser's
+transfer path requires and cannot read off a registry-native choice argument.
+The two exemptions: `InstrumentConfig_Preapprove` creates no holding, and this
+registry exercises `TokenTransferPreapproval_Send` only inside the
+standardized transfer that the parser already recognizes by name.
 
 ### Authorization
 
@@ -268,10 +268,13 @@ flowchart TD
    together with every output receiver and every output lock holder, archives
    the sender's inputs and creates the outputs in order, each either a `Token`
    or a `LockedToken` carrying the caller's own `expiresAt` and lock context
-   verbatim, with any leftover input value returned to the sender as change.
-   It is registry-native rather than a standard interface choice, and the
-   registry service does not drive it: a client submits it directly against
-   the participant.
+   verbatim, with any leftover input value returned to the sender as change. A
+   lock's holder list is the one field not copied verbatim: it is
+   deduplicated, sorted, and stripped of the output's own receiver, so a lock
+   naming nobody but the receiver is created with no holders at all and its
+   owner can release it alone. It is registry-native rather than a standard
+   interface choice, and the registry service does not drive it: a client
+   submits it directly against the participant.
 
 Amounts are Daml `Decimal`, which is `Numeric 10`. Transfers sum the input
 holdings, require the total to cover the requested amount, and emit a change

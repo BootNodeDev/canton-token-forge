@@ -190,10 +190,14 @@ Registration and transfer move through the ledger as follows:
    receiver and every output lock holder. It archives the sender's inputs and
    creates the outputs in order, each either a `Token` or a `LockedToken`
    carrying the caller's own `expiresAt` and `optContext` verbatim, with any
-   leftover input value returned to the sender as change. Unlike steps 3 to 5,
-   this choice is registry-native rather than a standard interface, and
-   `registry/src` has no reference to it: the registry service does not drive
-   it, so a client submits it directly against the participant.
+   leftover input value returned to the sender as change. A lock's `holders` is
+   the one field not copied verbatim: it is deduplicated, sorted, and stripped
+   of the output's own receiver, the way Amulet's `dedupOutputLockHolders` does
+   it, so a lock naming nobody but the receiver is created with an empty holder
+   list and its owner can release it alone. Unlike steps 3 to 5, this choice is
+   registry-native rather than a standard interface, and `registry/src` has no
+   reference to it: the registry service does not drive it, so a client submits
+   it directly against the participant.
 
 Steps 3 to 5 are the paths a client drives through the registry service. The two
 factory routes supply a `factoryId` alongside the choice context; the accept,
