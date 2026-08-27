@@ -94,7 +94,8 @@ interfaces from the `splice-api-token-*` DARs. The core module hierarchy:
   (controlled by the receiver, creating the opt-in that enables direct
   transfers), and `InstrumentConfig_Transfer` (the multi-output transfer that
   can emit locked outputs, controlled by the sender together with every output
-  receiver and lock holder). Implements the
+  receiver and lock holder, and pinned to this config by `expectedAdmin` and
+  `expectedInstrumentId`). Implements the
   `TransferFactory`, `AllocationFactory`, and `BurnMintFactory` interfaces. One
   admin creates one config per instrument and serves all of them through a single
   registry API; the instrument identity is `(admin, instrumentId)`.
@@ -123,6 +124,20 @@ interfaces from the `splice-api-token-*` DARs. The core module hierarchy:
 - **`TokenAllocation`** (`Allocation.daml`) - an escrowed leg of a DvP
   settlement, signed by `admin, allocation.transferLeg.sender` with the executor
   and receiver as observers. Implements `AllocationV1.Allocation`.
+- **`TokenTransfer`** (`Transfer.daml`) - the batch transfer's argument, and
+  the only one a client assembles by hand, since no registry route builds it. A
+  `sender`, the `inputs` to spend, and `outputs`, each a `TokenTransferOutput`
+  of `receiver`, `amount`, caller-supplied `meta`, and an optional `TokenLock`
+  of `holders`, `expiresAt` and `optContext`. The choice pins the config it
+  reaches with a separate `expectedAdmin` and `expectedInstrumentId`, neither of
+  which the argument itself carries.
+- **`CreatedHolding`** (`Transfer.daml`) - what the batch transfer returns per
+  output, `TransferResultToken` or `TransferResultLockedToken`, in `outputs`
+  order because callers pattern match on it positionally.
+- **`executeTokenTransfer`** (`Transfer.daml`) - the choice body, alongside
+  `tokenTransferControllers` (every party a transfer would bind into a holding,
+  computed from the argument before anything is fetched) and
+  `tokenTransferTxMeta` (its `merge-split` or `transfer` annotation).
 - **`transferImpl`** (`Registry.daml`) - the `TransferFactory` instance body,
   lifted out of the interface instance and passed the config's `admin` and
   `instrumentId` as explicit params. Its only caller is that instance.
@@ -187,14 +202,22 @@ Registration and transfer move through the ledger as follows:
    `extraActors` the standard expects to carry the input and output owners.
 8. **Batch transfer** - `InstrumentConfig_Transfer` runs `executeTokenTransfer`
    (`Transfer.daml`), controlled by the sender together with every output
-   receiver and every output lock holder. It archives the sender's inputs and
+   receiver and every output lock holder, and pinned by an `expectedAdmin` and
+   an `expectedInstrumentId` that must both match the config it is exercised
+   against: the transfer argument names neither, and one admin may run several
+   instruments. It archives the sender's inputs and
    creates the outputs in order, each either a `Token` or a `LockedToken`
    carrying the caller's own `expiresAt` and `optContext` verbatim, with any
    leftover input value returned to the sender as change. A lock's `holders` is
    the one field not copied verbatim: it is deduplicated, sorted, and stripped
    of the output's own receiver, the way Amulet's `dedupOutputLockHolders` does
    it, so a lock naming nobody but the receiver is created with an empty holder
-   list and its owner can release it alone. Unlike steps 3 to 5, this choice is
+   list and its owner can release it alone. Output metadata, by contrast, is
+   passed through untouched: a batch has no canonical pairing of N inputs to M
+   outputs to copy a memo along, so a memo survives being locked only if the
+   caller passes it, and the change output carries none. Its `tx-kind`
+   annotation carries no `.../reason` for the same reason one exercise may lock,
+   pay and return change at once. Unlike steps 3 to 5, this choice is
    registry-native rather than a standard interface, and `registry/src` has no
    reference to it: the registry service does not drive it, so a client submits
    it directly against the participant.
