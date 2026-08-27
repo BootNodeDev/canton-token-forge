@@ -73,11 +73,12 @@ for backwards compatibility.
 
 The system exists so that an application, wallet or settlement venue can be
 developed and tested against a CIP-0056 registry that is not Amulet, without
-each team writing a token from scratch. It is deliberately structurally faithful
-to Amulet (a rules/factory contract, two-template locking, a two-step transfer,
-allocations, a registry HTTP API) so that behaviour learned against it carries
-over, while omitting everything economic that a test does not need and that
-would otherwise have to be simulated.
+each team writing a token from scratch. It is deliberately structurally
+faithful to Amulet (a rules/factory contract, two-template locking, a two-step
+transfer, a multi-output batch transfer, allocations, a registry HTTP API) so
+that behaviour learned against it carries over, while omitting everything
+economic that a test does not need and that would otherwise have to be
+simulated.
 
 In scope: issuing instruments, holding balances, moving them by the standard
 transfer's two paths or by the batch transfer, escrowing them for settlement,
