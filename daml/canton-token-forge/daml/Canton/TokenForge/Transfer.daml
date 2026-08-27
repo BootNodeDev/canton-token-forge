@@ -44,8 +44,9 @@ data TokenTransfer = TokenTransfer
     outputs : [TokenTransferOutput]
   deriving (Eq, Show)
 
--- | AmuletRules.CreatedAmulet. Returned in `outputs` order, because the ported
--- vesting code pattern matches on it positionally.
+-- | AmuletRules.CreatedAmulet. Returned in `outputs` order, the same way Amulet
+-- builds its own result (a `mapA` over the preprocessed outputs), so a caller
+-- can match a created holding back to the output that asked for it by position.
 data CreatedHolding
   = TransferResultToken (ContractId Token)
   | TransferResultLockedToken (ContractId LockedToken)
@@ -120,8 +121,9 @@ executeTokenTransfer admin instrumentId transfer = do
 -- | Classify a transfer for the standard's history parser, ported from
 -- Splice.AmuletRules. A transfer whose every output stays under the sender's
 -- control moved nothing, so it reads as a merge or a split and names no sender;
--- anything else is a payment and must name one, since the parser cannot read a
--- sender off a registry-native choice argument.
+-- anything else is a payment and must name one: the parser's last resort is the
+-- `transfer.sender` field of the choice argument itself, so relying on that
+-- would tie the parse to our argument's field names rather than the annotation.
 tokenTransferTxMeta : TokenTransfer -> Metadata
 tokenTransferTxMeta transfer
   | all senderRetainsControl transfer.outputs = holdingTxMeta TxKind_MergeSplit None None

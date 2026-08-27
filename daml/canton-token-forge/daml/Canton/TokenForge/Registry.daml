@@ -104,8 +104,11 @@ template InstrumentConfig
     -- admin-signed config, so the signatory's authority reaches the body and
     -- the admin never has to sign a caller's transfer; every receiver and every
     -- lock holder is a controller, so no holding is created for a party that
-    -- did not authorize it. createdHoldings comes back in `outputs` order,
-    -- which callers pattern match on positionally.
+    -- did not authorize it. Controllers are informees of this exercise node, so
+    -- each of them reads the whole argument rather than just its own output: a
+    -- batch discloses every receiver and every amount in it to all of them.
+    -- createdHoldings comes back in `outputs` order, which callers pattern
+    -- match on positionally.
     --
     -- Amulet pins only expectedDso because AmuletRules is single-instrument.
     -- An admin here may run several instruments, and TokenTransfer names none,

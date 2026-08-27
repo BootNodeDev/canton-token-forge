@@ -54,9 +54,9 @@ lockRejectsAndExpires = do
   hv.amount === 50.0
 
 -- Holders sign the lock, so an owner cannot bind a holder that did not
--- authorize it. charlie is named as a lock holder but does not act, and the
--- controller set the transfer computes includes him, so the submission fails
--- before anything is fetched.
+-- authorize it. charlie is named as a lock holder but does not act, and he is
+-- both in the controller set the transfer computes and a signatory of the
+-- LockedToken it would create, so the submission cannot go through either way.
 lockRequiresHolderConsent : Script ()
 lockRequiresHolderConsent = do
   admin <- allocateParty "admin"
