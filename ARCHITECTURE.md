@@ -212,12 +212,15 @@ The standard's factory and instruction choices take an `ExtraArgs` carrying a
 disclosed separately, in the submission's own `disclosedContracts`. Between them
 that is how a choice body reaches a contract the submitting party does not know
 about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look
-a contract up by identity, and so the context carries the contract id while the
-disclosure is what makes that contract readable. For a real client the registry
-service serves both halves in one response, and `registry/src/disclose.ts` is
-its single `AnyValue` encoding site. The Daml suite builds the same contexts
-directly, in three places: `Test/Util.daml`'s `expireLockArgs` for the
-expire-lock signal and `escrowReclaimedArgs` for the reclaimed-escrow report,
+a contract up by identity, and the disclosure is what makes a contract readable
+to a submitter who is not a stakeholder. The context carries a contract id only
+where the body has no other way to name one, which here is the preapproval
+alone: the escrow routes leave it to read the lock's id out of the instruction
+or allocation being exercised. For a real client the registry service serves
+both halves in one response, and `registry/src/disclose.ts` is its single
+`AnyValue` encoding site. The Daml suite builds the same contexts directly, in
+three places: `Test/Util.daml`'s `expireLockArgs` for the expire-lock signal and
+`escrowReclaimedArgs` for the reclaimed-escrow report,
 `Test/AllocationTest.daml`'s `bothSignalArgs` for the two together, and the
 preapproval context inline at each direct-transfer call site in
 `Test/TransferTest.daml`.
