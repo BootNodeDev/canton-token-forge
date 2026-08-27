@@ -52,7 +52,7 @@ startOffer admin alice bob = do
       -- while their funds sit locked behind a pending offer
       Some instr <- queryContractId admin (coerceContractId cid : ContractId TokenTransferInstruction)
       Some locked <- queryContractId admin instr.lockedCid
-      locked.optContext === Some ("transfer to " <> show bob)
+      locked.optContext === Some ("transfer to " <> partyToText bob)
       pure cid
     _ -> abort "expected pending offer"
 

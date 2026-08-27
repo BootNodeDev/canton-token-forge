@@ -98,7 +98,7 @@ allocateImpl admin instrumentId arg = do
   locked <- create LockedToken with
     admin; owner = leg.sender; instrumentId; amount = leg.amount
     holders = [admin]; expiresAt = allocation.settlement.settleBefore
-    optContext = Some ("allocation for settlement by " <> show allocation.settlement.executor)
+    optContext = Some ("allocation for settlement by " <> partyToText allocation.settlement.executor)
     meta = emptyMetadata
   allocCid <- create TokenAllocation with admin; allocation; lockedCid = locked; meta = emptyMetadata
   pure AllocationInstructionResult with
