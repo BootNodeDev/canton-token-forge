@@ -5,10 +5,11 @@ import DA.Assert ((===))
 import DA.TextMap qualified as TextMap
 import DA.Time (time)
 import DA.Date (date, Month(Jan))
-import Splice.Api.Token.MetadataV1 (Metadata(..))
+import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata)
 import Canton.TokenForge.Registry (FaucetConfig(..), InstrumentConfig_Mint(..), InstrumentConfig_Tap(..))
 import Canton.TokenForge.Locked (LockedToken_Unlock(..), LockedToken_ExpireLock(..))
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken, lockToken)
+import Canton.TokenForge.Transfer (TokenTransfer(..), TokenTransferOutput(..), TokenLock(..))
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, lockToken, runTransfer)
 
 -- The standard's keys and verbs are spelled out here rather than imported from
 -- the production module, so that renaming a constant on the production side
@@ -66,3 +67,61 @@ expireLockAnnotatesKindUnlock = do
   setTime (time (date 2026 Jan 3) 0 0 0)
   result <- submit alice $ exerciseCmd lockedCid LockedToken_ExpireLock
   result.meta === annotation [(txKindKey, "unlock"), (reasonKey, "lock expired")]
+
+-- Every output stays under the sender's control, so nothing changes hands and
+-- the standard's parser should read this as a merge or a split, not a payment.
+-- A merge-split names no sender: there is no counterparty to name.
+batchTransferAnnotatesMergeSplit : Script ()
+batchTransferAnnotatesMergeSplit = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 50.0
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = alice; amount = 20.0; lock = None; meta = emptyMetadata
+      , TokenTransferOutput with
+          receiver = alice; amount = 30.0
+          lock = Some TokenLock with
+            holders = [alice]; expiresAt = time (date 2026 Jan 2) 0 0 0; optContext = None
+          meta = emptyMetadata
+      ])
+  result.meta === annotation [(txKindKey, "merge-split")]
+
+-- The vesting Accept shape: a self-transfer whose lock holders are other
+-- parties. Control leaves the sender, so this is a transfer and not a
+-- merge-split, and a transfer must name its sender.
+batchTransferAnnotatesTransferWhenControlLeaves : Script ()
+batchTransferAnnotatesTransferWhenControlLeaves = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  provider <- allocateParty "provider"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 50.0
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = alice; amount = 50.0
+          lock = Some TokenLock with
+            holders = [provider, alice]; expiresAt = time (date 2026 Jan 2) 0 0 0
+            optContext = None
+          meta = emptyMetadata
+      ])
+  result.meta === annotation [(txKindKey, "transfer"), (senderKey, partyToText alice)]
+  -- one output the sender keeps and one it does not: `all`, not `any`
+  tok2 <- mintToken cfg admin alice 50.0
+  mixed <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok2]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = alice; amount = 20.0; lock = None; meta = emptyMetadata
+      , TokenTransferOutput with
+          receiver = provider; amount = 30.0; lock = None; meta = emptyMetadata
+      ])
+  mixed.meta === annotation [(txKindKey, "transfer"), (senderKey, partyToText alice)]

@@ -10,6 +10,7 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Canton.TokenForge.Token (Token, mkToken, consumeInputs)
 import Canton.TokenForge.Locked (LockedToken(..))
+import Canton.TokenForge.TxMeta (TxKind(..), holdingTxMeta)
 
 -- | Splice.Expiry.TimeLock.
 data TokenLock = TokenLock
@@ -103,3 +104,17 @@ executeTokenTransfer admin instrumentId transfer = do
       then Some <$> create (mkToken admin transfer.sender instrumentId (inputTotal - outputTotal) emptyMetadata)
       else pure None
   pure (createdHoldings, senderChangeCid)
+
+-- | Classify a transfer for the standard's history parser, ported from
+-- Splice.AmuletRules. A transfer whose every output stays under the sender's
+-- control moved nothing, so it reads as a merge or a split and names no sender;
+-- anything else is a payment and must name one, since the parser cannot read a
+-- sender off a registry-native choice argument.
+tokenTransferTxMeta : TokenTransfer -> Metadata
+tokenTransferTxMeta transfer
+  | all senderRetainsControl transfer.outputs = holdingTxMeta TxKind_MergeSplit None None
+  | otherwise = holdingTxMeta TxKind_Transfer None (Some transfer.sender)
+  where
+    senderRetainsControl o = transfer.sender == o.receiver && case o.lock of
+      None -> True
+      Some l -> all (transfer.sender ==) l.holders
