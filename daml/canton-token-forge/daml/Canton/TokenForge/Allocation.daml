@@ -98,7 +98,13 @@ allocateImpl admin instrumentId arg = do
   locked <- create LockedToken with
     admin; owner = leg.sender; instrumentId; amount = leg.amount
     holders = [admin]; expiresAt = allocation.settlement.settleBefore
-    optContext = Some ("allocation for settlement by " <> partyToText allocation.settlement.executor)
+    -- Amulet's own wording (AmuletAllocation.allocationToTwoStepTransfer): the
+    -- leg and its counterparty, and deliberately nothing more. Naming the
+    -- executor instead left every escrow of a multi-leg settlement carrying an
+    -- identical context, so a sender reading their locked funds could not tell
+    -- which leg an escrow backed, nor who was being paid.
+    optContext = Some ("allocation for transfer leg " <> allocation.transferLegId
+      <> " to " <> partyToText leg.receiver)
     meta = emptyMetadata
   allocCid <- create TokenAllocation with admin; allocation; lockedCid = locked; meta = emptyMetadata
   pure AllocationInstructionResult with
