@@ -10,7 +10,7 @@ import Canton.TokenForge.Token (Token(..), mkToken, fetchInputs, spendInputs)
 import Canton.TokenForge.Locked (LockedToken(..))
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
 import Canton.TokenForge.Allocation (allocateImpl)
-import Canton.TokenForge.Transfer (TokenTransfer, CreatedHolding, tokenTransferControllers, executeTokenTransfer)
+import Canton.TokenForge.Transfer (TokenTransfer, CreatedHolding, tokenTransferControllers, executeTokenTransfer, tokenTransferTxMeta)
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.TxMeta (TxKind(..), holdingTxMeta)
 
@@ -117,7 +117,7 @@ template InstrumentConfig
         pure InstrumentConfig_TransferResult with
           createdHoldings
           senderChangeCid
-          meta = Some (holdingTxMeta TxKind_Transfer None (Some transfer.sender))
+          meta = Some (tokenTransferTxMeta transfer)
 
     -- The receiver alone opts in. Admin authority comes from this admin-signed
     -- config, so naming the admin a controller would add nothing but a joint

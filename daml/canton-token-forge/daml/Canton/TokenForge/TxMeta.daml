@@ -27,19 +27,21 @@ reasonMetaKey = splicePrefix <> "reason"
 senderMetaKey : Text
 senderMetaKey = splicePrefix <> "sender"
 
--- | The transaction kinds this registry emits. The standard permits six; burn,
--- merge-split and expire-dust describe workflows we do not have. Keeping this a
--- closed type is what stops an invented verb from compiling.
+-- | The transaction kinds this registry emits. The standard permits six; burn
+-- and expire-dust describe workflows we do not have. Keeping this a closed type
+-- is what stops an invented verb from compiling.
 data TxKind
   = TxKind_Transfer
   | TxKind_Mint
   | TxKind_Unlock
+  | TxKind_MergeSplit
 
 txKindToText : TxKind -> Text
 txKindToText kind = case kind of
   TxKind_Transfer -> "transfer"
   TxKind_Mint -> "mint"
   TxKind_Unlock -> "unlock"
+  TxKind_MergeSplit -> "merge-split"
 
 -- | Build the annotation for a choice that affects holdings. A transfer must
 -- pass its sender: the parser otherwise falls back to reading one off a
