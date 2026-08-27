@@ -7,7 +7,7 @@ import DA.List (sort)
 import DA.Optional (isNone)
 import DA.Text qualified as T
 import DA.TextMap qualified as TextMap
-import DA.Time (time)
+import DA.Time (time, addRelTime, microseconds)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata(..), emptyMetadata)
@@ -261,6 +261,35 @@ transferRejectsAnAlreadyExpiredLock = do
   submitMustFail (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Transfer with
       transfer; expectedAdmin = admin; expectedInstrumentId = "CC"
+
+-- The accepting side of that same instant. assertWithinDeadline refuses at
+-- `lockUntil`, so it has to accept immediately before it: one microsecond
+-- earlier the identical lock is created. Without this, a guard flipped to the
+-- assertDeadlineExceeded direction would refuse every future-dated lock and the
+-- refusal above would still pass, since every other accepting scenario here
+-- runs at the default ledger time, decades away from the boundary.
+transferAcceptsALockOneTickBeforeExpiry : Script ()
+transferAcceptsALockOneTickBeforeExpiry = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  provider <- allocateParty "provider"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  setTime (addRelTime lockUntil (microseconds (-1)))
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs = [ TokenTransferOutput with
+                  receiver = alice; amount = 50.0
+                  lock = Some TokenLock with
+                    holders = [provider]; expiresAt = lockUntil; optContext = None
+                  meta = emptyMetadata ])
+  case result.createdHoldings of
+    [TransferResultLockedToken lockedCid] -> do
+      Some locked <- queryContractId alice lockedCid
+      locked.expiresAt === lockUntil
+      locked.amount === 50.0
+    _ -> abort "expected a single locked output"
 
 -- Exercise the batch transfer as the transfer's own controller set and require
 -- a refusal. The actor set is derived rather than passed in: submitting as
