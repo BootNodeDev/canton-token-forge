@@ -61,6 +61,12 @@ tokenTransferControllers transfer =
 -- leftover input value to the sender as change (which carries no memo, being
 -- the sender's own funds rather than delivered value).
 --
+-- Every output's metadata is the caller's to supply, including a locked one.
+-- The single-holding lock choice this replaced copied the input holding's memo
+-- into the lock on-ledger, which a batch cannot do: N inputs and M outputs have
+-- no canonical pairing to carry a memo along. A caller that wants a memo to
+-- survive being locked has to pass it.
+--
 -- consumeInputs does the whole input half: it rejects duplicates, rejects
 -- anything that is not a spendable Token of this instrument, and requires every
 -- input to be owned by the sender. Its Holding-interface parameter is why the
