@@ -27,7 +27,7 @@ daml/                                    Container of dpm packages (mirrors upst
     daml/Canton/TokenForge/
       Registry.daml                      InstrumentConfig rules/factory + preapproval; TransferFactory/AllocationFactory/BurnMintFactory instances
       Token.daml                         Token holding template + HoldingV1.Holding instance; input fetch/consume/spend helpers
-      Locked.daml                        LockedToken escrow shared by pending transfers and allocations
+      Locked.daml                        LockedToken escrow shared by pending transfers, allocations, and batch transfer locked outputs
       Instruction.daml                   TokenTransferInstruction template + TransferInstruction interface instance
       Transfer.daml                      Batch transfer value types, controller rule, and execution helper (the AmuletRules analog)
       Allocation.daml                    TokenAllocation template + Allocation interface instance
@@ -104,16 +104,19 @@ the `splice-api-token-*` DARs. The core module hierarchy:
 - **`Token`** (`Token.daml`) - an unlocked holding. Signed by `admin, owner`.
   `ensure amount > 0.0`. Implements `HoldingV1.Holding`.
 - **`LockedToken`** (`Locked.daml`) - the escrow holding behind a pending
-  transfer or an allocation. Signed by `admin, owner, holders`, with `expiresAt`
-  set from the transfer's `executeBefore` or the allocation's `settleBefore`.
-  Three helpers return it to its owner, and which one a caller takes is the
+  transfer, an allocation, or a batch transfer's locked output. Signed by
+  `admin, owner, holders`, with `expiresAt` set from the transfer's
+  `executeBefore`, the allocation's `settleBefore`, or, for a batch transfer's
+  locked output, the caller-supplied `TokenLock.expiresAt` directly. Three
+  helpers return it to its owner, and which one a caller takes is the
   difference between the abort paths: `unlockHolding` (no deadline, transfer
   reject), `reclaimAtDeadline` (both withdraws) and `abortEscrow` (the joint
   allocation cancel alone). Its owner can also reclaim it directly through
   `LockedToken_ExpireLock` once `expiresAt` has passed. `optContext` surfaces as
-  the standard `Lock.context`; both places that create an escrow, the pending
-  two-step transfer in `Registry.daml` and the allocation in `Allocation.daml`,
-  leave it `None`.
+  the standard `Lock.context`. Three sites create a `LockedToken`: the pending
+  two-step transfer (`Registry.daml`) and the allocation (`Allocation.daml`)
+  both force it to `None`, while the batch transfer's locked outputs
+  (`Transfer.daml`) forward the caller-supplied `TokenLock.optContext` verbatim.
 - **`TokenTransferInstruction`** (`Instruction.daml`) - a pending two-step
   transfer, signed by `admin, transfer.sender` with the receiver as observer.
   Implements `TransferInstructionV1.TransferInstruction`.
@@ -363,10 +366,12 @@ transfer.
   (`fetchInputs`/`consumeInputs`/`spendInputs`) live in `Token.daml`,
   `allocateImpl` lives in `Allocation.daml`, and the batch transfer's execution
   helper `executeTokenTransfer` lives in `Transfer.daml`, itself built on
-  `consumeInputs`; `Registry.daml` imports all three, so the two-step transfer,
-  the batch transfer and the allocation path spend inputs through one
-  implementation. Each takes the config's `admin`/`instrumentId` as explicit
-  params instead of reading them back from the contract.
+  `consumeInputs`; `Registry.daml` imports all three, so the standard transfer
+  (both its direct and its pending path, which share one `spendInputs` call
+  ahead of the branch), the batch transfer and the allocation path spend
+  inputs through one implementation. Each takes the config's
+  `admin`/`instrumentId` as explicit params instead of reading them back from
+  the contract.
 - **Clean-room, interface-only:** no dependency on `splice-amulet` and no
   economics (no decay, fees, mining rounds, rewards, or DSO governance); issuance
   is free, authorized jointly by the admin and the recipient, plus an optional

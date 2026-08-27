@@ -156,9 +156,9 @@ AmuletRules analog. It carries the instrument's display metadata (`name`,
 interface instances. Its contract id is what the factory routes return as
 `factoryId`.
 
-`LockedToken` is a single escrow template shared by pending transfers and
-allocations, so a locked balance has one representation regardless of why it is
-locked.
+`LockedToken` is a single escrow template shared by pending transfers,
+allocations, and the batch transfer's locked outputs, so a locked balance has
+one representation regardless of why it is locked.
 
 ### Choices defined by this package
 
