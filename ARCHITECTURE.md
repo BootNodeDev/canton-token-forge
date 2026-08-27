@@ -29,7 +29,7 @@ daml/                                    Container of dpm packages (mirrors upst
       Token.daml                         Token holding template + HoldingV1.Holding instance; input fetch/consume/spend helpers
       Locked.daml                        LockedToken escrow shared by pending transfers, allocations, and batch transfer locked outputs
       Instruction.daml                   TokenTransferInstruction template + TransferInstruction interface instance
-      Transfer.daml                      Batch transfer value types, controller rule, and execution helper (the AmuletRules analog)
+      Transfer.daml                      Batch transfer value types, controller rule, and execution helper (the AmuletRules transfer analog)
       Allocation.daml                    TokenAllocation template + Allocation interface instance
       Types.daml                         mkInstrumentId helper (admin + id -> InstrumentId)
       TxMeta.daml                        tx-kind annotations for the choices the standard does not define
