@@ -334,8 +334,9 @@ serving empty results from a filter that matches nothing.
 ### Choice contexts and disclosure
 
 LF 2.1 has no contract keys, so nothing on-ledger can look a contract up by
-identity. The standard's answer is the choice context: a `TextMap AnyValue` plus
-a list of disclosed contracts, supplied by the registry, that lets a choice body
+identity. The standard's answer is the choice context, a `TextMap AnyValue`
+the registry supplies, paired with the disclosures that ride alongside it in
+the submission rather than inside it. Between them they let a choice body
 reach a contract the submitting party does not know about or cannot see.
 
 Three context keys are ours rather than the standard's:
@@ -460,11 +461,13 @@ Stated plainly, because they are what an evaluation turns on.
 - **The batch transfer is not exposed through the registry HTTP API.**
   `InstrumentConfig_Transfer` is registry-native, not a standard interface
   choice, and nothing under `registry/src` references it. A client that wants
-  to submit it must build the `TokenTransfer` argument itself, obtain its own
-  disclosure of the `InstrumentConfig` it is exercising against (the choice
-  has no `ExtraArgs`, so there is no context to carry one), and exercise it
-  directly against the participant. The service supplies no factory route for
-  it.
+  to submit it must build the `TokenTransfer` argument itself and exercise it
+  directly against the participant. Disclosure is not what stands in the way:
+  a disclosed contract never travels inside `ExtraArgs`, it rides in the
+  submission's own `disclosedContracts`, and the transfer-factory route
+  already hands out the `InstrumentConfig` blob a client can attach to a
+  submission of its own. The service simply supplies no route naming this
+  choice.
 - **The `tx-kind` annotations have not been run through the standard parser.**
   Mint, tap, the batch transfer (as `merge-split` or `transfer`), unlock and
   expire-lock carry the annotation on their choice results and the Daml suite

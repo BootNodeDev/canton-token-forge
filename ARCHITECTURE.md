@@ -204,17 +204,19 @@ allocation contract id it is exercising.
 ## Choice Contexts
 
 The standard's factory and instruction choices take an `ExtraArgs` carrying a
-`ChoiceContext` (`values : TextMap AnyValue`) plus a list of disclosed contracts.
-That is how a choice body reaches a contract the submitting party does not know
-about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look a
-contract up by identity, and the registry supplies the contract id instead. For a
-real client the registry service builds the context, and
-`registry/src/disclose.ts` is its single `AnyValue` encoding site. The Daml suite
-builds the same contexts directly, in three places: `Test/Util.daml`'s
-`expireLockArgs` for the expire-lock signal and `escrowReclaimedArgs` for the
-reclaimed-escrow report, `Test/AllocationTest.daml`'s `bothSignalArgs` for the
-two together, and the preapproval context inline at each direct-transfer call
-site in `Test/TransferTest.daml`.
+`ChoiceContext` (`values : TextMap AnyValue`); the contracts it points at are
+disclosed separately, in the submission's own `disclosedContracts`. Between them
+that is how a choice body reaches a contract the submitting party does not know
+about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look
+a contract up by identity, and so the context carries the contract id while the
+disclosure is what makes that contract readable. For a real client the registry
+service serves both halves in one response, and `registry/src/disclose.ts` is
+its single `AnyValue` encoding site. The Daml suite builds the same contexts
+directly, in three places: `Test/Util.daml`'s `expireLockArgs` for the
+expire-lock signal and `escrowReclaimedArgs` for the reclaimed-escrow report,
+`Test/AllocationTest.daml`'s `bothSignalArgs` for the two together, and the
+preapproval context inline at each direct-transfer call site in
+`Test/TransferTest.daml`.
 
 Three context keys are ours rather than the standard's, and each is a named
 constant on both sides rather than a literal: `preapprovalContextKey`
