@@ -134,3 +134,23 @@ batchTransferAnnotatesTransferWhenAnyOutputLeaves = do
           receiver = provider; amount = 30.0; lock = None; meta = emptyMetadata
       ])
   result.meta === annotation [(txKindKey, "transfer"), (senderKey, partyToText alice)]
+
+-- The commonest production shape: the sender keeps nothing. Every other
+-- transfer case here has the sender among its own output receivers, so this is
+-- the only one that tells "the annotation names the SENDER" apart from "it
+-- names an output receiver" - the field a wallet reads as the counterparty.
+batchTransferNamesSenderOnOutboundPayment : Script ()
+batchTransferNamesSenderOnOutboundPayment = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 50.0
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = bob; amount = 50.0; lock = None; meta = emptyMetadata
+      ])
+  result.meta === annotation [(txKindKey, "transfer"), (senderKey, partyToText alice)]
