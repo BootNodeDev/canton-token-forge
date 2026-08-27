@@ -104,6 +104,41 @@ selfTransferIntoOneLock = do
       lv.meta === memo
     _ -> abort "expected a single locked output"
 
+-- An unlocked output's memo is the caller's, exactly as a locked one's is, and
+-- the sender's change is not: change is the sender's own funds coming back, so
+-- it carries no delivered-value memo. Both halves need pinning here because
+-- every other unlocked output in this file passes emptyMetadata, so replacing
+-- `o.meta` with emptyMetadata on the unlocked branch, or leaking the caller's
+-- memo onto the change, leaves the whole suite green.
+unlockedOutputKeepsItsMemoAndChangeCarriesNone : Script ()
+unlockedOutputKeepsItsMemoAndChangeCarriesNone = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 100.0 memo
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = bob; amount = 60.0; lock = None; meta = memo
+      ])
+  case result.createdHoldings of
+    [TransferResultToken paidCid] -> do
+      Some paid <- queryContractId bob paidCid
+      paid.owner === bob
+      paid.amount === 60.0
+      paid.meta === memo
+    _ -> abort "expected a single unlocked output"
+  case result.senderChangeCid of
+    Some changeCid -> do
+      Some change <- queryContractId alice changeCid
+      change.owner === alice
+      change.amount === 40.0
+      change.meta === emptyMetadata
+    None -> abort "expected the sender to get change"
+
 -- Vesting Withdraw: the escrow is unlocked, part is released to the
 -- beneficiary, and the remainder is locked straight back. The positional match
 -- is the ordering assertion: createdHoldings comes back in outputs order.
