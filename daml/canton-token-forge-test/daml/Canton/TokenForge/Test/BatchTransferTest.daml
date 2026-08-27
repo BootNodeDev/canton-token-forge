@@ -272,6 +272,40 @@ transferRejectsOutputsExceedingInputs = do
       transfer; expectedAdmin = admin; expectedInstrumentId = "CC"
 
 -- A lock whose expiry has already passed is releasable by its owner alone the
+-- The stored holder list is normalized, so the standard's Lock.holders view
+-- names each party once in a canonical order rather than echoing however the
+-- caller happened to spell the set. releaseAndRelockRemainder pins the
+-- receiver-strip half; these are the other two, and a bare `filter` passes
+-- every other scenario in this file because none of them repeats a holder or
+-- reads back the order of a set with more than one party left in it.
+lockHoldersAreDedupedAndSorted : Script ()
+lockHoldersAreDedupedAndSorted = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  first <- allocateParty "holder-one"
+  second <- allocateParty "holder-two"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- tokenWithMeta admin alice 50.0 emptyMetadata
+  -- party ids carry an allocation suffix, so which of the two sorts first is
+  -- not knowable here: derive it, then hand them over high-then-low with one
+  -- repeated, which neither the caller's ordering nor a plain filter can satisfy
+  [lo, hi] <- pure (sort [first, second])
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = alice
+    inputs = [tok]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = alice; amount = 50.0
+          lock = Some TokenLock with
+            holders = [hi, lo, hi]; expiresAt = lockUntil; optContext = None
+          meta = emptyMetadata
+      ])
+  case result.createdHoldings of
+    [TransferResultLockedToken lockedCid] -> do
+      Some lv <- queryInterfaceContractId alice (toInterfaceContractId @HoldingV1.Holding lockedCid)
+      ((.holders) <$> lv.lock) === Some [lo, hi]
+    _ -> abort "expected a single locked output"
+
 -- moment it is created, since that is exactly the gate LockedToken_ExpireLock
 -- opens. AmuletRules refuses to create one (preprocessOutputs) and so do we.
 transferRejectsAnAlreadyExpiredLock : Script ()
