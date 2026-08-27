@@ -29,6 +29,7 @@ daml/                                    Container of dpm packages (mirrors upst
       Token.daml                         Token holding template + HoldingV1.Holding instance; input fetch/consume/spend helpers
       Locked.daml                        LockedToken escrow shared by pending transfers and allocations
       Instruction.daml                   TokenTransferInstruction template + TransferInstruction interface instance
+      Transfer.daml                      Batch transfer value types, controller rule, and execution helper (the AmuletRules analog)
       Allocation.daml                    TokenAllocation template + Allocation interface instance
       Types.daml                         mkInstrumentId helper (admin + id -> InstrumentId)
       TxMeta.daml                        tx-kind annotations for the choices the standard does not define
@@ -37,6 +38,7 @@ daml/                                    Container of dpm packages (mirrors upst
     daml.yaml                            data-deps on the compiled production DAR + the interface DARs
     daml/Canton/TokenForge/Test/
       AllocationTest.daml                allocation flow tests
+      BatchTransferTest.daml             Batch transfer shapes, conservation, and authorization negatives
       BurnMintTest.daml                  burn-mint factory tests
       FaucetTest.daml                    faucet tap tests
       LockTest.daml                      LockedToken escrow tests
@@ -90,7 +92,9 @@ the `splice-api-token-*` DARs. The core module hierarchy:
   no economics), `InstrumentConfig_Tap` (the optional faucet, controlled by the
   tapping user alone and capped per tap), `InstrumentConfig_Preapprove`
   (controlled by the receiver, creating the opt-in that enables direct
-  transfers), and `InstrumentConfig_LockHolding`. Implements the
+  transfers), and `InstrumentConfig_Transfer` (the multi-output transfer that
+  can emit locked outputs, controlled by the sender together with every output
+  receiver and lock holder). Implements the
   `TransferFactory`, `AllocationFactory`, and `BurnMintFactory` interfaces. One
   admin creates one config per instrument and serves all of them through a single
   registry API; the instrument identity is `(admin, instrumentId)`.
@@ -106,7 +110,10 @@ the `splice-api-token-*` DARs. The core module hierarchy:
   difference between the abort paths: `unlockHolding` (no deadline, transfer
   reject), `reclaimAtDeadline` (both withdraws) and `abortEscrow` (the joint
   allocation cancel alone). Its owner can also reclaim it directly through
-  `LockedToken_ExpireLock` once `expiresAt` has passed.
+  `LockedToken_ExpireLock` once `expiresAt` has passed. `optContext` surfaces as
+  the standard `Lock.context`; both places that create an escrow, the pending
+  two-step transfer in `Registry.daml` and the allocation in `Allocation.daml`,
+  leave it `None`.
 - **`TokenTransferInstruction`** (`Instruction.daml`) - a pending two-step
   transfer, signed by `admin, transfer.sender` with the receiver as observer.
   Implements `TransferInstructionV1.TransferInstruction`.
@@ -353,11 +360,13 @@ transfer.
   (AmuletRules analog); it implements `TransferFactory`, `AllocationFactory`, and
   `BurnMintFactory`, and exposes minting as a nonconsuming choice.
 - **Module boundary:** the helpers that fetch, validate and spend sender inputs
-  (`fetchInputs`/`consumeInputs`/`spendInputs`) live in `Token.daml`, and
-  `allocateImpl` lives in `Allocation.daml`; `Registry.daml` imports both, so
-  the transfer and allocation paths spend inputs through one implementation.
-  Each takes the config's `admin`/`instrumentId` as explicit params instead of
-  reading them back from the contract.
+  (`fetchInputs`/`consumeInputs`/`spendInputs`) live in `Token.daml`,
+  `allocateImpl` lives in `Allocation.daml`, and the batch transfer's execution
+  helper `executeTokenTransfer` lives in `Transfer.daml`, itself built on
+  `consumeInputs`; `Registry.daml` imports all three, so the two-step transfer,
+  the batch transfer and the allocation path spend inputs through one
+  implementation. Each takes the config's `admin`/`instrumentId` as explicit
+  params instead of reading them back from the contract.
 - **Clean-room, interface-only:** no dependency on `splice-amulet` and no
   economics (no decay, fees, mining rounds, rewards, or DSO governance); issuance
   is free, authorized jointly by the admin and the recipient, plus an optional

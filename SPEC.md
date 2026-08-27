@@ -5,8 +5,7 @@ integration testing.
 
 This document specifies what the system is, what it implements, how it is
 authorized, how it is verified, and where its limits are. Every claim in it was
-checked against the tree at commit `9f33e82`, apart from what section 9 says
-about the pull-request checks: the workflow that runs them landed after it.
+checked against the tree at commit `f99ab19`.
 
 ---
 
@@ -47,11 +46,11 @@ registry in any test that must not become Amulet-specific.
 
 ### What has actually been run
 
-All three suites were re-run at commit `9f33e82`, exit 0:
+All three suites were re-run at commit `f99ab19`, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
-| Daml Script | **60 scenarios**, 11 modules | nothing, runs in-process |
+| Daml Script | **75 scenarios**, 12 modules | nothing, runs in-process |
 | Registry unit | **205 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **18 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
@@ -62,8 +61,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-786 lines of production Daml, 1665 lines of Daml tests, 1724 lines of TypeScript
-service, 4336 lines of TypeScript tests. MIT licensed. Pre-release: the package
+913 lines of production Daml, 2282 lines of Daml tests, 1724 lines of TypeScript
+service, 4343 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
 
@@ -171,7 +170,7 @@ the interface and inherited unchanged.
 | `InstrumentConfig_Mint` | `admin, recipient` | Free issuance into a new `Token` |
 | `InstrumentConfig_Tap` | `user` | Faucet, capped at the instrument's `maxPerTap` |
 | `InstrumentConfig_Preapprove` | `receiver` | Creates the receiver's opt-in for direct transfers |
-| `InstrumentConfig_LockHolding` | `owner :: holders` | Turns a `Token` into a `LockedToken` |
+| `InstrumentConfig_Transfer` | sender, every output receiver, every output lock holder | Multi-output transfer; outputs may be locked, leftover returns as change |
 | `TokenTransferPreapproval_Send` | `admin` | Mints the receiver holding on the direct path |
 | `LockedToken_Unlock` | `owner :: holders` | Cooperative release back to the owner |
 | `LockedToken_ExpireLock` | `owner` | Owner reclaim once `expiresAt` has passed |
@@ -179,13 +178,16 @@ the interface and inherited unchanged.
 Five of these seven annotate their result with the standard's
 `splice.lfdecentralizedtrust.org/tx-kind` key, so a transaction parser can
 classify them without registry-specific knowledge: `mint` for issuance and the
-faucet, `unlock` for both releases, and `transfer` for a lock. The lock also
-carries `.../sender`, which the parser's transfer path requires and cannot read
-off a registry-native choice argument; a lock still renders as a merge or split
-rather than an outbound payment, because the holding never changes owner. The
-two exemptions: `InstrumentConfig_Preapprove` creates no holding, and this
-registry exercises `TokenTransferPreapproval_Send` only inside the standardized
-transfer that the parser already recognizes by name.
+faucet, `unlock` for both releases, and either `merge-split` or `transfer` for
+the batch transfer, depending on what it moves. A transfer whose every output
+stays under the sender's control (the sender is the receiver, and any lock on
+that output names only the sender as holder) reads as `merge-split` and
+carries no sender key; any other shape reads as `transfer` and carries
+`.../sender`, which the parser's transfer path requires and cannot read off a
+registry-native choice argument. The two exemptions: `InstrumentConfig_Preapprove`
+creates no holding, and this registry exercises `TokenTransferPreapproval_Send`
+only inside the standardized transfer that the parser already recognizes by
+name.
 
 ### Authorization
 
@@ -398,7 +400,7 @@ exist.
 
 | Level | What it covers |
 |---|---|
-| Daml Script, 60 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, and the `decimals` bound |
+| Daml Script, 75 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, the `decimals` bound, and the batch transfer's own refusals: outputs whose total exceeds the inputs and a lock output already past its expiry |
 | Registry unit, 205 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
 | End-to-end, 18 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers, including a misconfigured escrow template id that must not produce a reclaim report |
 
@@ -416,7 +418,7 @@ instrument, then prints a ready-to-paste service configuration.
 
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
-npm test                          # builds the production DAR, runs 60 Daml scenarios
+npm test                          # builds the production DAR, runs 75 Daml scenarios
 cd registry && npm install && npm test   # 205 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
@@ -446,9 +448,10 @@ Stated plainly, because they are what an evaluation turns on.
 - **`AllocationRequest` is not implemented.** That is the settlement venue's
   side of a DvP rather than the registry's.
 - **The `tx-kind` annotations have not been run through the standard parser.**
-  Mint, tap, lock, unlock and expire-lock carry the annotation on their choice
-  results and the Daml suite asserts every emitted value, but no run of the CN
-  Token Standard CLI has yet confirmed how a real parser renders them.
+  Mint, tap, the batch transfer (as `merge-split` or `transfer`), unlock and
+  expire-lock carry the annotation on their choice results and the Daml suite
+  asserts every emitted value, but no run of the CN Token Standard CLI has yet
+  confirmed how a real parser renders them.
 - **Nothing enforces `(admin, instrumentId)` uniqueness.** LF 2.1 has no contract
   keys, so a duplicate cannot be prevented on-ledger. The service reports a
   duplicate as a 409 from get-by-id and the factory routes, while the instrument
@@ -527,12 +530,13 @@ Stated plainly, because they are what an evaluation turns on.
 
 ```
 daml/                                Container of dpm packages; not a package itself
-  canton-token-forge/                Production package, 786 lines
+  canton-token-forge/                Production package, 913 lines
     daml/Canton/TokenForge/
       Registry.daml                  InstrumentConfig, preapproval, the three factory instances
       Token.daml                     Token holding, input fetch/consume/spend helpers
       Locked.daml                    LockedToken escrow and the three unwind helpers
       Instruction.daml               TokenTransferInstruction and its interface instance
+      Transfer.daml                  Batch transfer value types, controller rule, and execution helper
       Allocation.daml                TokenAllocation and its interface instance
       TxMeta.daml                    tx-kind annotations for the choices the standard does not define
       Types.daml, Version.daml       InstrumentId helper, version marker
