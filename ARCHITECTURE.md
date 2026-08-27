@@ -57,7 +57,7 @@ registry/                                Read-only TypeScript HTTP service servi
     startup.ts                           Boot checks: the configured template ids resolve, the admin party exists on the participant and the token can read as it
     payloads.ts                          JSON shapes of the on-ledger payloads the service reads
     mapping.ts                           ACS payload -> API shapes; resolveConfig picks the (admin, instrumentId) config
-    disclose.ts                          The single AnyValue encoding site + the two choice-context keys
+    disclose.ts                          The single AnyValue encoding site + the three choice-context keys
     logger.ts                            The structural Logger interface plus the pino instance
     openapi.ts, server.ts, index.ts      Spec loading, middleware stack, process lifecycle
     routes/
@@ -82,8 +82,8 @@ package.json                             npm scripts wrapping dpm
 ## Key Abstractions
 
 The package is a clean-room implementation of the CN Token Standard: it defines
-its own templates but exposes behavior only through the standard interfaces from
-the `splice-api-token-*` DARs. The core module hierarchy:
+its own templates but exposes its standardized behavior through the standard
+interfaces from the `splice-api-token-*` DARs. The core module hierarchy:
 
 - **`InstrumentConfig`** (`Registry.daml`) - admin-signed per-instrument
   rules/factory contract (the AmuletRules analog), created directly by its admin.
@@ -185,6 +185,15 @@ Registration and transfer move through the ledger as follows:
 7. **Burn and mint** - `BurnMintFactory_BurnMint` archives input holdings and
    creates outputs in one atomic step, authorized by the admin plus the
    `extraActors` the standard expects to carry the input and output owners.
+8. **Batch transfer** - `InstrumentConfig_Transfer` runs `executeTokenTransfer`
+   (`Transfer.daml`), controlled by the sender together with every output
+   receiver and every output lock holder. It archives the sender's inputs and
+   creates the outputs in order, each either a `Token` or a `LockedToken`
+   carrying the caller's own `expiresAt` and `optContext` verbatim, with any
+   leftover input value returned to the sender as change. Unlike steps 3 to 5,
+   this choice is registry-native rather than a standard interface, and
+   `registry/src` has no reference to it: the registry service does not drive
+   it, so a client submits it directly against the participant.
 
 Steps 3 to 5 are the paths a client drives through the registry service. The two
 factory routes supply a `factoryId` alongside the choice context; the accept,

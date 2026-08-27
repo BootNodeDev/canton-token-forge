@@ -12,10 +12,10 @@ checked against the tree at commit `f99ab19`.
 ## 1. Brief
 
 canton-token-forge is a clean-room implementation of the CN Token Standard. It
-is a Daml package of six templates that exposes its behaviour only through the
-standard `splice-api-token-*` interfaces, plus a read-only TypeScript HTTP
-service that serves the registry API a client needs in order to submit transfers
-and allocations itself.
+is a Daml package of six templates that exposes its standardized behaviour
+through the standard `splice-api-token-*` interfaces, plus a read-only
+TypeScript HTTP service that serves the registry API a client needs in order
+to submit transfers and allocations itself.
 
 It has no economics: no fees, decay, mining rounds, rewards or governance.
 Issuance is free and authorized jointly by the instrument admin and the
@@ -31,14 +31,15 @@ registry in any test that must not become Amulet-specific.
 | Holdings (`HoldingV1.Holding`) | Yes, on both the unlocked and the escrowed holding |
 | Two-step transfer (offer, accept, reject, withdraw) | Yes |
 | One-step direct transfer against a receiver preapproval | Yes |
+| Multi-output batch transfer (`InstrumentConfig_Transfer`, registry-native) | Yes, not exposed through the registry HTTP API |
 | Allocations and DvP (`AllocationV1`) | Yes: allocate, execute, withdraw, cancel |
 | Burn and mint (`BurnMintV1`) | Yes |
 | Faucet, self-service, no admin action | Yes, capped per tap, per instrument |
 | Many instruments per admin | Yes, identity is `(admin, instrumentId)` |
 | On-ledger instrument metadata (name, symbol, decimals) | Yes |
 | Registry HTTP API (metadata, transfer-instruction, allocation, allocation-instruction) | Yes, read-only |
-| Choice contexts and explicit disclosure | Yes, both context keys documented below |
-| Transaction-kind metadata on registry-native choices | Yes, `mint` / `transfer` / `unlock` |
+| Choice contexts and explicit disclosure | Yes, all three context keys documented below |
+| Transaction-kind metadata on registry-native choices | Yes, `mint` / `transfer` / `merge-split` / `unlock` |
 | Token standard **v2** interfaces | No, v1 only |
 | `AllocationRequest`, the settlement venue side | No, deliberately out of scope |
 | `TransferInstruction_Update` | No, the implementation aborts |
@@ -78,9 +79,10 @@ allocations, a registry HTTP API) so that behaviour learned against it carries
 over, while omitting everything economic that a test does not need and that
 would otherwise have to be simulated.
 
-In scope: issuing instruments, holding balances, moving them by both transfer
-paths, escrowing them for settlement, and serving the registry API that makes
-those flows drivable by an off-ledger client.
+In scope: issuing instruments, holding balances, moving them by the standard
+transfer's two paths or by the batch transfer, escrowing them for settlement,
+and serving the registry API that makes the standard-interface flows drivable
+by an off-ledger client.
 
 Out of scope: fees and pricing, decay, mining rounds, reward distribution, DSO
 or committee governance, validator onboarding, and the settlement venue's own
@@ -262,6 +264,14 @@ flowchart TD
 7. **Burn and mint.** `BurnMintFactory_BurnMint` archives inputs and creates
    outputs atomically, requiring every input and output owner to be the admin or
    to appear in `extraActors`.
+8. **Batch transfer.** `InstrumentConfig_Transfer`, controlled by the sender
+   together with every output receiver and every output lock holder, archives
+   the sender's inputs and creates the outputs in order, each either a `Token`
+   or a `LockedToken` carrying the caller's own `expiresAt` and lock context
+   verbatim, with any leftover input value returned to the sender as change.
+   It is registry-native rather than a standard interface choice, and the
+   registry service does not drive it: a client submits it directly against
+   the participant.
 
 Amounts are Daml `Decimal`, which is `Numeric 10`. Transfers sum the input
 holdings, require the total to cover the requested amount, and emit a change
@@ -447,6 +457,14 @@ Stated plainly, because they are what an evaluation turns on.
 - **`TransferInstruction_Update` is not supported.** The implementation aborts.
 - **`AllocationRequest` is not implemented.** That is the settlement venue's
   side of a DvP rather than the registry's.
+- **The batch transfer is not exposed through the registry HTTP API.**
+  `InstrumentConfig_Transfer` is registry-native, not a standard interface
+  choice, and nothing under `registry/src` references it. A client that wants
+  to submit it must build the `TokenTransfer` argument itself, obtain its own
+  disclosure of the `InstrumentConfig` it is exercising against (the choice
+  has no `ExtraArgs`, so there is no context to carry one), and exercise it
+  directly against the participant. The service supplies no factory route for
+  it.
 - **The `tx-kind` annotations have not been run through the standard parser.**
   Mint, tap, the batch transfer (as `merge-split` or `transfer`), unlock and
   expire-lock carry the annotation on their choice results and the Daml suite
