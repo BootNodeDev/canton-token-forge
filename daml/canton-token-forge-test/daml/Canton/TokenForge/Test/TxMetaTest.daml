@@ -113,15 +113,24 @@ batchTransferAnnotatesTransferWhenControlLeaves = do
           meta = emptyMetadata
       ])
   result.meta === annotation [(txKindKey, "transfer"), (senderKey, partyToText alice)]
-  -- one output the sender keeps and one it does not: `all`, not `any`
-  tok2 <- mintToken cfg admin alice 50.0
-  mixed <- runTransfer cfg admin (TokenTransfer with
+
+-- One output the sender keeps and one it does not. The quantifier is `all`, not
+-- `any`: a single output leaving the sender's control makes the whole batch a
+-- payment.
+batchTransferAnnotatesTransferWhenAnyOutputLeaves : Script ()
+batchTransferAnnotatesTransferWhenAnyOutputLeaves = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  provider <- allocateParty "provider"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 50.0
+  result <- runTransfer cfg admin (TokenTransfer with
     sender = alice
-    inputs = [tok2]
+    inputs = [tok]
     outputs =
       [ TokenTransferOutput with
           receiver = alice; amount = 20.0; lock = None; meta = emptyMetadata
       , TokenTransferOutput with
           receiver = provider; amount = 30.0; lock = None; meta = emptyMetadata
       ])
-  mixed.meta === annotation [(txKindKey, "transfer"), (senderKey, partyToText alice)]
+  result.meta === annotation [(txKindKey, "transfer"), (senderKey, partyToText alice)]
