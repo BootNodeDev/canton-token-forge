@@ -47,7 +47,13 @@ startOffer admin alice bob = do
   Some cv <- queryInterfaceContractId alice changeCid
   cv.amount === 60.0
   case res.output of
-    TransferInstructionResult_Pending cid -> pure cid
+    TransferInstructionResult_Pending cid -> do
+      -- the escrow names its purpose, which is what a wallet shows the sender
+      -- while their funds sit locked behind a pending offer
+      Some instr <- queryContractId admin (coerceContractId cid : ContractId TokenTransferInstruction)
+      Some locked <- queryContractId admin instr.lockedCid
+      locked.optContext === Some ("transfer to " <> show bob)
+      pure cid
     _ -> abort "expected pending offer"
 
 -- Bob (the receiver) is not a stakeholder of the sender-owned escrow, so the

@@ -116,7 +116,8 @@ interfaces from the `splice-api-token-*` DARs. The core module hierarchy:
   `LockedToken_ExpireLock` once `expiresAt` has passed. `optContext` surfaces as
   the standard `Lock.context`. Three sites create a `LockedToken`: the pending
   two-step transfer (`Registry.daml`) and the allocation (`Allocation.daml`)
-  both force it to `None`, while the batch transfer's locked outputs
+  each supply their own description of why the funds are held, since the escrow
+  has no caller to ask, while the batch transfer's locked outputs
   (`Transfer.daml`) forward the caller-supplied `TokenLock.optContext` verbatim.
 - **`TokenTransferInstruction`** (`Instruction.daml`) - a pending two-step
   transfer, signed by `admin, transfer.sender` with the receiver as observer.

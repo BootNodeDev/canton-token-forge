@@ -364,6 +364,8 @@ startAllocation admin alice bob venue = do
     AllocationInstructionResult_Completed cid -> pure cid
     _ -> abort "expected completed allocation"
   Some alloc <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
+  Some locked <- queryContractId admin alloc.lockedCid
+  locked.optContext === Some ("allocation for settlement by " <> show venue)
   pure (allocCid, alloc.lockedCid)
 
 -- The sender withdrawing an allocation whose escrow they already reclaimed

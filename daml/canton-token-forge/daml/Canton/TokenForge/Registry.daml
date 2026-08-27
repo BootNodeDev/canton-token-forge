@@ -279,7 +279,8 @@ transferImpl admin instrumentId arg = do
       locked <- create LockedToken with
         admin; owner = transfer.sender; instrumentId; amount = transfer.amount
         holders = [admin]; expiresAt = transfer.executeBefore
-        optContext = None; meta = transfer.meta
+        optContext = Some ("transfer to " <> show transfer.receiver)
+        meta = transfer.meta
       instr <- create TokenTransferInstruction with admin; transfer; lockedCid = locked
       pure TransferInstructionResult with
         output = TransferInstructionResult_Pending with
