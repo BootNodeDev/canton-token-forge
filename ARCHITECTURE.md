@@ -27,8 +27,9 @@ daml/                                    Container of dpm packages (mirrors upst
     daml/Canton/TokenForge/
       Registry.daml                      InstrumentConfig rules/factory + preapproval; TransferFactory/AllocationFactory/BurnMintFactory instances
       Token.daml                         Token holding template + HoldingV1.Holding instance; input fetch/consume/spend helpers
-      Locked.daml                        LockedToken escrow shared by pending transfers and allocations
+      Locked.daml                        LockedToken escrow shared by pending transfers, allocations, and batch transfer locked outputs
       Instruction.daml                   TokenTransferInstruction template + TransferInstruction interface instance
+      Transfer.daml                      Batch transfer value types, controller rule, and execution helper (the AmuletRules transfer analog)
       Allocation.daml                    TokenAllocation template + Allocation interface instance
       Types.daml                         mkInstrumentId helper (admin + id -> InstrumentId)
       TxMeta.daml                        tx-kind annotations for the choices the standard does not define
@@ -37,6 +38,7 @@ daml/                                    Container of dpm packages (mirrors upst
     daml.yaml                            data-deps on the compiled production DAR + the interface DARs
     daml/Canton/TokenForge/Test/
       AllocationTest.daml                allocation flow tests
+      BatchTransferTest.daml             Batch transfer shapes, conservation, and authorization negatives
       BurnMintTest.daml                  burn-mint factory tests
       FaucetTest.daml                    faucet tap tests
       LockTest.daml                      LockedToken escrow tests
@@ -55,7 +57,7 @@ registry/                                Read-only TypeScript HTTP service servi
     startup.ts                           Boot checks: the configured template ids resolve, the admin party exists on the participant and the token can read as it
     payloads.ts                          JSON shapes of the on-ledger payloads the service reads
     mapping.ts                           ACS payload -> API shapes; resolveConfig picks the (admin, instrumentId) config
-    disclose.ts                          The single AnyValue encoding site + the two choice-context keys
+    disclose.ts                          The single AnyValue encoding site + the three choice-context keys
     logger.ts                            The structural Logger interface plus the pino instance
     openapi.ts, server.ts, index.ts      Spec loading, middleware stack, process lifecycle
     routes/
@@ -80,8 +82,8 @@ package.json                             npm scripts wrapping dpm
 ## Key Abstractions
 
 The package is a clean-room implementation of the CN Token Standard: it defines
-its own templates but exposes behavior only through the standard interfaces from
-the `splice-api-token-*` DARs. The core module hierarchy:
+its own templates but exposes its standardized behavior through the standard
+interfaces from the `splice-api-token-*` DARs. The core module hierarchy:
 
 - **`InstrumentConfig`** (`Registry.daml`) - admin-signed per-instrument
   rules/factory contract (the AmuletRules analog), created directly by its admin.
@@ -90,7 +92,9 @@ the `splice-api-token-*` DARs. The core module hierarchy:
   no economics), `InstrumentConfig_Tap` (the optional faucet, controlled by the
   tapping user alone and capped per tap), `InstrumentConfig_Preapprove`
   (controlled by the receiver, creating the opt-in that enables direct
-  transfers), and `InstrumentConfig_LockHolding`. Implements the
+  transfers), and `InstrumentConfig_Transfer` (the multi-output transfer that
+  can emit locked outputs, controlled by the sender together with every output
+  receiver and lock holder). Implements the
   `TransferFactory`, `AllocationFactory`, and `BurnMintFactory` interfaces. One
   admin creates one config per instrument and serves all of them through a single
   registry API; the instrument identity is `(admin, instrumentId)`.
@@ -100,13 +104,19 @@ the `splice-api-token-*` DARs. The core module hierarchy:
 - **`Token`** (`Token.daml`) - an unlocked holding. Signed by `admin, owner`.
   `ensure amount > 0.0`. Implements `HoldingV1.Holding`.
 - **`LockedToken`** (`Locked.daml`) - the escrow holding behind a pending
-  transfer or an allocation. Signed by `admin, owner, holders`, with `expiresAt`
-  set from the transfer's `executeBefore` or the allocation's `settleBefore`.
-  Three helpers return it to its owner, and which one a caller takes is the
+  transfer, an allocation, or a batch transfer's locked output. Signed by
+  `admin, owner, holders`, with `expiresAt` set from the transfer's
+  `executeBefore`, the allocation's `settleBefore`, or, for a batch transfer's
+  locked output, the caller-supplied `TokenLock.expiresAt` directly. Three
+  helpers return it to its owner, and which one a caller takes is the
   difference between the abort paths: `unlockHolding` (no deadline, transfer
   reject), `reclaimAtDeadline` (both withdraws) and `abortEscrow` (the joint
   allocation cancel alone). Its owner can also reclaim it directly through
-  `LockedToken_ExpireLock` once `expiresAt` has passed.
+  `LockedToken_ExpireLock` once `expiresAt` has passed. `optContext` surfaces as
+  the standard `Lock.context`. Three sites create a `LockedToken`: the pending
+  two-step transfer (`Registry.daml`) and the allocation (`Allocation.daml`)
+  both force it to `None`, while the batch transfer's locked outputs
+  (`Transfer.daml`) forward the caller-supplied `TokenLock.optContext` verbatim.
 - **`TokenTransferInstruction`** (`Instruction.daml`) - a pending two-step
   transfer, signed by `admin, transfer.sender` with the receiver as observer.
   Implements `TransferInstructionV1.TransferInstruction`.
@@ -175,6 +185,19 @@ Registration and transfer move through the ledger as follows:
 7. **Burn and mint** - `BurnMintFactory_BurnMint` archives input holdings and
    creates outputs in one atomic step, authorized by the admin plus the
    `extraActors` the standard expects to carry the input and output owners.
+8. **Batch transfer** - `InstrumentConfig_Transfer` runs `executeTokenTransfer`
+   (`Transfer.daml`), controlled by the sender together with every output
+   receiver and every output lock holder. It archives the sender's inputs and
+   creates the outputs in order, each either a `Token` or a `LockedToken`
+   carrying the caller's own `expiresAt` and `optContext` verbatim, with any
+   leftover input value returned to the sender as change. A lock's `holders` is
+   the one field not copied verbatim: it is deduplicated, sorted, and stripped
+   of the output's own receiver, the way Amulet's `dedupOutputLockHolders` does
+   it, so a lock naming nobody but the receiver is created with an empty holder
+   list and its owner can release it alone. Unlike steps 3 to 5, this choice is
+   registry-native rather than a standard interface, and `registry/src` has no
+   reference to it: the registry service does not drive it, so a client submits
+   it directly against the participant.
 
 Steps 3 to 5 are the paths a client drives through the registry service. The two
 factory routes supply a `factoryId` alongside the choice context; the accept,
@@ -185,17 +208,22 @@ allocation contract id it is exercising.
 ## Choice Contexts
 
 The standard's factory and instruction choices take an `ExtraArgs` carrying a
-`ChoiceContext` (`values : TextMap AnyValue`) plus a list of disclosed contracts.
-That is how a choice body reaches a contract the submitting party does not know
-about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look a
-contract up by identity, and the registry supplies the contract id instead. For a
-real client the registry service builds the context, and
-`registry/src/disclose.ts` is its single `AnyValue` encoding site. The Daml suite
-builds the same contexts directly, in three places: `Test/Util.daml`'s
-`expireLockArgs` for the expire-lock signal and `escrowReclaimedArgs` for the
-reclaimed-escrow report, `Test/AllocationTest.daml`'s `bothSignalArgs` for the
-two together, and the preapproval context inline at each direct-transfer call
-site in `Test/TransferTest.daml`.
+`ChoiceContext` (`values : TextMap AnyValue`); the contracts it points at are
+disclosed separately, in the submission's own `disclosedContracts`. Between them
+that is how a choice body reaches a contract the submitting party does not know
+about or cannot see: LF 2.1 has no contract keys, so nothing on-ledger can look
+a contract up by identity, and the disclosure is what makes a contract readable
+to a submitter who is not a stakeholder. The context carries a contract id only
+where the body has no other way to name one, which here is the preapproval
+alone: the escrow routes leave it to read the lock's id out of the instruction
+or allocation being exercised. For a real client the registry service serves
+both halves in one response, and `registry/src/disclose.ts` is its single
+`AnyValue` encoding site. The Daml suite builds the same contexts directly, in
+three places: `Test/Util.daml`'s `expireLockArgs` for the expire-lock signal and
+`escrowReclaimedArgs` for the reclaimed-escrow report,
+`Test/AllocationTest.daml`'s `bothSignalArgs` for the two together, and the
+preapproval context inline at each direct-transfer call site in
+`Test/TransferTest.daml`.
 
 Three context keys are ours rather than the standard's, and each is a named
 constant on both sides rather than a literal: `preapprovalContextKey`
@@ -353,11 +381,15 @@ transfer.
   (AmuletRules analog); it implements `TransferFactory`, `AllocationFactory`, and
   `BurnMintFactory`, and exposes minting as a nonconsuming choice.
 - **Module boundary:** the helpers that fetch, validate and spend sender inputs
-  (`fetchInputs`/`consumeInputs`/`spendInputs`) live in `Token.daml`, and
-  `allocateImpl` lives in `Allocation.daml`; `Registry.daml` imports both, so
-  the transfer and allocation paths spend inputs through one implementation.
-  Each takes the config's `admin`/`instrumentId` as explicit params instead of
-  reading them back from the contract.
+  (`fetchInputs`/`consumeInputs`/`spendInputs`) live in `Token.daml`,
+  `allocateImpl` lives in `Allocation.daml`, and the batch transfer's execution
+  helper `executeTokenTransfer` lives in `Transfer.daml`, itself built on
+  `consumeInputs`; `Registry.daml` imports all three, so the standard transfer
+  (both its direct and its pending path, which share one `spendInputs` call
+  ahead of the branch), the batch transfer and the allocation path spend
+  inputs through one implementation. Each takes the config's
+  `admin`/`instrumentId` as explicit params instead of reading them back from
+  the contract.
 - **Clean-room, interface-only:** no dependency on `splice-amulet` and no
   economics (no decay, fees, mining rounds, rewards, or DSO governance); issuance
   is free, authorized jointly by the admin and the recipient, plus an optional
