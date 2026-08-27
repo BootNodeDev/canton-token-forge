@@ -1,5 +1,6 @@
 module Canton.TokenForge.Allocation where
 
+import DA.Assert (assertWithinDeadline)
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.AllocationV1
@@ -84,6 +85,13 @@ allocateImpl admin instrumentId arg = do
   -- Mirrors Amulet's prepareTwoStepTransfer `requestedAt < transferBefore`:
   -- reject an escrow whose settlement deadline is already unreachable.
   assertMsg "requestedAt must be before settleBefore" (requestedAt < allocation.settlement.settleBefore)
+  -- The same deadline against ledger time rather than the caller's requestedAt.
+  -- Upstream carries both guards too, reaching this one through
+  -- AmuletRules_Transfer's own `lock.expiresAt` check, which our escrow skips by
+  -- creating the LockedToken directly. Without it an allocation submitted at or
+  -- past settleBefore is created already expirable, and no executor can ever
+  -- settle it because allocation_executeTransferImpl requires now < settleBefore.
+  assertWithinDeadline "allocation.settlement.settleBefore" allocation.settlement.settleBefore
 
   senderChangeCids <- spendInputs admin instrumentId leg.sender inputHoldingCids leg.amount
 
