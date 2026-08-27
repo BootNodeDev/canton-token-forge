@@ -18,6 +18,10 @@ data TokenLock = TokenLock
     holders : [Party]
     expiresAt : Time
     optContext : Optional Text
+      -- ^ Short, human-readable description of why the holding is locked, for
+      -- a wallet to show its user. It is caller-supplied and lands in the
+      -- HoldingV1 view, so every stakeholder of the lock reads it: consider
+      -- what it discloses, because the string is public information.
   deriving (Eq, Show)
 
 -- | AmuletRules.TransferOutput. `meta` has no Amulet counterpart: an amulet's
