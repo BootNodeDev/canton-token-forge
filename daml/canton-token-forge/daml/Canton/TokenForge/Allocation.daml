@@ -82,15 +82,14 @@ allocateImpl admin instrumentId arg = do
   now <- getTime
   assertMsg "allocation requestedAt must be in the past" (requestedAt <= now)
   assertMsg "allocation window has closed (allocateBefore reached)" (now < allocation.settlement.allocateBefore)
-  -- Mirrors Amulet's prepareTwoStepTransfer `requestedAt < transferBefore`:
-  -- reject an escrow whose settlement deadline is already unreachable.
-  assertMsg "requestedAt must be before settleBefore" (requestedAt < allocation.settlement.settleBefore)
-  -- The same deadline against ledger time rather than the caller's requestedAt.
-  -- Upstream carries both guards too, reaching this one through
-  -- AmuletRules_Transfer's own `lock.expiresAt` check, which our escrow skips by
-  -- creating the LockedToken directly. Without it an allocation submitted at or
-  -- past settleBefore is created already expirable, and no executor can ever
-  -- settle it because allocation_executeTransferImpl requires now < settleBefore.
+  -- Upstream reaches this through AmuletRules_Transfer's own `lock.expiresAt`
+  -- check, which our escrow skips by creating the LockedToken directly. Without
+  -- it an allocation submitted at or past settleBefore is created already
+  -- expirable, and no executor can ever settle it because
+  -- allocation_executeTransferImpl requires now < settleBefore. Amulet's
+  -- prepareTwoStepTransfer also carries `requestedAt < transferBefore`; that is
+  -- not restated here because `requestedAt <= now` above already implies it,
+  -- and a guard that cannot fire is a guard no test can pin.
   assertWithinDeadline "allocation.settlement.settleBefore" allocation.settlement.settleBefore
 
   senderChangeCids <- spendInputs admin instrumentId leg.sender inputHoldingCids leg.amount
