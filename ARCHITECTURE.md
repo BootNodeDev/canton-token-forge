@@ -217,8 +217,9 @@ Registration and transfer move through the ledger as follows:
    passed through untouched: a batch has no canonical pairing of N inputs to M
    outputs to copy a memo along, so a memo survives being locked only if the
    caller passes it, and the change output carries none. Its `tx-kind`
-   annotation carries no `.../reason` for the same reason one exercise may lock,
-   pay and return change at once. Unlike steps 3 to 5, this choice is
+   annotation carries no `.../reason`, unlike the single-holding lock choice it
+   replaced: one exercise may lock, pay and return change at once, and no one
+   string describes that. Unlike steps 3 to 5, this choice is
    registry-native rather than a standard interface, and `registry/src` has no
    reference to it: the registry service does not drive it, so a client submits
    it directly against the participant.
