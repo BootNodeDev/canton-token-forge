@@ -40,7 +40,7 @@ describe('transfer factory', () => {
     )
     expect(res.body.factoryId).toBe('cfg1')
     expect(res.body.transferKind).toBe('offer')
-    expect(res.body.choiceContext.choiceContextData).toEqual({})
+    expect(res.body.choiceContext.choiceContextData).toEqual({ values: {} })
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
     expect(res.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
   })
@@ -97,7 +97,7 @@ describe('transfer factory', () => {
         .map((d) => d.contractId)
         .sort(),
     ).toEqual(['cfg1', 'pre1'])
-    expect(res.body.choiceContext.choiceContextData[PREAPPROVAL_CONTEXT_KEY]).toEqual({
+    expect(res.body.choiceContext.choiceContextData.values[PREAPPROVAL_CONTEXT_KEY]).toEqual({
       tag: 'AV_ContractId',
       value: 'pre1',
     })
@@ -120,7 +120,7 @@ describe('transfer factory', () => {
       res.body,
     )
     expect(res.body.transferKind).toBe('self')
-    expect(res.body.choiceContext.choiceContextData).toEqual({})
+    expect(res.body.choiceContext.choiceContextData).toEqual({ values: {} })
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
     expect(res.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
   })
@@ -244,7 +244,7 @@ describe('transfer factory', () => {
     )
     expect(res.body.transferKind).toBe('direct')
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(2)
-    expect(res.body.choiceContext.choiceContextData[PREAPPROVAL_CONTEXT_KEY]).toEqual({
+    expect(res.body.choiceContext.choiceContextData.values[PREAPPROVAL_CONTEXT_KEY]).toEqual({
       tag: 'AV_ContractId',
       value: 'pre1',
     })
@@ -392,7 +392,7 @@ describe('transfer-instruction choice-contexts', () => {
         .send({ meta: {} })
       expect(res.status).toBe(200)
       validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
-      expect(res.body.choiceContextData).toEqual({})
+      expect(res.body.choiceContextData).toEqual({ values: {} })
       const ids = (res.body.disclosedContracts as { contractId: string }[]).map((d) => d.contractId)
       expect(ids).toEqual(['locked1'])
     })
@@ -511,7 +511,9 @@ describe('transfer-instruction choice-contexts', () => {
       .send({ meta: {} })
     expect(res.status).toBe(200)
     validateAgainst('transfer-instruction#/components/schemas/ChoiceContext', res.body)
-    expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
+    expect(res.body.choiceContextData.values[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(
+      anyValueBool(true),
+    )
     // nothing to disclose: the contract the escrow disclosure would name is
     // the one that is gone
     expect(res.body.disclosedContracts).toEqual([])
@@ -587,7 +589,9 @@ describe('transfer-instruction choice-contexts', () => {
       .send({ meta: {} })
     // spelled out rather than imported, so renaming the constant cannot travel
     // through both sides of this contract unnoticed
-    expect(Object.keys(res.body.choiceContextData)).toEqual(['canton-token-forge/escrow-reclaimed'])
+    expect(Object.keys(res.body.choiceContextData.values)).toEqual([
+      'canton-token-forge/escrow-reclaimed',
+    ])
   })
 
   it('serves a context for an instrument whose config is duplicated', async () => {

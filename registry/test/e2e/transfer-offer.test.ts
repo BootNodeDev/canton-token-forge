@@ -68,7 +68,7 @@ describe.skipIf(!live)('live offer transfer', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.transferKind).toBe('offer')
-    expect(res.body.choiceContext.choiceContextData).toEqual({})
+    expect(res.body.choiceContext.choiceContextData).toEqual({ values: {} })
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
     expect(res.body.choiceContext.disclosedContracts[0].contractId).toBe(fx.configCid)
   })
@@ -101,7 +101,7 @@ describe.skipIf(!live)('live offer transfer', () => {
       .post(`/registry/transfer-instruction/v1/${instructionCid}/choice-contexts/accept`)
       .send({ meta: {} })
     expect(ctx.status).toBe(200)
-    expect(ctx.body.choiceContextData).toEqual({})
+    expect(ctx.body.choiceContextData).toEqual({ values: {} })
     expect(ctx.body.disclosedContracts.map((d: { contractId: string }) => d.contractId)).toEqual([
       escrowCid,
     ])
@@ -198,7 +198,7 @@ describe.skipIf(!live)('live offer transfer', () => {
       .send({ meta: {} })
     expect(ctx.status).toBe(200)
     expect(ctx.body.choiceContextData).toEqual({
-      'canton-token-forge/escrow-reclaimed': { tag: 'AV_Bool', value: true },
+      values: { 'canton-token-forge/escrow-reclaimed': { tag: 'AV_Bool', value: true } },
     })
     expect(ctx.body.disclosedContracts).toEqual([])
 

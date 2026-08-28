@@ -29,7 +29,7 @@ describe('allocation factory', () => {
     expect(res.status).toBe(200)
     validateAgainst('allocation-instruction#/components/schemas/FactoryWithChoiceContext', res.body)
     expect(res.body.factoryId).toBe('cfg1')
-    expect(res.body.choiceContext.choiceContextData).toEqual({})
+    expect(res.body.choiceContext.choiceContextData).toEqual({ values: {} })
     expect(res.body.choiceContext.disclosedContracts).toHaveLength(1)
     expect(res.body.choiceContext.disclosedContracts[0]).toMatchObject({ contractId: 'cfg1' })
   })
@@ -122,7 +122,7 @@ describe('allocation choice-contexts', () => {
       .send({ meta: {} })
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
-    expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toEqual(anyValueBool(true))
+    expect(res.body.choiceContextData.values[EXPIRE_LOCK_CONTEXT_KEY]).toEqual(anyValueBool(true))
     const ids = (res.body.disclosedContracts as { contractId: string }[])
       .map((d) => d.contractId)
       .sort()
@@ -140,7 +140,7 @@ describe('allocation choice-contexts', () => {
       .send({ meta: {} })
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
-    expect(res.body.choiceContextData).toEqual({})
+    expect(res.body.choiceContextData).toEqual({ values: {} })
     const ids = (res.body.disclosedContracts as { contractId: string }[])
       .map((d) => d.contractId)
       .sort()
@@ -158,7 +158,7 @@ describe('allocation choice-contexts', () => {
       .send({ meta: {} })
     expect(res.status).toBe(200)
     validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
-    expect(res.body.choiceContextData).toEqual({})
+    expect(res.body.choiceContextData).toEqual({ values: {} })
     const ids = (res.body.disclosedContracts as { contractId: string }[])
       .map((d) => d.contractId)
       .sort()
@@ -207,7 +207,9 @@ describe('allocation choice-contexts', () => {
         .send({ meta: {} })
       expect(res.status).toBe(200)
       validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
-      expect(res.body.choiceContextData[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
+      expect(res.body.choiceContextData.values[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(
+        anyValueBool(true),
+      )
       expect(res.body.disclosedContracts).toEqual([])
     })
 
@@ -249,7 +251,7 @@ describe('allocation choice-contexts', () => {
     // return, the signal is the three parties' joint authority to act before
     // settleBefore. Dropping the signal would leave the record uncancellable
     // until the deadline, which is the one thing cancel exists to avoid.
-    expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toEqual(anyValueBool(true))
+    expect(res.body.choiceContextData.values[EXPIRE_LOCK_CONTEXT_KEY]).toEqual(anyValueBool(true))
   })
 
   // The single-party withdraw is deadline-gated on-ledger either way, so it
@@ -266,7 +268,7 @@ describe('allocation choice-contexts', () => {
     const res = await request(app)
       .post('/registry/allocations/v1/00cafe02/choice-contexts/withdraw')
       .send({ meta: {} })
-    expect(res.body.choiceContextData[EXPIRE_LOCK_CONTEXT_KEY]).toBeUndefined()
+    expect(res.body.choiceContextData.values[EXPIRE_LOCK_CONTEXT_KEY]).toBeUndefined()
   })
 
   // Same screen as the transfer instruction route: an id the participant would
