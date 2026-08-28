@@ -5,9 +5,9 @@
 -- an extension point for locking, so it is the near miss worth naming: it is
 -- rejected because it is jointly authorized by the admin (who would then have
 -- to co-sign every transfer), it enforces no conservation between inputs and
--- outputs, and its result is annotated burn rather than transfer. Registry.daml
--- declares the choice and calls in here, the way it delegates allocation to
--- Allocation.daml.
+-- outputs, and its result record carries only outputCids, leaving nowhere to
+-- annotate what the transaction was (see TxMeta). Registry.daml declares the
+-- choice and calls in here, the way it delegates allocation to Allocation.daml.
 module Canton.TokenForge.Transfer where
 
 import DA.Assert (assertWithinDeadline)
