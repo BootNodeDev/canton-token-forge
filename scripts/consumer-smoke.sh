@@ -30,13 +30,18 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
   npm run build:canton-token-forge
 fi
 
-# Globbed rather than named: the version comes from daml.yaml, and hardcoding it
-# here would report "DAR not found" after a build that just succeeded. An absent
-# dist directory makes ls exit non-zero, which under pipefail would kill the
-# script before the message below ever runs.
-DAR="$(ls -1 "$DIST"/canton-token-forge-*.dar 2>/dev/null | head -n 1 || true)"
-if [ -z "$DAR" ]; then
-  echo "no DAR in $DIST - run 'npm run build:canton-token-forge' first" >&2
+# Read from daml.yaml rather than hardcoded here, which would report "DAR not
+# found" after a build that just succeeded, and rather than globbed: dpm leaves
+# the DAR of every version ever built in dist, so a glob would keep picking an
+# older one after a version bump and pass against a stale artifact.
+VERSION="$(awk '/^version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
+if [ -z "$VERSION" ]; then
+  echo "daml/canton-token-forge/daml.yaml names no version" >&2
+  exit 1
+fi
+DAR="$DIST/canton-token-forge-$VERSION.dar"
+if [ ! -f "$DAR" ]; then
+  echo "missing $DAR - run 'npm run build:canton-token-forge' first" >&2
   exit 1
 fi
 
