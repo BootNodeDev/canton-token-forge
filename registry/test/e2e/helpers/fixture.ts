@@ -232,7 +232,7 @@ export async function submitTransfer(
             meta: { values: {} },
           },
           extraArgs: {
-            context: { values: factory.choiceContext.choiceContextData },
+            context: factory.choiceContext.choiceContextData,
             meta: { values: {} },
           },
         },
@@ -328,7 +328,7 @@ export async function submitInstructionChoice(
         choice,
         choiceArgument: {
           extraArgs: {
-            context: { values: choiceContext.choiceContextData },
+            context: choiceContext.choiceContextData,
             meta: { values: {} },
           },
         },

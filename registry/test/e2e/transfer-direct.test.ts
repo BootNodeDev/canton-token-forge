@@ -29,7 +29,7 @@ describe.skipIf(!live)('live direct transfer', () => {
     expect(res.body.transferKind).toBe('direct')
     expect(res.body.factoryId).toBe(fx.configCid)
     expect(res.body.choiceContext.choiceContextData).toEqual({
-      [PREAPPROVAL_CONTEXT_KEY]: { tag: 'AV_ContractId', value: preCid },
+      values: { [PREAPPROVAL_CONTEXT_KEY]: { tag: 'AV_ContractId', value: preCid } },
     })
     expect(
       res.body.choiceContext.disclosedContracts

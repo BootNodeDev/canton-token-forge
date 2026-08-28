@@ -32,7 +32,7 @@ export function allocationRouter(deps: ServerDeps): Router {
 
       res.json({
         factoryId: cfg.contractId,
-        choiceContext: { choiceContextData: {}, disclosedContracts: [toDisclosed(cfg)] },
+        choiceContext: { choiceContextData: { values: {} }, disclosedContracts: [toDisclosed(cfg)] },
       })
     }),
   )
@@ -77,16 +77,17 @@ export function allocationRouter(deps: ServerDeps): Router {
           }
           const reclaimed = { [ESCROW_RECLAIMED_CONTEXT_KEY]: anyValueBool(true) }
           return res.json({
-            choiceContextData:
-              choice === 'cancel'
-                ? { ...reclaimed, [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) }
-                : reclaimed,
+            choiceContextData: {
+              values:
+                choice === 'cancel'
+                  ? { ...reclaimed, [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) }
+                  : reclaimed,
+            },
             disclosedContracts: [],
           })
         }
 
-        const choiceContextData =
-          choice === 'cancel' ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {}
+        const choiceContextData = { values: choice === 'cancel' ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {} }
         res.json({ choiceContextData, disclosedContracts: [toDisclosed(escrow.entry)] })
       }),
     )
