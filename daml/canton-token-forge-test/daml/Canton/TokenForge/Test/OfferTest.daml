@@ -69,9 +69,9 @@ escrowDisclosure admin instrCid = do
 -- one: created directly with `holders = [admin]` rather than routed through the
 -- batch transfer, which is what the offer path itself does (Registry.daml's
 -- `None` arm). Going through lockToken would strip a holder equal to the owner,
--- so a self-administered instrument (acceptRejectsMismatchedInstructionAdmin,
--- where alice is both admin and sender) came back with no holders at all: an
--- escrow the sender could release alone, which the offer path never produces.
+-- so a self-administered instrument (where alice is both admin and sender) came
+-- back with an empty holder list, which the offer path never stores. Both
+-- shapes release on alice's authority alone: `owner :: holders` repeats her.
 escrowFor : ContractId InstrumentConfig -> Party -> Party -> Decimal -> Script (ContractId LockedToken)
 escrowFor cfg admin owner amount = do
   Some config <- queryContractId admin cfg
