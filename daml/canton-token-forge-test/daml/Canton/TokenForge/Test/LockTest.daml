@@ -51,12 +51,6 @@ lockRejectsAndExpires = do
   hv.owner === alice
   hv.amount === 50.0
 
--- A lock holder who does not authorize is refused at the InstrumentConfig node,
--- which BatchTransferTest.transferRequiresEveryOutputPartyToAuthorize pins by
--- naming the missing party. The version that lived here was a bare
--- submitMustFail, and a holder is also a LockedToken signatory, so it was
--- satisfied by the later refusal on the create and could not tell the two apart.
-
 -- The lock context is what a wallet shows a user as the reason a holding is
 -- locked, so it has to survive the trip through the standard Holding view.
 -- Both LockedTokens here are created directly, so the view is exercised

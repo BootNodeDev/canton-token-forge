@@ -444,6 +444,12 @@ transferMustFailAsUnauthorized cfg admin actors missing expectedAdmin transfer =
 -- No binding an unwilling party: a receiver and a lock holder are both
 -- controllers, so a holding is never created for someone who did not sign.
 -- This is stricter than the preapproval path, so it opens no bypass of it.
+-- The refusal is pinned to the InstrumentConfig node with the missing party
+-- named: a holder is also a LockedToken signatory, so a bare submitMustFail
+-- here is satisfied by the later refusal on the create of the holding and
+-- cannot tell a missing controller from a missing signatory. Telling those
+-- two apart is the whole content of this scenario, which is why it goes
+-- through transferMustFailAsUnauthorized rather than transferMustFailAs.
 transferRequiresEveryOutputPartyToAuthorize : Script ()
 transferRequiresEveryOutputPartyToAuthorize = do
   admin <- allocateParty "admin"
