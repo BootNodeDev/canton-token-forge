@@ -101,8 +101,12 @@ allocateImpl admin instrumentId arg = do
     -- leg and its counterparty, and deliberately nothing more. Naming the
     -- executor instead left every escrow of a multi-leg settlement carrying an
     -- identical context, so a sender reading their locked funds could not tell
-    -- which leg an escrow backed, nor who was being paid.
-    optContext = Some ("allocation for transfer leg " <> allocation.transferLegId
+    -- which leg an escrow backed, nor who was being paid. transferLegId is free
+    -- text the settlement venue chooses, so it goes through show: the quotes are
+    -- what stop a leg id spelled `leg1 to <party>` from forging the receiver
+    -- half of this sentence in the sender's wallet. The receiver is a party id,
+    -- where show's quoting is noise, so that half is rendered directly.
+    optContext = Some ("allocation for transfer leg " <> show allocation.transferLegId
       <> " to " <> partyToText leg.receiver)
     meta = emptyMetadata
   allocCid <- create TokenAllocation with admin; allocation; lockedCid = locked; meta = emptyMetadata
