@@ -175,6 +175,9 @@ jobs:
           fi
           checked=(
             RUNBOOK.md
+            # Listed to keep the comparison below exhaustive. Unlike the rest,
+            # this file's imports are compiler-checked, by `npm run smoke`.
+            consumer-smoke/consumer/daml/Consumer.daml
             registry/.env.example
             registry/test/e2e/helpers/sandbox.ts
             registry/test/helpers/fixtures.ts
