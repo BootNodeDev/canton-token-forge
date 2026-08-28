@@ -16,7 +16,7 @@
 #   SKIP_BUILD        set to 1 to skip the dpm build step
 #
 set -euo pipefail
-export LANG="${LANG:-C.UTF-8}"
+export LANG=C.UTF-8
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
