@@ -8,6 +8,7 @@
     "setup": "bash scripts/fetch-dep.sh",
     "postinstall": "npm run setup",
     "clean": "rm -rf daml/canton-token-forge/.daml daml/canton-token-forge-test/.daml",
+    "smoke": "bash scripts/consumer-smoke.sh",
     "build": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build && cd ../canton-token-forge-test && LANG=C.UTF-8 dpm build",
     "build:canton-token-forge": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build",
     "sandbox": "bash scripts/sandbox.sh",

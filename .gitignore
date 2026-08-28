@@ -7,6 +7,10 @@
 # multi-package.yaml build-harness.sh creates; never committed.
 deps/
 
+# The consumer smoke test copies the built DAR here to stand in for a
+# downstream repository that received the release asset.
+consumer-smoke/consumer/vendor/
+
 node_modules
 docs/
 
