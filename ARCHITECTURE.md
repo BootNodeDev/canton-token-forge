@@ -361,7 +361,8 @@ overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 | `npm run build:canton-token-forge` | Build only the production package. |
 | `npm test` | Build the production DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same as `npm test` with a template-focused coverage report. |
-| `npm run clean` | Remove both `.daml` build dirs. |
+| `npm run smoke` | Compile a package that data-depends on nothing but the built DAR (`scripts/consumer-smoke.sh`); proves the release artifact is consumable on its own. |
+| `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
 | `bash scripts/build-harness.sh` | Build the Amulet test harness (unused by default; conformance only). |

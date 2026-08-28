@@ -86,7 +86,8 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 | `npm run build:canton-token-forge` | Build only the production package. |
 | `npm test` | Build the `canton-token-forge` DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same, with a coverage report focused on your templates. |
-| `npm run clean` | Remove both `.daml` build dirs. |
+| `npm run smoke` | Build the DAR, then compile a package that data-depends on nothing but it, proving the artifact is consumable on its own. |
+| `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
 | `npm run setup` | Re-vendor deps + re-create the stable symlinks. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
@@ -254,6 +255,8 @@ Run before declaring work done:
 - `npm run build` - both packages compile
 - `npm test` - the integration suite passes
 - `npm run test:coverage` - when you touched or added templates
+- `npm run smoke` - when you changed what the production DAR exposes: its
+  dependencies, its interface instances, or its `build-options`
 
 Every pull request has the strings that spell a template id verified against
 `daml/`, whatever it touches: the `daml` check runs that comparison ahead of
@@ -261,9 +264,10 @@ its toolchain install and ignores its own scope gate. One that touches
 `daml/` or the root build inputs runs the first three of these automatically
 in that same check, after that step. One that touches
 `registry/` runs that package's own lint, both typechecks, and unit suite as
-the `registry` check, not the root commands above. `npm run test:coverage` and
-the registry's `npm run test:e2e` stay manual: the first re-runs Splice's own
-suites, and the second needs a live participant. The end-to-end suite is
+the `registry` check, not the root commands above. `npm run test:coverage`,
+`npm run smoke` and the registry's `npm run test:e2e` stay manual: the first
+re-runs Splice's own suites, the second builds a second Daml package, and the
+third needs a live participant. The end-to-end suite is
 typechecked on that path even so, which is the point of typechecking it
 separately from the run.
 
