@@ -1,0 +1,55 @@
+-- Every import below resolves through canton-token-forge-0.0.1.dar alone. The
+-- Splice interface packages are bundled inside that DAR but hidden by default;
+-- the --package lines in daml.yaml are what make them visible.
+module Consumer where
+
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import Splice.Api.Token.TransferInstructionV1 qualified as TransferInstructionV1
+import Splice.Api.Token.AllocationV1 qualified as AllocationV1
+import Splice.Api.Token.AllocationInstructionV1 qualified as AllocationInstructionV1
+import Splice.Api.Token.BurnMintV1 qualified as BurnMintV1
+import Canton.TokenForge.Token (Token(..), mkToken)
+import Canton.TokenForge.Registry (InstrumentConfig(..))
+
+ownerOf : HoldingV1.HoldingView -> Party
+ownerOf v = v.owner
+
+adminOf : InstrumentConfig -> Party
+adminOf c = c.admin
+
+mkOne : Party -> Party -> Text -> Token
+mkOne admin owner instrumentId = mkToken admin owner instrumentId 1.0 emptyMetadata
+
+-- Downcasting a Splice Holding to our Token needs the interface INSTANCE the
+-- DAR was compiled with, not just the interface's types. The signatures above
+-- would still typecheck against types alone, so this is the line that proves
+-- the instance survives into the artifact.
+downcast : ContractId HoldingV1.Holding -> Update (Optional (ContractId Token, Token))
+downcast = fetchFromInterface @Token
+
+-- The shape cc-vesting-contracts needs: one of our templates held by reference
+-- from a foreign package.
+template VestingLockShape
+  with
+    admin : Party
+    beneficiary : Party
+    locked : ContractId Token
+    meta : Metadata
+  where
+    signatory admin, beneficiary
+    nonconsuming choice VestingLockShape_Peek : Optional Party
+      controller beneficiary
+      do
+        optToken <- downcast (toInterfaceContractId @HoldingV1.Holding locked)
+        pure $ fmap (\(_, t) -> t.owner) optToken
+
+-- Naming a type from each remaining bundled package, so one dropping out of the
+-- DAR is a compile error here rather than a surprise downstream.
+bundledPackagesReachable :
+  ( TransferInstructionV1.TransferInstructionResult_Output
+  , AllocationV1.AllocationView
+  , AllocationInstructionV1.AllocationInstructionResult_Output
+  , BurnMintV1.BurnMintFactoryView
+  ) -> ()
+bundledPackagesReachable _ = ()

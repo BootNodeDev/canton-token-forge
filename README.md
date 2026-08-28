@@ -120,7 +120,7 @@ declares the DAR without implementing the interface.
 
 Edit `SPLICE_TAG` in `versions.env`, run `npm run setup`. No other file changes -
 unless the new tag ships a different SDK, in which case also update `sdk-version`
-in the two `daml.yaml` files (see CLAUDE.md).
+in every tracked `daml.yaml` (see CLAUDE.md).
 
 ## License
 

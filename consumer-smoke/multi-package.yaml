@@ -1,0 +1,4 @@
+# Stops dpm walking up to the repo-root multi-package.yaml, which does not list
+# this package and fails resolution outright.
+packages:
+  - ./consumer

@@ -68,13 +68,19 @@ registry/                                Read-only TypeScript HTTP service servi
       async-handler.ts                   Wraps every route so a rejected promise reaches the error middleware
   openapi/                               The CN Token Standard OpenAPI specs the service validates against
   test/                                  Unit suites (stub ledger) + test/e2e (live participant, skip-guarded)
+consumer-smoke/                          Stands in for a downstream repo that received only the release asset
+  multi-package.yaml                     Stops dpm resolving the package below against the root workspace
+  consumer/
+    daml.yaml                            Data-depends on the vendored DAR alone; exposes its six bundled Splice packages
+    daml/Consumer.daml                   Names a type from each bundled package and downcasts a Holding to our Token
 scripts/
   fetch-dep.sh                           Vendor Splice sources, derive DAR versions, create stable-name symlinks
   build-harness.sh                       Build the Amulet test harness (unused by default; conformance only)
+  consumer-smoke.sh                      Build the DAR, then compile consumer-smoke/ against nothing else
   sandbox.sh                             Build the DAR and run a local Canton sandbox with the JSON Ledger API
   seed.mjs                               Seed a running sandbox with an admin, demo users, and one InstrumentConfig
 deps/                                    Vendored Splice sources + built DARs (gitignored; never edit or commit)
-multi-package.yaml                       Wires the two packages into one workspace
+multi-package.yaml                       Wires the two daml/ packages into one workspace; consumer-smoke/ has its own
 versions.env                             Single version knob: SPLICE_TAG
 package.json                             npm scripts wrapping dpm
 ```
@@ -361,7 +367,8 @@ overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 | `npm run build:canton-token-forge` | Build only the production package. |
 | `npm test` | Build the production DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same as `npm test` with a template-focused coverage report. |
-| `npm run clean` | Remove both `.daml` build dirs. |
+| `npm run smoke` | Compile a package that data-depends on nothing but the built DAR (`scripts/consumer-smoke.sh`); proves the release artifact is consumable on its own. |
+| `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
 | `bash scripts/build-harness.sh` | Build the Amulet test harness (unused by default; conformance only). |

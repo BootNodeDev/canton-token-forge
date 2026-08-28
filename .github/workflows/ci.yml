@@ -175,6 +175,9 @@ jobs:
           fi
           checked=(
             RUNBOOK.md
+            # Listed to keep the comparison below exhaustive. Unlike the rest,
+            # this file's imports are compiler-checked, by `npm run smoke`.
+            consumer-smoke/consumer/daml/Consumer.daml
             registry/.env.example
             registry/test/e2e/helpers/sandbox.ts
             registry/test/helpers/fixtures.ts
@@ -291,6 +294,33 @@ jobs:
           done
           exit "$status"
 
+      # DPM_SDK_VERSION is one more copy of a pin whose other homes are the
+      # daml.yaml files. Assert rather than trust: bumping those and forgetting
+      # this one otherwise fails much later, or silently makes dpm download a
+      # second SDK. Discovered rather than listed, because a package added
+      # later carries a pin of its own and a list written today cannot name it.
+      # Ungated for the same reason the step above is: the sweep ranges over
+      # every tracked manifest, including packages outside the paths the gate
+      # lists, and gating it would let a pull request that bumps one of those
+      # pass while the merge to main reds. It needs no toolchain, only the
+      # checkout, so it can run here rather than beside the install it guards.
+      - name: Verify the SDK pins
+        run: |
+          set -euo pipefail
+          pins="$(git ls-files '*daml.yaml')"
+          if [ -z "$pins" ]; then
+            echo "no daml.yaml is tracked, so the SDK pin went unchecked" >&2
+            exit 1
+          fi
+          while read -r manifest; do
+            pinned="$(awk '/^sdk-version:/ {print $2; exit}' "$manifest")"
+            if [ "$pinned" != "$DPM_SDK_VERSION" ]; then
+              echo "${manifest} pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
+              exit 1
+            fi
+            echo "ok: ${manifest} pins SDK ${pinned}"
+          done <<<"$pins"
+
       - name: Scope
         id: scope
         env:
@@ -304,10 +334,10 @@ jobs:
             exit 0
           fi
           # A blip on this fetch reds the job having verified nothing, so it
-          # is retried rather than taken at its word. The template-id step is
-          # ungated so that it runs whatever the change touches; it sits above
-          # this one so that a red here finds it already run and reported,
-          # rather than never run at all.
+          # is retried rather than taken at its word. The two steps above are
+          # ungated so that they run whatever the change touches; they sit
+          # above this one so that a red here finds them already run and
+          # reported, rather than never run at all.
           for attempt in 1 2 3; do
             git fetch --no-tags --prune origin \
               "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
@@ -319,10 +349,10 @@ jobs:
           echo "Changed files:"
           echo "$changed"
           # Build and test inputs only. The files that merely name template
-          # ids are not listed: the check that reads them runs ahead of this
-          # gate and ignores it, so listing them here would install a
-          # toolchain and build both packages to verify nothing the change can
-          # reach.
+          # ids or carry an SDK pin are not listed: the checks that read them
+          # run ahead of this gate and ignore it, so listing them here would
+          # install a toolchain and build both packages to verify nothing the
+          # change can reach.
           if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
@@ -338,24 +368,14 @@ jobs:
       # The published tarball is fetched by exact version and checked against a
       # recorded digest instead of piping an installer into a shell. Pinning is
       # also a correctness requirement, not only a supply-chain one: the
-      # installer's "latest" resolves to 3.5.5, while both daml.yaml files pin
-      # 3.4.11.
+      # installer's "latest" resolves to 3.5.5, while every tracked daml.yaml
+      # pins 3.4.11. The step that holds those two in agreement runs ungated,
+      # above.
       - name: Install dpm
         if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           test "$(uname -m)" = "x86_64"
-          # DPM_SDK_VERSION is a third copy of a pin whose other two homes are
-          # the daml.yaml files. Assert rather than trust: bumping those and
-          # forgetting this one otherwise fails much later, or silently makes
-          # dpm download a second SDK.
-          for pkg in canton-token-forge canton-token-forge-test; do
-            pinned="$(awk '/^sdk-version:/ {print $2; exit}' "daml/${pkg}/daml.yaml")"
-            if [ "$pinned" != "$DPM_SDK_VERSION" ]; then
-              echo "daml/${pkg}/daml.yaml pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
-              exit 1
-            fi
-          done
           tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
           url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
           curl -SLf --retry 3 --retry-all-errors --retry-delay 5 \
