@@ -271,7 +271,6 @@ transferRejectsOutputsExceedingInputs = do
     exerciseCmd cfg InstrumentConfig_Transfer with
       transfer; expectedAdmin = admin; expectedInstrumentId = "CC"
 
--- A lock whose expiry has already passed is releasable by its owner alone the
 -- The stored holder list is normalized, so the standard's Lock.holders view
 -- names each party once in a canonical order rather than echoing however the
 -- caller happened to spell the set. releaseAndRelockRemainder pins the
@@ -306,6 +305,7 @@ lockHoldersAreDedupedAndSorted = do
       ((.holders) <$> lv.lock) === Some [lo, hi]
     _ -> abort "expected a single locked output"
 
+-- A lock whose expiry has already passed is releasable by its owner alone the
 -- moment it is created, since that is exactly the gate LockedToken_ExpireLock
 -- opens. AmuletRules refuses to create one (preprocessOutputs) and so do we.
 transferRejectsAnAlreadyExpiredLock : Script ()
