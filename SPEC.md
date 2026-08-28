@@ -283,8 +283,11 @@ flowchart TD
    an `expectedAdmin` and an `expectedInstrumentId` that must both match the
    config it is exercised against, since the transfer argument names neither and
    one admin may run several instruments. Controllers are informees of that
-   exercise node, so a batch discloses every receiver and every amount in it to
-   all of them, not just each their own output. It archives
+   exercise node, which makes each of them a witness of the whole subtree
+   beneath it rather than a reader of the argument alone: a batch discloses
+   every receiver and every amount in it to all of them, and with them the
+   archives of the sender's input holdings, including their metadata, and the
+   create of the sender's change. It archives
    the sender's inputs and creates the outputs in order, each either a `Token`
    or a `LockedToken` carrying the caller's own `expiresAt` and lock context
    verbatim, with any leftover input value returned to the sender as change. A
@@ -489,10 +492,15 @@ Stated plainly, because they are what an evaluation turns on.
   to submit it must build the `TokenTransfer` argument itself and exercise it
   directly against the participant, including fetching the `InstrumentConfig`
   disclosure itself: a disclosed contract never travels inside `ExtraArgs`, it
-  rides in the submission's own `disclosedContracts`, and the transfer-factory
-  route that would hand out that blob rejects any request not naming a single
-  sender, receiver and instrument, which a batch of N receivers (or none, when
-  it is a pure merge) cannot honestly supply.
+  rides in the submission's own `disclosedContracts`, and no route serves a
+  choice context for a choice the standard does not define. The
+  transfer-factory route rejects any request not naming a single sender,
+  receiver and instrument, which a batch of N receivers (or none, when it is a
+  pure merge) cannot honestly supply. The allocation-factory route does return
+  the same `InstrumentConfig` blob for a body naming only an instrument id, so
+  a client that wants to avoid its own participant-side fetch can source the
+  disclosure there, at the cost of calling a route whose choice it is not
+  about to exercise.
 - **The `tx-kind` annotations have not been run through the standard parser.**
   Mint, tap, the batch transfer (as `merge-split` or `transfer`), unlock and
   expire-lock carry the annotation on their choice results and the Daml suite

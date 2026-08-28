@@ -99,15 +99,18 @@ template InstrumentConfig
           tokenCid
           meta = Some (holdingTxMeta TxKind_Mint None None)
 
-    -- The multi-output transfer (AmuletRules_Transfer), the one mechanism the
-    -- standard's v1 interfaces cannot express. Nonconsuming on this
+    -- The multi-output transfer (AmuletRules_Transfer); Transfer.daml's header
+    -- records why no v1 interface choice stands in for it. Nonconsuming on this
     -- admin-signed config, so the signatory's authority reaches the body and
     -- the admin never has to sign a caller's transfer; every receiver and every
     -- lock holder is a controller, so no holding is created for a party that
-    -- did not authorize it. Controllers are informees of this exercise node, so
-    -- each of them reads the whole argument rather than just its own output: a
-    -- batch discloses every receiver and every amount in it to all of them.
-    -- createdHoldings comes back in `outputs` order, which callers pattern
+    -- did not authorize it. Controllers are informees of this exercise node,
+    -- which makes each of them a witness of the whole subtree beneath it, not
+    -- merely a reader of the argument: alongside every receiver and every
+    -- amount in the batch, they see the archives of the sender's input holdings
+    -- (their amounts and their metadata) and the create of the sender's change.
+    -- A batch therefore discloses the sender's spent balance to every party it
+    -- pays. createdHoldings comes back in `outputs` order, which callers pattern
     -- match on positionally.
     --
     -- Amulet pins only expectedDso because AmuletRules is single-instrument.

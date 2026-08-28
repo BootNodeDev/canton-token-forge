@@ -27,9 +27,12 @@ reasonMetaKey = splicePrefix <> "reason"
 senderMetaKey : Text
 senderMetaKey = splicePrefix <> "sender"
 
--- | The transaction kinds this registry emits. The standard permits six; burn
--- and expire-dust describe workflows we do not have. Keeping this a closed type
--- is what stops an invented verb from compiling.
+-- | The transaction kinds this registry emits. The standard permits six.
+-- expire-dust describes a workflow we do not have. Burn we do have
+-- (BurnMintFactory_BurnMint), but it goes unannotated for a structural reason:
+-- BurnMintFactory_BurnMintResult carries only outputCids and no metadata field,
+-- so the standard leaves the registry nowhere to put the annotation. Keeping
+-- this a closed type is what stops an invented verb from compiling.
 data TxKind
   = TxKind_Transfer
   | TxKind_Mint

@@ -1,7 +1,13 @@
--- | The multi-output transfer (the Splice.AmuletRules analog): the one
--- mechanism the CN Token Standard v1 cannot express, since HoldingV1 declares
--- no choices and its Lock is view-only metadata. Registry.daml declares the
--- choice and calls in here, the way it delegates allocation to Allocation.daml.
+-- | The multi-output transfer (the Splice.AmuletRules analog). No v1 interface
+-- choice expresses it: HoldingV1 declares no choices and its Lock is view-only
+-- metadata, and TransferInstructionV1 is single-receiver. BurnMintV1 does take
+-- a list of outputs, each with its own ChoiceContext that upstream documents as
+-- an extension point for locking, so it is the near miss worth naming: it is
+-- rejected because it is jointly authorized by the admin (who would then have
+-- to co-sign every transfer), it enforces no conservation between inputs and
+-- outputs, and its result is annotated burn rather than transfer. Registry.daml
+-- declares the choice and calls in here, the way it delegates allocation to
+-- Allocation.daml.
 module Canton.TokenForge.Transfer where
 
 import DA.Assert (assertWithinDeadline)
@@ -80,11 +86,15 @@ tokenTransferControllers transfer =
 -- in-flight escrow unreachable through this door.
 --
 -- Amulet's maxNumInputs, maxNumOutputs and maxNumLockHolders caps are not
--- ported. They are guards in their own right rather than a consequence of fee
--- arithmetic (checkTransferConstraints tests the first two beside, not inside,
--- the sender-change fee arm), but all three are configured on TransferConfigV2,
--- and this token has no economics config to hang a configurable bound on.
--- Inputs, outputs and lock holders are therefore all unbounded here.
+-- ported, so inputs, outputs and lock holders are all unbounded here. They are
+-- guards in their own right rather than a consequence of fee arithmetic:
+-- checkTransferConstraints tests the first two beside, not inside, the
+-- sender-change fee arm, and upstream's own parameters give the reason as
+-- keeping transactions small rather than anything to do with fees. Amulet
+-- carries them on TransferConfigV2 because they are tunable there; a constant
+-- would need no such config, so the absence of an economics config is not by
+-- itself the reason they are missing. The ceiling today is whatever transaction
+-- size the participant will accept, discovered at submission time.
 executeTokenTransfer
   : Party    -- ^ admin (config signatory)
   -> Text    -- ^ instrumentId
