@@ -52,7 +52,7 @@ All three suites were re-run against the tree this document ships with, exit 0:
 
 | Suite | Result | Needs |
 |---|---|---|
-| Daml Script | **77 scenarios**, 12 modules | nothing, runs in-process |
+| Daml Script | **80 scenarios**, 12 modules | nothing, runs in-process |
 | Registry unit | **205 tests**, 10 files | nothing, in-process server with a stub ledger |
 | End-to-end | **18 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
@@ -63,7 +63,7 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-943 lines of production Daml, 2367 lines of Daml tests, 1724 lines of TypeScript
+976 lines of production Daml, 2508 lines of Daml tests, 1724 lines of TypeScript
 service, 4343 lines of TypeScript tests. MIT licensed. Pre-release: the package
 version is `0.0.1` and there are no downstream users yet, so nothing is frozen
 for backwards compatibility.
@@ -439,7 +439,7 @@ exist.
 
 | Level | What it covers |
 |---|---|
-| Daml Script, 77 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, a batch transfer routed through another instrument of the same admin, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, the `decimals` bound, and the batch transfer's own refusals: outputs whose total exceeds the inputs and a lock output already past its expiry |
+| Daml Script, 80 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, a batch transfer routed through another instrument of the same admin, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, the `decimals` bound, and the batch transfer's own refusals: outputs whose total exceeds the inputs and a lock output already past its expiry |
 | Registry unit, 205 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
 | End-to-end, 18 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers, including a misconfigured escrow template id that must not produce a reclaim report |
 
@@ -457,7 +457,7 @@ instrument, then prints a ready-to-paste service configuration.
 
 ```bash
 npm install                       # vendors the Splice interface DARs into deps/
-npm test                          # builds the production DAR, runs 77 Daml scenarios
+npm test                          # builds the production DAR, runs 80 Daml scenarios
 cd registry && npm install && npm test   # 205 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
@@ -584,7 +584,7 @@ Stated plainly, because they are what an evaluation turns on.
 
 ```
 daml/                                Container of dpm packages; not a package itself
-  canton-token-forge/                Production package, 943 lines
+  canton-token-forge/                Production package, 976 lines
     daml/Canton/TokenForge/
       Registry.daml                  InstrumentConfig, preapproval, the three factory instances
       Token.daml                     Token holding, input fetch/consume/spend helpers
