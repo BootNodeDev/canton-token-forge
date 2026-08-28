@@ -32,7 +32,10 @@ export function allocationRouter(deps: ServerDeps): Router {
 
       res.json({
         factoryId: cfg.contractId,
-        choiceContext: { choiceContextData: { values: {} }, disclosedContracts: [toDisclosed(cfg)] },
+        choiceContext: {
+          choiceContextData: { values: {} },
+          disclosedContracts: [toDisclosed(cfg)],
+        },
       })
     }),
   )
@@ -87,7 +90,9 @@ export function allocationRouter(deps: ServerDeps): Router {
           })
         }
 
-        const choiceContextData = { values: choice === 'cancel' ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {} }
+        const choiceContextData = {
+          values: choice === 'cancel' ? { [EXPIRE_LOCK_CONTEXT_KEY]: anyValueBool(true) } : {},
+        }
         res.json({ choiceContextData, disclosedContracts: [toDisclosed(escrow.entry)] })
       }),
     )

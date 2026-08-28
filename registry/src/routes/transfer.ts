@@ -53,7 +53,10 @@ export function transferRouter(deps: ServerDeps): Router {
       // self and offer share the same empty context disclosing only the
       // config; only a matched preapproval with enough of its window left
       // upgrades to a direct one.
-      const baseContext = { choiceContextData: { values: {} }, disclosedContracts: [toDisclosed(cfg)] }
+      const baseContext = {
+        choiceContextData: { values: {} },
+        disclosedContracts: [toDisclosed(cfg)],
+      }
 
       if (sender === receiver) {
         return res.json({
@@ -82,7 +85,9 @@ export function transferRouter(deps: ServerDeps): Router {
           factoryId: cfg.contractId,
           transferKind: 'direct',
           choiceContext: {
-            choiceContextData: { values: { [PREAPPROVAL_CONTEXT_KEY]: anyValueContractId(pre.contractId) } },
+            choiceContextData: {
+              values: { [PREAPPROVAL_CONTEXT_KEY]: anyValueContractId(pre.contractId) },
+            },
             disclosedContracts: [toDisclosed(cfg), toDisclosed(pre)],
           },
         })
@@ -143,7 +148,10 @@ export function transferRouter(deps: ServerDeps): Router {
           })
         }
 
-        res.json({ choiceContextData: { values: {} }, disclosedContracts: [toDisclosed(escrow.entry)] })
+        res.json({
+          choiceContextData: { values: {} },
+          disclosedContracts: [toDisclosed(escrow.entry)],
+        })
       }),
     )
   }

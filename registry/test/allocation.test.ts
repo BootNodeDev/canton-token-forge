@@ -207,7 +207,9 @@ describe('allocation choice-contexts', () => {
         .send({ meta: {} })
       expect(res.status).toBe(200)
       validateAgainst('allocation#/components/schemas/ChoiceContext', res.body)
-      expect(res.body.choiceContextData.values[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(anyValueBool(true))
+      expect(res.body.choiceContextData.values[ESCROW_RECLAIMED_CONTEXT_KEY]).toEqual(
+        anyValueBool(true),
+      )
       expect(res.body.disclosedContracts).toEqual([])
     })
 
