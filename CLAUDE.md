@@ -31,7 +31,7 @@ Two packages:
 | Category | Technology | Notes |
 |----------|-----------|-------|
 | Language | Daml | LF target **2.1** (`build-options: --target=2.1`) |
-| SDK | 3.4.11 | pinned in both `daml.yaml` files |
+| SDK | 3.4.11 | pinned in all three `daml.yaml` files; CI asserts them |
 | Build tool | `dpm` (Digital Asset Package Manager) | NOT the legacy `daml` assistant (removed as of SDK 3.5) |
 | Task runner | `npm` scripts | thin wrappers over `dpm`; they set `LANG=C.UTF-8` |
 | Dependencies | Splice interface DARs | vendored into `deps/` by `scripts/fetch-dep.sh` (gitignored) |
@@ -44,8 +44,11 @@ Two packages:
   assistant (removed as of SDK 3.5). Commands: `dpm build`, `dpm test`,
   `dpm install <version>`.
 - SDK pinned to **3.4.11**, LF target **2.1** (`build-options: --target=2.1`) in
-  both `daml.yaml` files. Do not bump casually - the deps are built at this SDK/LF
-  and the test package unifies `daml-script` against it.
+  every tracked `daml.yaml`, of which there are three: the two packages under
+  `daml/` and the consumer smoke package. Do not bump casually - the deps are
+  built at this SDK/LF and the test package unifies `daml-script` against it.
+  The `daml` CI check reads the pin out of each one and fails if any disagrees
+  with the SDK the workflow installs.
 - A JDK (17+) and `dpm` must be on `PATH`. Install dpm with
   `curl https://get.digitalasset.com/install/install.sh | sh`, then
   `dpm install 3.4.11`.
@@ -62,10 +65,17 @@ The **only** version you pin is the Splice release tag, in **`versions.env`**
   tracked Daml config**.
 - To move to a new Splice release: edit `SPLICE_TAG`, run `npm run setup`.
 
-Exception: the **SDK/LF** pins live in the two `daml.yaml` files (static YAML
-can't read env vars). If a new tag ships a different SDK, update `sdk-version`
-(and possibly `--target`) there too. `scripts/build-harness.sh` derives the SDK
-it installs from the vendored harness, so at least the install matches the tag.
+Two exceptions. The **SDK/LF** pins live in the three `daml.yaml` files (static
+YAML can't read env vars). If a new tag ships a different SDK, update
+`sdk-version` (and possibly `--target`) there too. `scripts/build-harness.sh`
+derives the SDK it installs from the vendored harness, so at least the install
+matches the tag.
+
+The second is `consumer-smoke/consumer/daml.yaml`, which names the six bundled
+Splice interfaces as versioned unit-ids (`--package=splice-api-token-holding-v1-1.0.0`
+and its five siblings). The compiler rejects the unversioned form, so there is no
+stable name to point at, and a `SPLICE_TAG` that ships a different interface
+version has to be followed by hand here. Nothing derives these.
 
 ## Build & test
 
@@ -255,8 +265,9 @@ Run before declaring work done:
 - `npm run build` - both packages compile
 - `npm test` - the integration suite passes
 - `npm run test:coverage` - when you touched or added templates
-- `npm run smoke` - when you changed what the production DAR exposes: its
-  dependencies, its interface instances, or its `build-options`
+- `npm run smoke` - when you changed what the production DAR exposes: a
+  renamed module or template, its dependencies, its interface instances, or its
+  `build-options`
 
 Every pull request has the strings that spell a template id verified against
 `daml/`, whatever it touches: the `daml` check runs that comparison ahead of
@@ -266,10 +277,10 @@ in that same check, after that step. One that touches
 `registry/` runs that package's own lint, both typechecks, and unit suite as
 the `registry` check, not the root commands above. `npm run test:coverage`,
 `npm run smoke` and the registry's `npm run test:e2e` stay manual: the first
-re-runs Splice's own suites, the second builds a second Daml package, and the
-third needs a live participant. The end-to-end suite is
-typechecked on that path even so, which is the point of typechecking it
-separately from the run.
+re-runs Splice's own suites, the third needs a live participant, and no check
+runs the second at all, so a change that strands a downstream consumer is green
+until someone runs it. The end-to-end suite is typechecked on that path even so,
+which is the point of typechecking it separately from the run.
 
 ## References
 
