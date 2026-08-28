@@ -12,9 +12,9 @@ import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceCon
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
-import Canton.TokenForge.Locked (LockedToken, LockedToken_ExpireLock(..))
-import Canton.TokenForge.Registry (InstrumentConfig)
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs, escrowReclaimedArgs, lockToken)
+import Canton.TokenForge.Locked (LockedToken(..), LockedToken_ExpireLock(..))
+import Canton.TokenForge.Registry (InstrumentConfig(..))
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs, escrowReclaimedArgs)
 
 -- No app-backend context is needed for accept/reject/withdraw in these tests.
 noContextArgs : ExtraArgs
@@ -65,12 +65,20 @@ escrowDisclosure admin instrCid = do
   Some d <- queryDisclosure admin instr.lockedCid
   pure d
 
--- Mint `amount` to `owner` and lock it, yielding an escrow the accept path can
--- be pointed at.
+-- An escrow the accept path can be pointed at, in the shape transferImpl builds
+-- one: created directly with `holders = [admin]` rather than routed through the
+-- batch transfer, which is what the offer path itself does (Registry.daml's
+-- `None` arm). Going through lockToken would strip a holder equal to the owner,
+-- so a self-administered instrument (acceptRejectsMismatchedInstructionAdmin,
+-- where alice is both admin and sender) came back with no holders at all: an
+-- escrow the sender could release alone, which the offer path never produces.
 escrowFor : ContractId InstrumentConfig -> Party -> Party -> Decimal -> Script (ContractId LockedToken)
 escrowFor cfg admin owner amount = do
-  tok <- mintToken cfg admin owner amount
-  lockToken cfg admin owner tok [admin] offerDeadline
+  Some config <- queryContractId admin cfg
+  submit (actAs [admin, owner]) $ createCmd LockedToken with
+    admin; owner; instrumentId = config.instrumentId; amount
+    holders = [admin]; expiresAt = offerDeadline
+    optContext = None; meta = emptyMetadata
 
 -- A 40.0 alice -> bob transfer of CC. Hand-built offers carry no input holdings:
 -- nothing on the accept path reads them.

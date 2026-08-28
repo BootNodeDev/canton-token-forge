@@ -88,6 +88,13 @@ lockToken
   -> Time
   -> Script (ContractId LockedToken)
 lockToken cfg admin owner tokenCid holders expiresAt = do
+  -- The batch transfer strips the receiver out of the holder set, and this
+  -- helper's output goes to the owner, so a holders list naming only the owner
+  -- normalizes to []: a LockedToken the owner alone can release, which is not
+  -- what any caller asking for a lock means. Refuse it here rather than hand
+  -- back a lock in name only, which reads as escrowed through the Holding view.
+  assertMsg "lockToken: holders must name someone other than the owner"
+    (any (/= owner) holders)
   Some token <- queryContractId owner tokenCid
   result <- runTransfer cfg admin (TokenTransfer with
     sender = owner

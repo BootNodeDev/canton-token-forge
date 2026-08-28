@@ -6,8 +6,6 @@ import DA.Time (time)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
-import Canton.TokenForge.Registry (InstrumentConfig_Transfer(..))
-import Canton.TokenForge.Transfer (TokenTransfer(..), TokenTransferOutput(..), TokenLock(..))
 import Canton.TokenForge.Locked (LockedToken(..), LockedToken_Unlock(..), LockedToken_ExpireLock(..))
 import Canton.TokenForge.Test.Util (registerInstrument, mintToken, lockToken)
 
@@ -53,32 +51,11 @@ lockRejectsAndExpires = do
   hv.owner === alice
   hv.amount === 50.0
 
--- Holders sign the lock, so an owner cannot bind a holder that did not
--- authorize it. charlie is named as a lock holder but does not act, and he is
--- both in the controller set the transfer computes and a signatory of the
--- LockedToken it would create, so the submission cannot go through either way.
-lockRequiresHolderConsent : Script ()
-lockRequiresHolderConsent = do
-  admin <- allocateParty "admin"
-  alice <- allocateParty "alice"
-  charlie <- allocateParty "charlie"
-  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
-  tok <- mintToken cfg admin alice 50.0
-  let expiresAt = time (date 2026 Jan 2) 0 0 0
-  Some cfgDisclosure <- queryDisclosure admin cfg
-  submitMustFail (actAs alice <> disclose cfgDisclosure) $
-    exerciseCmd cfg InstrumentConfig_Transfer with
-      expectedAdmin = admin
-      expectedInstrumentId = "CC"
-      transfer = TokenTransfer with
-        sender = alice
-        inputs = [tok]
-        outputs =
-          [ TokenTransferOutput with
-              receiver = alice; amount = 50.0
-              lock = Some TokenLock with holders = [charlie]; expiresAt; optContext = None
-              meta = emptyMetadata
-          ]
+-- A lock holder who does not authorize is refused at the InstrumentConfig node,
+-- which BatchTransferTest.transferRequiresEveryOutputPartyToAuthorize pins by
+-- naming the missing party. The version that lived here was a bare
+-- submitMustFail, and a holder is also a LockedToken signatory, so it was
+-- satisfied by the later refusal on the create and could not tell the two apart.
 
 -- The lock context is what a wallet shows a user as the reason a holding is
 -- locked, so it has to survive the trip through the standard Holding view.
