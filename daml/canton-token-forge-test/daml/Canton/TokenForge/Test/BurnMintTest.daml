@@ -8,8 +8,7 @@ import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, emptyChoiceContext, ExtraArgs(..))
 import Splice.Api.Token.BurnMintV1
 import Canton.TokenForge.Types (mkInstrumentId)
-import Canton.TokenForge.Registry (InstrumentConfig_LockHolding(..))
-import Canton.TokenForge.Test.Util (registerInstrument, mintToken)
+import Canton.TokenForge.Test.Util (registerInstrument, mintToken, lockToken)
 
 -- Burn alice's 100 and mint 60 to alice + 40 to bob: total supply held
 -- constant across the rebalance, split across the two named owners.
@@ -85,15 +84,13 @@ burnMintRejectsLockedInput = do
   cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
   let later = time (date 2026 Jan 2) 0 0 0
-  Some cfgDisclosure <- queryDisclosure admin cfg
-  lock <- submit (actAs [alice, admin] <> disclose cfgDisclosure) $ exerciseCmd cfg InstrumentConfig_LockHolding with
-    owner = alice; tokenCid = tok; holders = [admin]; expiresAt = later
+  lockedCid <- lockToken cfg admin alice tok [admin] later
 
   let xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
   submitMustFail admin $ exerciseCmd (toInterfaceContractId @BurnMintFactory cfg) BurnMintFactory_BurnMint with
     expectedAdmin = admin
     instrumentId = mkInstrumentId admin "CC"
-    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding lock.lockedCid]
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding lockedCid]
     outputs = [ BurnMintOutput with owner = alice; amount = 100.0; context = emptyChoiceContext ]
     extraActors = []
     extraArgs = xargs

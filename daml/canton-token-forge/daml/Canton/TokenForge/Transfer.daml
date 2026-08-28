@@ -1,0 +1,144 @@
+-- | The multi-output transfer (the Splice.AmuletRules analog). No v1 interface
+-- choice expresses it: HoldingV1 declares no choices and its Lock is view-only
+-- metadata, and TransferInstructionV1 is single-receiver. BurnMintV1 does take
+-- a list of outputs, each with its own ChoiceContext that upstream documents as
+-- an extension point for locking, so it is the near miss worth naming: it is
+-- rejected because it is jointly authorized by the admin (who would then have
+-- to co-sign every transfer), it enforces no conservation between inputs and
+-- outputs, and its result record carries only outputCids, leaving nowhere to
+-- annotate what the transaction was (see TxMeta). Registry.daml declares the
+-- choice and calls in here, the way it delegates allocation to Allocation.daml.
+module Canton.TokenForge.Transfer where
+
+import DA.Assert (assertWithinDeadline)
+import DA.List (dedup, dedupSort)
+import Splice.Api.Token.HoldingV1 qualified as HoldingV1
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
+import Canton.TokenForge.Token (Token, mkToken, consumeInputs)
+import Canton.TokenForge.Locked (LockedToken(..))
+import Canton.TokenForge.TxMeta (TxKind(..), holdingTxMeta)
+
+-- | Splice.Expiry.TimeLock.
+data TokenLock = TokenLock
+  with
+    holders : [Party]
+    expiresAt : Time
+    optContext : Optional Text
+      -- ^ Short, human-readable description of why the holding is locked, for
+      -- a wallet to show its user. It is caller-supplied and lands in the
+      -- HoldingV1 view, so every stakeholder of the lock reads it: consider
+      -- what it discloses, because the string is public information.
+  deriving (Eq, Show)
+
+-- | AmuletRules.TransferOutput. `meta` has no Amulet counterpart: an amulet's
+-- metadata is derived from its economics, ours is a template field, and without
+-- it a lock output would silently drop the memo a holding carries.
+data TokenTransferOutput = TokenTransferOutput
+  with
+    receiver : Party
+    amount : Decimal
+    lock : Optional TokenLock
+    meta : Metadata
+  deriving (Eq, Show)
+
+-- | AmuletRules.Transfer. Inputs are Token contract ids directly, since
+-- InputAmulet is the only Amulet input variant with an analog here.
+data TokenTransfer = TokenTransfer
+  with
+    sender : Party
+    inputs : [ContractId Token]
+    outputs : [TokenTransferOutput]
+  deriving (Eq, Show)
+
+-- | AmuletRules.CreatedAmulet. Returned in `outputs` order, the same way Amulet
+-- builds its own result (a `mapA` over the preprocessed outputs), so a caller
+-- can match a created holding back to the output that asked for it by position.
+data CreatedHolding
+  = TransferResultToken (ContractId Token)
+  | TransferResultLockedToken (ContractId LockedToken)
+  deriving (Eq, Show)
+
+-- | AmuletRules.transferControllers, minus the `provider` entry we have no use
+-- for. Every party a transfer would bind into a holding is here, and it is
+-- computed from the argument alone, so a receiver or a lock holder can never be
+-- given a holding without authorizing the transaction that creates it.
+tokenTransferControllers : TokenTransfer -> [Party]
+tokenTransferControllers transfer =
+    dedup (transfer.sender :: concatMap outputParties transfer.outputs)
+  where
+    outputParties o = o.receiver :: optional [] (.holders) o.lock
+
+-- | Archive the sender's inputs, create the outputs in order, and return any
+-- leftover input value to the sender as change (which carries no memo, being
+-- the sender's own funds rather than delivered value).
+--
+-- Every output's metadata is the caller's to supply, including a locked one.
+-- The single-holding lock choice this replaced copied the input holding's memo
+-- into the lock on-ledger, which a batch cannot do: N inputs and M outputs have
+-- no canonical pairing to carry a memo along. A caller that wants a memo to
+-- survive being locked has to pass it.
+--
+-- consumeInputs does the whole input half: it rejects duplicates, rejects
+-- anything that is not a spendable Token of this instrument, and requires every
+-- input to be owned by the sender. Its Holding-interface parameter is why the
+-- input cids are upcast here; a caller that coerced a LockedToken cid into a
+-- ContractId Token still lands in the rejecting branch, which is what keeps an
+-- in-flight escrow unreachable through this door.
+--
+-- Amulet's maxNumInputs, maxNumOutputs and maxNumLockHolders caps are not
+-- ported, so inputs, outputs and lock holders are all unbounded here. They are
+-- guards in their own right rather than a consequence of fee arithmetic:
+-- checkTransferConstraints tests the first two beside, not inside, the
+-- sender-change fee arm, and upstream's own parameters give the reason as
+-- keeping transactions small rather than anything to do with fees. Amulet
+-- carries them on TransferConfigV2 because they are tunable there; a constant
+-- would need no such config, so the absence of an economics config is not by
+-- itself the reason they are missing. The ceiling today is whatever transaction
+-- size the participant will accept, discovered at submission time.
+executeTokenTransfer
+  : Party    -- ^ admin (config signatory)
+  -> Text    -- ^ instrumentId
+  -> TokenTransfer
+  -> Update ([CreatedHolding], Optional (ContractId Token))
+executeTokenTransfer admin instrumentId transfer = do
+  amounts <- consumeInputs admin instrumentId transfer.sender
+    (map (toInterfaceContractId @HoldingV1.Holding) transfer.inputs)
+  let inputTotal = sum amounts
+      outputTotal = sum (map (.amount) transfer.outputs)
+  assertMsg "outputs must not exceed the inputs" (inputTotal >= outputTotal)
+
+  createdHoldings <- forA transfer.outputs \o -> do
+    assertMsg "output amount must be positive" (o.amount > 0.0)
+    case o.lock of
+      None -> TransferResultToken <$>
+        create (mkToken admin o.receiver instrumentId o.amount o.meta)
+      Some l -> TransferResultLockedToken <$> do
+        -- A lock at or past its expiry is one LockedToken_ExpireLock away from
+        -- being the owner's again, so creating one escrows nothing.
+        assertWithinDeadline "lock.expiresAt" l.expiresAt
+        create LockedToken with
+          admin; owner = o.receiver; instrumentId; amount = o.amount
+          holders = dedupSort (filter (/= o.receiver) l.holders)
+          expiresAt = l.expiresAt; optContext = l.optContext
+          meta = o.meta
+
+  senderChangeCid <-
+    if inputTotal > outputTotal
+      then Some <$> create (mkToken admin transfer.sender instrumentId (inputTotal - outputTotal) emptyMetadata)
+      else pure None
+  pure (createdHoldings, senderChangeCid)
+
+-- | Classify a transfer for the standard's history parser, ported from
+-- Splice.AmuletRules. A transfer whose every output stays under the sender's
+-- control moved nothing, so it reads as a merge or a split and names no sender;
+-- anything else is a payment and must name one: the parser's last resort is the
+-- `transfer.sender` field of the choice argument itself, so relying on that
+-- would tie the parse to our argument's field names rather than the annotation.
+tokenTransferTxMeta : TokenTransfer -> Metadata
+tokenTransferTxMeta transfer
+  | all senderRetainsControl transfer.outputs = holdingTxMeta TxKind_MergeSplit None None
+  | otherwise = holdingTxMeta TxKind_Transfer None (Some transfer.sender)
+  where
+    senderRetainsControl o = transfer.sender == o.receiver && case o.lock of
+      None -> True
+      Some l -> all (transfer.sender ==) l.holders

@@ -3,9 +3,10 @@ module Canton.TokenForge.Test.Util where
 import Daml.Script
 import DA.TextMap qualified as TextMap
 import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..))
-import Canton.TokenForge.Registry (InstrumentConfig(..), InstrumentConfig_Mint(..), InstrumentConfig_Preapprove(..), TokenTransferPreapproval, FaucetConfig)
+import Canton.TokenForge.Registry (InstrumentConfig(..), InstrumentConfig_Mint(..), InstrumentConfig_Preapprove(..), InstrumentConfig_Transfer(..), InstrumentConfig_TransferResult, TokenTransferPreapproval, FaucetConfig)
 import Canton.TokenForge.Token (Token)
-import Canton.TokenForge.Locked (expireLockContextKey, escrowReclaimedContextKey)
+import Canton.TokenForge.Locked (LockedToken, expireLockContextKey, escrowReclaimedContextKey)
+import Canton.TokenForge.Transfer (TokenTransfer(..), TokenTransferOutput(..), TokenLock(..), CreatedHolding(..), tokenTransferControllers)
 
 -- | Create an instrument. The admin signs its own config, so registration is a
 -- single create with no counterparty.
@@ -44,6 +45,21 @@ preapprove cfg admin receiver validFrom expiresAt = do
   submit (actAs receiver <> disclose cfgDisclosure) $
     exerciseCmd cfg InstrumentConfig_Preapprove with receiver; validFrom; expiresAt
 
+-- | Exercise the batch transfer acting as every party it names. The config is
+-- not a stakeholder of any controller, so it is disclosed the same way the
+-- faucet discloses it to a tapping party.
+runTransfer
+  : ContractId InstrumentConfig
+  -> Party           -- ^ admin
+  -> TokenTransfer
+  -> Script InstrumentConfig_TransferResult
+runTransfer cfg admin transfer = do
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  Some config <- queryContractId admin cfg
+  submit (actAs (tokenTransferControllers transfer) <> disclose cfgDisclosure) $
+    exerciseCmd cfg InstrumentConfig_Transfer with
+      transfer; expectedAdmin = admin; expectedInstrumentId = config.instrumentId
+
 -- | Choice-context args carrying the early-release signal, so an escrow can be
 -- returned before its deadline (Amulet's expire-lock path). Honored only by the
 -- jointly-authorized allocation cancel.
@@ -58,3 +74,37 @@ escrowReclaimedArgs : ExtraArgs
 escrowReclaimedArgs = ExtraArgs with
   context = ChoiceContext with values = TextMap.fromList [(escrowReclaimedContextKey, AV_Bool True)]
   meta = emptyMetadata
+
+-- | Lock `tokenCid` to `holders` until `expiresAt`, the way the batch transfer
+-- expresses a lock: a self-transfer whose single output carries it. The token
+-- is read back so its full amount and its memo carry into the lock, which is
+-- what the choice this replaced did.
+lockToken
+  : ContractId InstrumentConfig
+  -> Party            -- ^ admin
+  -> Party            -- ^ owner
+  -> ContractId Token
+  -> [Party]          -- ^ holders
+  -> Time
+  -> Script (ContractId LockedToken)
+lockToken cfg admin owner tokenCid holders expiresAt = do
+  -- The batch transfer strips the receiver out of the holder set, and this
+  -- helper's output goes to the owner, so a holders list naming only the owner
+  -- normalizes to []: a LockedToken the owner alone can release, which is not
+  -- what any caller asking for a lock means. Refuse it here rather than hand
+  -- back a lock in name only, which reads as escrowed through the Holding view.
+  assertMsg "lockToken: holders must name someone other than the owner"
+    (any (/= owner) holders)
+  Some token <- queryContractId owner tokenCid
+  result <- runTransfer cfg admin (TokenTransfer with
+    sender = owner
+    inputs = [tokenCid]
+    outputs =
+      [ TokenTransferOutput with
+          receiver = owner; amount = token.amount
+          lock = Some TokenLock with holders; expiresAt; optContext = None
+          meta = token.meta
+      ])
+  case result.createdHoldings of
+    [TransferResultLockedToken lockedCid] -> pure lockedCid
+    _ -> abort "expected a single locked output"

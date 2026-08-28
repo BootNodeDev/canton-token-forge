@@ -27,23 +27,29 @@ reasonMetaKey = splicePrefix <> "reason"
 senderMetaKey : Text
 senderMetaKey = splicePrefix <> "sender"
 
--- | The transaction kinds this registry emits. The standard permits six; burn,
--- merge-split and expire-dust describe workflows we do not have. Keeping this a
--- closed type is what stops an invented verb from compiling.
+-- | The transaction kinds this registry emits. The standard permits six.
+-- expire-dust describes a workflow we do not have. Burn we do have
+-- (BurnMintFactory_BurnMint), but it goes unannotated for a structural reason:
+-- BurnMintFactory_BurnMintResult carries only outputCids and no metadata field,
+-- so the standard leaves the registry nowhere to put the annotation. Keeping
+-- this a closed type is what stops an invented verb from compiling.
 data TxKind
   = TxKind_Transfer
   | TxKind_Mint
   | TxKind_Unlock
+  | TxKind_MergeSplit
 
 txKindToText : TxKind -> Text
 txKindToText kind = case kind of
   TxKind_Transfer -> "transfer"
   TxKind_Mint -> "mint"
   TxKind_Unlock -> "unlock"
+  TxKind_MergeSplit -> "merge-split"
 
 -- | Build the annotation for a choice that affects holdings. A transfer must
--- pass its sender: the parser otherwise falls back to reading one off a
--- standardized transfer's choice argument, which our own choices do not have.
+-- pass its sender: the parser's last resort is the `transfer.sender` field of
+-- the choice argument itself, so relying on that would tie the parse to our
+-- argument's field names rather than the annotation.
 holdingTxMeta : TxKind -> Optional Text -> Optional Party -> Metadata
 holdingTxMeta kind reason sender =
   Metadata with

@@ -3,9 +3,9 @@
 A reusable, multi-instrument CIP-0056 (CN Token Standard) compliant token for
 demos and sandboxes. It is interface-faithful to the standard and structurally
 faithful to Amulet (rules/factory contract, two-template locking, two-step
-transfer, allocation/DvP, registry HTTP API) but has NO economics (no decay,
-fees, mining rounds, rewards, or DSO governance). Issuance is free/admin-authorized,
-plus an optional per-instrument faucet.
+transfer, multi-output batch transfer, allocation/DvP, registry HTTP API) but
+has NO economics (no decay, fees, mining rounds, rewards, or DSO governance).
+Issuance is free/admin-authorized, plus an optional per-instrument faucet.
 
 One party carries both roles: the instrument admin signs every `InstrumentConfig`
 and every holding, and is the same party the registry API reports as its
@@ -25,9 +25,9 @@ cd registry && npm install && npm test
 ```
 
 `npm test` builds the production DAR and runs the `canton-token-forge-test`
-suite, which covers minting, both transfer paths, locking, allocations, the
-faucet and burn-mint. The scripts run in-process, so no ledger or sandbox is
-needed.
+suite, which covers minting, both transfer paths, the batch transfer, locking,
+allocations, the faucet and burn-mint. The scripts run in-process, so no ledger
+or sandbox is needed.
 
 `registry/` is a separate npm package with its own dependencies: the root
 `npm install` vendors the Daml deps and does not populate `registry/node_modules`.

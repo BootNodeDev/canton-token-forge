@@ -3,8 +3,9 @@ module Canton.TokenForge.Test.AllocationTest where
 import Daml.Script
 import DA.Assert ((===))
 import DA.Optional (isNone, isSome)
+import DA.Text qualified as T
 import DA.TextMap qualified as TextMap
-import DA.Time (time)
+import DA.Time (time, addRelTime, microseconds)
 import DA.Date (date, Month(Jan))
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), ChoiceContext(..), AnyValue(..), emptyChoiceContext)
@@ -140,13 +141,19 @@ allocationRejectsDuplicateInputs = do
       spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
   setTime now
   Some cfgDisclosure <- queryDisclosure admin cfg
-  submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+  -- Matched on the message rather than submitMustFail: with the guard removed
+  -- the submission still fails, on the ledger refusing the second archive of
+  -- the same contract, so a bare submitMustFail accepts a missing guard.
+  res <- trySubmit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
     expectedAdmin = admin; allocation = spec; requestedAt = now
     inputHoldingCids =
       [ toInterfaceContractId @HoldingV1.Holding tok
       , toInterfaceContractId @HoldingV1.Holding tok
       ]
     extraArgs = xargs
+  case res of
+    Left (FailureStatusError fs) | "input holdings must not contain duplicates" `T.isInfixOf` fs.message -> pure ()
+    _ -> abort ("expected the duplicate-input refusal, got: " <> show res)
 
 -- From settleBefore on, the escrow is only sender-reclaimable; the executor can
 -- no longer settle the leg even with full authorization. The same instant opens
@@ -179,10 +186,15 @@ allocationExecuteAtSettleBeforeFails = do
   setTime later
   submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_ExecuteTransfer with extraArgs = xargs
 
--- An allocation whose settleBefore is not strictly after requestedAt is rejected
--- up front: its escrow could never be settled, only reclaimed.
-allocationRejectsUnreachableSettleBefore : Script ()
-allocationRejectsUnreachableSettleBefore = do
+-- requestedAt precedes settleBefore, so nothing the caller supplied is
+-- self-contradictory, but ledger time has already reached it. The escrow would
+-- be created at its own expiry, one LockedToken_ExpireLock away from the
+-- sender's again, and allocation_executeTransferImpl requires
+-- `now < settleBefore` so no executor could ever settle it. The instant itself,
+-- not merely past it, since that is
+-- the gate both the expire choice and the execute path open on.
+allocationRejectsAnAlreadyReachedSettleBefore : Script ()
+allocationRejectsAnAlreadyReachedSettleBefore = do
   admin <- allocateParty "admin"
   alice <- allocateParty "alice"
   bob <- allocateParty "bob"
@@ -190,20 +202,58 @@ allocationRejectsUnreachableSettleBefore = do
   cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
   tok <- mintToken cfg admin alice 100.0
 
-  let now = time (date 2026 Jan 1) 0 0 0
-      later = time (date 2026 Jan 3) 0 0 0
+  let requestedAt = time (date 2026 Jan 1) 0 0 0
+      settleAt = time (date 2026 Jan 2) 0 0 0
+      allocEnd = time (date 2026 Jan 5) 0 0 0
       xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
       leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
-      -- allocateBefore is still in the future so only the settleBefore guard bites
+      -- allocateBefore stays open so only the settlement deadline bites
       settlement = SettlementInfo with
         executor = venue; settlementRef = Reference with id = "s1"; cid = None
-        requestedAt = now; allocateBefore = later; settleBefore = now; meta = emptyMetadata
+        requestedAt; allocateBefore = allocEnd; settleBefore = settleAt; meta = emptyMetadata
       spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
-  setTime now
+  setTime settleAt
   Some cfgDisclosure <- queryDisclosure admin cfg
   submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
-    expectedAdmin = admin; allocation = spec; requestedAt = now
+    expectedAdmin = admin; allocation = spec; requestedAt
     inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+
+-- The accepting side of that same instant. The deadline refuses at settleAt, so
+-- it has to accept immediately before it: one microsecond earlier the identical
+-- allocation completes. Without this, a guard flipped to the opposite direction
+-- would refuse every allocation whose settlement window is still open and the
+-- refusal above would still pass, since every other accepting scenario here
+-- runs well inside its window.
+allocationAcceptsOneTickBeforeSettleBefore : Script ()
+allocationAcceptsOneTickBeforeSettleBefore = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 100.0
+
+  let requestedAt = time (date 2026 Jan 1) 0 0 0
+      settleAt = time (date 2026 Jan 2) 0 0 0
+      allocEnd = time (date 2026 Jan 5) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt; allocateBefore = allocEnd; settleBefore = settleAt; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime (addRelTime settleAt (microseconds (-1)))
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+  allocCid <- case res.output of
+    AllocationInstructionResult_Completed cid -> pure cid
+    _ -> abort "expected completed allocation"
+  Some alloc <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
+  Some locked <- queryContractId admin alloc.lockedCid
+  locked.expiresAt === settleAt
+  locked.amount === 25.0
 
 -- The sender cannot withdraw the escrow while the settlement window is still
 -- open. The early-release signal is a bare caller-supplied boolean, so forging
@@ -302,8 +352,10 @@ allocationCancelBeforeSettleWithoutSignalFails = do
   submitMustFail (actAs [venue, alice, bob]) $ exerciseCmd allocCid Allocation_Cancel with extraArgs = xargs
 
 -- allocateBefore is exclusive, so an allocation cannot be created at the instant
--- its window closes. settleBefore is the same instant here, which the up-front
--- reachability check still accepts because requestedAt precedes it.
+-- its window closes. settleBefore stays open here, three days out, so the
+-- settlement deadline cannot fire and this scenario reaches the allocation
+-- window on its own; the message is matched because a bare submitMustFail here
+-- accepts any refusal, which is how this guard came to have no test at all.
 allocationRejectsAtAllocateBefore : Script ()
 allocationRejectsAtAllocateBefore = do
   admin <- allocateParty "admin"
@@ -314,18 +366,53 @@ allocationRejectsAtAllocateBefore = do
   tok <- mintToken cfg admin alice 100.0
 
   let now = time (date 2026 Jan 1) 0 0 0
-      later = time (date 2026 Jan 3) 0 0 0
+      allocEnd = time (date 2026 Jan 3) 0 0 0
+      settleAt = time (date 2026 Jan 6) 0 0 0
       xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
       leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
       settlement = SettlementInfo with
         executor = venue; settlementRef = Reference with id = "s1"; cid = None
-        requestedAt = now; allocateBefore = later; settleBefore = later; meta = emptyMetadata
+        requestedAt = now; allocateBefore = allocEnd; settleBefore = settleAt; meta = emptyMetadata
       spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
-  setTime later
+  setTime allocEnd
   Some cfgDisclosure <- queryDisclosure admin cfg
-  submitMustFail (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+  res <- trySubmit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
     expectedAdmin = admin; allocation = spec; requestedAt = now
     inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+  case res of
+    Left (FailureStatusError fs) | "allocation window has closed" `T.isInfixOf` fs.message -> pure ()
+    _ -> abort ("expected the allocation-window refusal, got: " <> show res)
+
+-- The accepting side of that same instant: one microsecond before
+-- allocateBefore the identical allocation completes. Without it a guard flipped
+-- to the assertDeadlineExceeded direction would refuse every allocation whose
+-- window is still open, and the refusal above would still pass.
+allocationAcceptsOneTickBeforeAllocateBefore : Script ()
+allocationAcceptsOneTickBeforeAllocateBefore = do
+  admin <- allocateParty "admin"
+  alice <- allocateParty "alice"
+  bob <- allocateParty "bob"
+  venue <- allocateParty "venue"
+  cfg <- registerInstrument admin "CC" "CC" "CC" 10 None
+  tok <- mintToken cfg admin alice 100.0
+
+  let now = time (date 2026 Jan 1) 0 0 0
+      allocEnd = time (date 2026 Jan 3) 0 0 0
+      settleAt = time (date 2026 Jan 6) 0 0 0
+      xargs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+      leg = TransferLeg with sender = alice; receiver = bob; amount = 25.0; instrumentId = mkInstrumentId admin "CC"; meta = emptyMetadata
+      settlement = SettlementInfo with
+        executor = venue; settlementRef = Reference with id = "s1"; cid = None
+        requestedAt = now; allocateBefore = allocEnd; settleBefore = settleAt; meta = emptyMetadata
+      spec = AllocationSpecification with settlement; transferLegId = "leg1"; transferLeg = leg
+  setTime (addRelTime allocEnd (microseconds (-1)))
+  Some cfgDisclosure <- queryDisclosure admin cfg
+  res <- submit (actAs alice <> disclose cfgDisclosure) $ exerciseCmd (toInterfaceContractId @AllocationFactory cfg) AllocationFactory_Allocate with
+    expectedAdmin = admin; allocation = spec; requestedAt = now
+    inputHoldingCids = [toInterfaceContractId @HoldingV1.Holding tok]; extraArgs = xargs
+  case res.output of
+    AllocationInstructionResult_Completed _ -> pure ()
+    _ -> abort "expected completed allocation"
 
 allocStart : Time
 allocStart = time (date 2026 Jan 1) 0 0 0
@@ -357,6 +444,8 @@ startAllocation admin alice bob venue = do
     AllocationInstructionResult_Completed cid -> pure cid
     _ -> abort "expected completed allocation"
   Some alloc <- queryContractId admin (coerceContractId allocCid : ContractId TokenAllocation)
+  Some locked <- queryContractId admin alloc.lockedCid
+  locked.optContext === Some ("allocation for transfer leg \"leg1\" to " <> partyToText bob)
   pure (allocCid, alloc.lockedCid)
 
 -- The sender withdrawing an allocation whose escrow they already reclaimed

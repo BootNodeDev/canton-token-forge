@@ -1,5 +1,6 @@
 module Canton.TokenForge.Allocation where
 
+import DA.Assert (assertWithinDeadline)
 import Splice.Api.Token.HoldingV1 qualified as HoldingV1
 import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.AllocationV1
@@ -81,15 +82,33 @@ allocateImpl admin instrumentId arg = do
   now <- getTime
   assertMsg "allocation requestedAt must be in the past" (requestedAt <= now)
   assertMsg "allocation window has closed (allocateBefore reached)" (now < allocation.settlement.allocateBefore)
-  -- Mirrors Amulet's prepareTwoStepTransfer `requestedAt < transferBefore`:
-  -- reject an escrow whose settlement deadline is already unreachable.
-  assertMsg "requestedAt must be before settleBefore" (requestedAt < allocation.settlement.settleBefore)
+  -- Upstream reaches this through AmuletRules_Transfer's own `lock.expiresAt`
+  -- check, which our escrow skips by creating the LockedToken directly. Without
+  -- it an allocation submitted at or past settleBefore is created already
+  -- expirable, and no executor can ever settle it because
+  -- allocation_executeTransferImpl requires now < settleBefore. Amulet's
+  -- prepareTwoStepTransfer also carries `requestedAt < transferBefore`; that is
+  -- not restated here because `requestedAt <= now` above already implies it,
+  -- and a guard that cannot fire is a guard no test can pin.
+  assertWithinDeadline "allocation.settlement.settleBefore" allocation.settlement.settleBefore
 
   senderChangeCids <- spendInputs admin instrumentId leg.sender inputHoldingCids leg.amount
 
   locked <- create LockedToken with
     admin; owner = leg.sender; instrumentId; amount = leg.amount
-    holders = [admin]; expiresAt = allocation.settlement.settleBefore; meta = emptyMetadata
+    holders = [admin]; expiresAt = allocation.settlement.settleBefore
+    -- Amulet's own wording (AmuletAllocation.allocationToTwoStepTransfer): the
+    -- leg and its counterparty, and deliberately nothing more. Naming the
+    -- executor instead left every escrow of a multi-leg settlement carrying an
+    -- identical context, so a sender reading their locked funds could not tell
+    -- which leg an escrow backed, nor who was being paid. transferLegId is free
+    -- text the settlement venue chooses, so it goes through show: the quotes are
+    -- what stop a leg id spelled `leg1 to <party>` from forging the receiver
+    -- half of this sentence in the sender's wallet. The receiver is a party id,
+    -- where show's quoting is noise, so that half is rendered directly.
+    optContext = Some ("allocation for transfer leg " <> show allocation.transferLegId
+      <> " to " <> partyToText leg.receiver)
+    meta = emptyMetadata
   allocCid <- create TokenAllocation with admin; allocation; lockedCid = locked; meta = emptyMetadata
   pure AllocationInstructionResult with
     output = AllocationInstructionResult_Completed with allocationCid = toInterfaceContractId @Allocation allocCid

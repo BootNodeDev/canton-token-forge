@@ -12,8 +12,8 @@ import Splice.Api.Token.MetadataV1 (emptyMetadata, ExtraArgs(..), emptyChoiceCon
 import Splice.Api.Token.TransferInstructionV1
 import Canton.TokenForge.Types (mkInstrumentId)
 import Canton.TokenForge.Instruction (TokenTransferInstruction(..))
-import Canton.TokenForge.Locked (LockedToken, LockedToken_ExpireLock(..))
-import Canton.TokenForge.Registry (InstrumentConfig, InstrumentConfig_LockHolding(..))
+import Canton.TokenForge.Locked (LockedToken(..), LockedToken_ExpireLock(..))
+import Canton.TokenForge.Registry (InstrumentConfig(..))
 import Canton.TokenForge.Test.Util (registerInstrument, mintToken, expireLockArgs, escrowReclaimedArgs)
 
 -- No app-backend context is needed for accept/reject/withdraw in these tests.
@@ -47,7 +47,13 @@ startOffer admin alice bob = do
   Some cv <- queryInterfaceContractId alice changeCid
   cv.amount === 60.0
   case res.output of
-    TransferInstructionResult_Pending cid -> pure cid
+    TransferInstructionResult_Pending cid -> do
+      -- the escrow names its purpose, which is what a wallet shows the sender
+      -- while their funds sit locked behind a pending offer
+      Some instr <- queryContractId admin (coerceContractId cid : ContractId TokenTransferInstruction)
+      Some locked <- queryContractId admin instr.lockedCid
+      locked.optContext === Some ("transfer to " <> partyToText bob)
+      pure cid
     _ -> abort "expected pending offer"
 
 -- Bob (the receiver) is not a stakeholder of the sender-owned escrow, so the
@@ -59,16 +65,20 @@ escrowDisclosure admin instrCid = do
   Some d <- queryDisclosure admin instr.lockedCid
   pure d
 
--- Mint `amount` to `owner` and lock it, yielding an escrow the accept path can
--- be pointed at.
+-- An escrow the accept path can be pointed at, in the shape transferImpl builds
+-- one: created directly with `holders = [admin]` rather than routed through the
+-- batch transfer, which is what the offer path itself does (Registry.daml's
+-- `None` arm). Going through lockToken would strip a holder equal to the owner,
+-- so a self-administered instrument (where alice is both admin and sender) came
+-- back with an empty holder list, which the offer path never stores. Both
+-- shapes release on alice's authority alone: `owner :: holders` repeats her.
 escrowFor : ContractId InstrumentConfig -> Party -> Party -> Decimal -> Script (ContractId LockedToken)
 escrowFor cfg admin owner amount = do
-  tok <- mintToken cfg admin owner amount
-  Some cfgDisclosure <- queryDisclosure admin cfg
-  lock <- submit (actAs [owner, admin] <> disclose cfgDisclosure) $
-    exerciseCmd cfg InstrumentConfig_LockHolding with
-      owner; tokenCid = tok; holders = [admin]; expiresAt = offerDeadline
-  pure lock.lockedCid
+  Some config <- queryContractId admin cfg
+  submit (actAs [admin, owner]) $ createCmd LockedToken with
+    admin; owner; instrumentId = config.instrumentId; amount
+    holders = [admin]; expiresAt = offerDeadline
+    optContext = None; meta = emptyMetadata
 
 -- A 40.0 alice -> bob transfer of CC. Hand-built offers carry no input holdings:
 -- nothing on the accept path reads them.
