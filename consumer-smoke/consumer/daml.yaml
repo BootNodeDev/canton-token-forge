@@ -16,7 +16,8 @@ build-options:
   # The DAR bundles these six packages but damlc hides them: importing
   # Splice.Api.Token.* without these lines fails with "member of the hidden
   # package". The compiler suggests ':set -package', which is a GHCi command
-  # and not the fix.
+  # and not the fix. These exact lines are what the release body publishes,
+  # extracted from this file by scripts/release-notes.sh.
   - --package=splice-api-token-holding-v1-1.0.0
   - --package=splice-api-token-metadata-v1-1.0.0
   - --package=splice-api-token-transfer-instruction-v1-1.0.0
