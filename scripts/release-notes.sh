@@ -219,12 +219,20 @@ done <<< "$bundled"
 # Three values below appear in prose as well as in the snippet, and a literal
 # copy of any of them goes stale silently: the count when the interface set
 # changes, the LF target when an SDK bump moves it, the vendor path when the
-# smoke package renames what it depends on. Each is read from the same file the
-# snippet is cut from, so the prose and the yaml cannot disagree.
+# smoke package renames what it depends on. The last two are read from the same
+# file the snippet is cut from, so the prose and the yaml cannot disagree.
+#
+# The count is taken from the archive rather than from the flags, because the
+# prose says how many interface packages the DAR bundles and the flag list is
+# not that number. Nothing deduplicates or filters it, so a repeated flag, or
+# one naming a bundled package that is not an interface, inflates the count
+# while both checks above still pass: each names something bundled, and every
+# bundled interface is still named. $bundled is sorted, unique and already
+# restricted to splice-api-token-*, so it is the set the sentence describes.
 # wc, not grep -c: grep exits 1 on no match, which under set -e would kill the
-# script at the assignment and leave the guard below unreachable. $packages is
+# script at the assignment and leave the guard below unreachable. $bundled is
 # already known non-empty here, so this only has to count it honestly.
-pkg_count="$(wc -l <<< "$packages" | tr -d ' ')"
+pkg_count="$(wc -l <<< "$bundled" | tr -d ' ')"
 lf_target="$(sed -n 's/^[[:space:]]*-[[:space:]]*--target=//p' <<< "$opts_block")"
 require "the LF target from the build-options block of $SMOKE" "$lf_target"
 vendor_path="$(sed -n 's/^[[:space:]]*-[[:space:]]*//p' <<< "$deps_block" | head -1)"
