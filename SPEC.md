@@ -600,8 +600,12 @@ registry/                            Read-only HTTP service
   src/                               Config, ledger client, mapping, disclosure, routes
   openapi/                           The four standard specs it validates against
   test/                              Unit suites, plus test/e2e against a live participant
+consumer-smoke/                      Data-depends only on the built DAR, proving the
+                                     release asset is consumable on its own
 scripts/
   fetch-dep.sh                       Vendor Splice, derive versions, symlink DARs
+  consumer-smoke.sh                  Build consumer-smoke/ against the built DAR
+  release-notes.sh                   Emit the release body from the smoke package
   sandbox.sh                         Local Canton sandbox with the JSON Ledger API
   seed.mjs                           Seed an admin, demo users and one instrument
 versions.env                         The single version knob: SPLICE_TAG

@@ -77,6 +77,7 @@ scripts/
   fetch-dep.sh                           Vendor Splice sources, derive DAR versions, create stable-name symlinks
   build-harness.sh                       Build the Amulet test harness (unused by default; conformance only)
   consumer-smoke.sh                      Build the DAR, then compile consumer-smoke/ against nothing else
+  release-notes.sh                       Emit the release body for a tag, snippet extracted from consumer-smoke/consumer/daml.yaml
   sandbox.sh                             Build the DAR and run a local Canton sandbox with the JSON Ledger API
   seed.mjs                               Seed a running sandbox with an admin, demo users, and one InstrumentConfig
 deps/                                    Vendored Splice sources + built DARs (gitignored; never edit or commit)
@@ -368,6 +369,7 @@ overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 | `npm test` | Build the production DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same as `npm test` with a template-focused coverage report. |
 | `npm run smoke` | Compile a package that data-depends on nothing but the built DAR (`scripts/consumer-smoke.sh`); proves the release artifact is consumable on its own. |
+| `bash scripts/release-notes.sh <tag>` | Emit the release body, with the consumer snippet extracted from `consumer-smoke/consumer/daml.yaml`. |
 | `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
