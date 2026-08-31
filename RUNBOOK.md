@@ -320,6 +320,12 @@ CI just proved compile.
 1. Rehearse: run the workflow from the Actions tab. A `workflow_dispatch` run
    performs every check but the tag guard, and stops short of publishing,
    because the publish step is gated on a tag push.
+
+   The tag guard and the publish itself are the two halves a dispatch cannot
+   reach. To rehearse those, push a hyphenated tag such as `v0.1.0-rc1` first:
+   the workflow marks any hyphenated tag as a pre-release, so it does not
+   become the release that `/releases/latest` serves. Delete that release and
+   its tag once you have confirmed the asset.
 2. Tag and push. This is the decision that matters: a downstream repository pins
    it permanently.
 
