@@ -277,10 +277,11 @@ ignoring its own scope gate. One that touches
 in that same check, after that step. One that touches
 `registry/` runs that package's own lint, both typechecks, and unit suite as
 the `registry` check, not the root commands above. `npm run test:coverage`,
-`npm run smoke` and the registry's `npm run test:e2e` stay manual: the first
-re-runs Splice's own suites, the third needs a live participant, and no check
-runs the second at all, so a change that strands a downstream consumer is green
-until someone runs it. The end-to-end suite is typechecked on that path even so,
+`npm run smoke` and the registry's `npm run test:e2e` are all off the
+pull-request path: the first re-runs Splice's own suites, the third needs a live
+participant, and no pull request runs the second, so a change that strands a
+downstream consumer is green until someone runs it by hand or the `release`
+workflow does. The end-to-end suite is typechecked on that path even so,
 which is the point of typechecking it separately from the run.
 
 A pushed `v*` tag runs the `release` workflow instead: it builds from a clean
