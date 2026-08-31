@@ -8,7 +8,11 @@
 # the ones just proved to compile, and the two cannot drift apart.
 #
 # Usage:
-#   bash scripts/release-notes.sh <tag>   # e.g. bash scripts/release-notes.sh v0.1.0
+#   bash scripts/release-notes.sh <tag>              # build, then emit the body
+#   SKIP_BUILD=1 bash scripts/release-notes.sh <tag> # emit for the built DAR
+#
+# Env overrides:
+#   SKIP_BUILD        set to 1 to skip the dpm build step
 #
 set -euo pipefail
 
@@ -55,6 +59,15 @@ yaml_block() {
 
 TAG="${1:?usage: release-notes.sh <tag>}"
 SMOKE="consumer-smoke/consumer/daml.yaml"
+
+# Building by default is what keeps the body honest: the sha256 and package-id
+# below describe whatever DAR is on disk, and a stale one publishes an artifact
+# that no longer matches the source at this tag, which is exactly the
+# comparison the "rebuild and compare" section invites. Build output goes to
+# stderr because stdout is the release body.
+if [ "${SKIP_BUILD:-0}" != "1" ]; then
+  npm run build:canton-token-forge >&2
+fi
 
 # Read from daml.yaml rather than hardcoded here, which would go stale the
 # moment the package version bumps and would report the wrong DAR name in a
