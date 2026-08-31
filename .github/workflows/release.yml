@@ -8,9 +8,15 @@ name: release
 # release-notes.sh that the tag names the checked-out commit. That is how this
 # workflow is rehearsed short of publishing, and the pre-release tag push in
 # RUNBOOK.md is what covers the three it leaves.
+#
+# The trigger requires a digit after the v. 'v*' also matches names that are
+# not versions at all - vnext, vendor, viz-demo - and none of them contain a
+# hyphen, so the pre-release detection below leaves them unmarked and GitHub
+# serves the first one from /releases/latest, which is the URL the README and
+# the release body both send a consumer to for the DAR they pin.
 on:
   push:
-    tags: ['v*']
+    tags: ['v[0-9]*']
   workflow_dispatch:
 
 # Creating a release needs write, and it is confined to this workflow. ci.yml
