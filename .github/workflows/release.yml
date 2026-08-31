@@ -36,12 +36,12 @@ jobs:
           # working copy that does not inherit this one's config.
           persist-credentials: false
 
-      # Asserted against each other rather than against literals repeated here:
-      # a copy of SPLICE_TAG in this file would have to be bumped in lockstep
-      # with versions.env forever. The values themselves are recorded in the
-      # release body. The LF target is swept from every tracked daml.yaml
-      # rather than a list of paths named here, so a package added later is
-      # covered without editing this file.
+      # SPLICE_TAG is read out of versions.env rather than copied here, where
+      # it would have to be bumped in lockstep with that file forever; the
+      # value is recorded in the release body instead. The LF target is the one
+      # pin this file does spell out, so moving off 2.1 means editing the grep
+      # below as well as every manifest. The manifests are discovered rather
+      # than listed, so a package added later is covered without naming it here.
       - name: Assert the pins agree
         run: |
           set -euo pipefail
