@@ -337,6 +337,10 @@ CI just proved compile.
 3. Confirm the release carries `canton-token-forge-0.0.1.dar` and that its body
    shows the sha256 and package-id.
 
+   If the release appears but the DAR is missing, the upload failed after the
+   release was created. Re-run the workflow from the Actions tab: it attaches
+   the asset to the release already there rather than failing on it.
+
 To run the smoke test locally without the workflow:
 
 ```bash

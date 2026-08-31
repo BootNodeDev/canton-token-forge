@@ -190,18 +190,32 @@ jobs:
           case "${GITHUB_REF_NAME}" in
             *-*) prerelease=(--prerelease) ;;
           esac
-          # Every flag precedes the asset, which is the only trailing operand:
-          # gh's own examples never place one between two positionals, so this
-          # does not lean on how its parser treats that.
+          # Every flag precedes the positionals: gh's own examples never place
+          # one between two of them, so this does not lean on how its parser
+          # treats that.
+          #
+          # Creating and uploading are separate calls because `gh release
+          # create` refuses outright when the release exists. Doing both in one
+          # call meant that a run which created the release and then lost the
+          # upload left a published tag carrying no DAR, and every retry died
+          # on "already exists" instead of finishing the job. Creating only
+          # when there is nothing there makes the step re-runnable until the
+          # asset lands. The body is not rewritten on that second pass, which
+          # costs nothing: it is derived from this same commit and tag, so a
+          # regenerated one is identical.
           #
           # The tag is already known to exist locally and to name this commit,
           # because release-notes.sh refuses to describe anything else.
           # --verify-tag asks the same of the remote, so a ref that went
           # missing in between cannot end as a tag gh created itself.
-          gh release create \
-            --verify-tag \
-            --title "${GITHUB_REF_NAME}" \
-            --notes-file "${RUNNER_TEMP}/notes.md" \
-            "${prerelease[@]}" \
-            "${GITHUB_REF_NAME}" \
-            "${DAR}"
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release ${GITHUB_REF_NAME} exists; attaching the asset to it"
+          else
+            gh release create \
+              --verify-tag \
+              --title "${GITHUB_REF_NAME}" \
+              --notes-file "${RUNNER_TEMP}/notes.md" \
+              "${prerelease[@]}" \
+              "${GITHUB_REF_NAME}"
+          fi
+          gh release upload --clobber "${GITHUB_REF_NAME}" "${DAR}"
