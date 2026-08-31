@@ -568,7 +568,8 @@ Stated plainly, because they are what an evaluation turns on.
   is off, so nothing catches it on the way out; get-by-id escapes only because
   no id can match such a row.
 - **One of the three suites above never runs on a pull request, and neither
-  does the coverage report nor the checks the release workflow carries.** A
+  does the coverage report nor the checks the release workflow adds of its
+  own.** A
   pull request that touches `daml/`, `consumer-smoke/` or
   `scripts/consumer-smoke.sh` runs the Daml script suite as the `daml` check,
   and `npm run smoke` alongside it, which compiles `consumer-smoke/` against
