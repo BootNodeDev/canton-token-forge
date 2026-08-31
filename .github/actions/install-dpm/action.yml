@@ -20,7 +20,17 @@ runs:
         DPM_SDK_VERSION: ${{ inputs.sdk-version }}
       run: |
         set -euo pipefail
-        test "$(uname -m)" = "x86_64"
+        # Only the linux-amd64 tarball is fetched below and only its digest is
+        # recorded, so another architecture has nothing to install. Reported
+        # rather than left to a bare `test`, which exits 1 printing nothing and
+        # reads as the download having failed; this action is shared with the
+        # release workflow, where that silence would be the whole explanation
+        # of a failed release.
+        arch="$(uname -m)"
+        if [ "$arch" != x86_64 ]; then
+          echo "install-dpm supports x86_64 only, this runner is ${arch}" >&2
+          exit 1
+        fi
         # The digest lives here and only here. A caller supplies the version it
         # wants and this refuses any version it has no recorded hash for, so a
         # bump cannot quietly install an unverified tarball: it has to be
