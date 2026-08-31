@@ -289,11 +289,13 @@ first re-runs Splice's own suites, the second needs a live participant. The
 end-to-end suite is typechecked on that path even so, which is the point of
 typechecking it separately from the run.
 
-A pushed `v*` tag runs the `release` workflow instead: it builds from a clean
-checkout, runs the suite, checks the DAR is byte-reproducible, compiles
-`consumer-smoke/` against the built artifact, and publishes the DAR as a
-release asset. A manual dispatch of that workflow runs every check but the
-tag guard, and cannot publish. See
+A pushed `v*` tag runs the `release` workflow instead: it refuses a tag `main`
+does not reach, builds from a clean checkout, runs the suite, checks the DAR is
+byte-reproducible, compiles `consumer-smoke/` against the built artifact,
+generates the release body, and publishes the DAR as a release asset. A manual
+dispatch of that workflow runs the build and those artifact checks, cannot
+publish, and leaves three things unexercised: the on-main refusal, the publish,
+and `release-notes.sh`'s check that the tag names the checked-out commit. See
 [`RUNBOOK.md`](RUNBOOK.md#cutting-a-release) for the procedure, including the
 pre-release rehearsal, the only run that exercises that guard before the real
 tag.

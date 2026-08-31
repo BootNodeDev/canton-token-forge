@@ -2,8 +2,12 @@ name: release
 
 # A tag push is the human gate. The name and the decision to push are the
 # owner's, and a downstream repository pins the result permanently, so nothing
-# here creates a tag on its own. A manual dispatch runs every check but the tag
-# guard, and stops short of publishing, which is how this workflow is rehearsed.
+# here creates a tag on its own. A manual dispatch runs the build, the suite,
+# the reproducibility check and the smoke test, and leaves three things
+# unexercised: the on-main refusal and the publish are both gated on a push,
+# and it sets ALLOW_UNTAGGED so release-notes.sh does not check the tag either.
+# That is how this workflow is rehearsed short of publishing; the pre-release
+# tag push in RUNBOOK.md is what covers those three.
 on:
   push:
     tags: ['v*']
