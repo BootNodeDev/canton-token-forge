@@ -233,16 +233,25 @@ jobs:
           # upload left a published tag carrying no DAR, and every retry died
           # on "already exists" instead of finishing the job. Creating only
           # when there is nothing there makes the step re-runnable until the
-          # asset lands. The body is not rewritten on that second pass, which
-          # costs nothing: it is derived from this same commit and tag, so a
-          # regenerated one is identical.
+          # asset lands.
+          #
+          # The body is written on both passes. Leaving it alone would be
+          # harmless only for a release this workflow made, where a
+          # regenerated body is identical because it is derived from this
+          # same commit and tag. Nothing establishes that: a release created
+          # by hand to unblock a consumer after a failed run carries none of
+          # the sha256, package-id or consumer snippet, and attaching the DAR
+          # under it would publish the asset with nothing to verify it
+          # against. Rewriting costs a call and makes the published body the
+          # generated one either way.
           #
           # The tag is already known to exist locally and to name this commit,
           # because release-notes.sh refuses to describe anything else.
           # --verify-tag asks the same of the remote, so a ref that went
           # missing in between cannot end as a tag gh created itself.
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            echo "release ${GITHUB_REF_NAME} exists; attaching the asset to it"
+            echo "release ${GITHUB_REF_NAME} exists; refreshing its body and attaching the asset"
+            gh release edit "${GITHUB_REF_NAME}" --notes-file "${RUNNER_TEMP}/notes.md"
           else
             gh release create \
               --verify-tag \
