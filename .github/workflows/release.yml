@@ -35,6 +35,39 @@ jobs:
           # working copy that does not inherit this one's config.
           persist-credentials: false
 
+      # A v* tag can be pushed from any commit, including one that never
+      # reached main, and only a hyphenated tag is marked as a pre-release. An
+      # unhyphenated tag on unmerged work would become the release that
+      # /releases/latest serves, which a downstream repository then pins.
+      # release-notes.sh cannot catch this: its guard asserts the tag names the
+      # checked-out commit, which a tag-push checkout satisfies by definition.
+      #
+      # Asked over the API rather than with merge-base, because this repository
+      # is private and the checkout deliberately keeps no credentials, so a
+      # later git fetch has nothing to authenticate with. compare reports the
+      # tagged commit as identical to main or behind it exactly when main
+      # reaches it; ahead and diverged are the two that must not publish.
+      #
+      # First, because it needs nothing but the checkout and a token: a tag
+      # that can never publish should not first pay for two Splice vendorings
+      # and three builds. Gated with the publish below rather than run always,
+      # so a dispatched rehearsal still works from a branch. The pre-release
+      # tag push in RUNBOOK.md is what exercises this before the real tag does.
+      - name: Refuse a tag that is not on main
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${GITHUB_SHA}" --jq .status)"
+          case "$status" in
+            identical|behind) echo "ok: ${GITHUB_REF_NAME} is on main (${status})" ;;
+            *)
+              echo "${GITHUB_REF_NAME} names ${GITHUB_SHA}, which main does not reach (${status})" >&2
+              exit 1
+              ;;
+          esac
+
       # SPLICE_TAG is read out of versions.env rather than copied here, where
       # it would have to be bumped in lockstep with that file forever; the
       # value is recorded in the release body instead. The LF target is the one
@@ -153,39 +186,9 @@ jobs:
           bash scripts/release-notes.sh "${GITHUB_REF_NAME}" \
             | tee "${RUNNER_TEMP}/notes.md"
 
-      # A v* tag can be pushed from any commit, including one that never
-      # reached main, and only a hyphenated tag is marked as a pre-release. An
-      # unhyphenated tag on unmerged work would become the release that
-      # /releases/latest serves, which a downstream repository then pins.
-      # release-notes.sh cannot catch this: its guard asserts the tag names the
-      # checked-out commit, which a tag-push checkout satisfies by definition.
-      #
-      # Asked over the API rather than with merge-base, because this repository
-      # is private and the checkout deliberately keeps no credentials, so a
-      # later git fetch has nothing to authenticate with. compare reports the
-      # tagged commit as identical to main or behind it exactly when main
-      # reaches it; ahead and diverged are the two that must not publish.
-      #
-      # Gated with the publish below rather than run always, so a dispatched
-      # rehearsal still works from a branch. The pre-release tag push in
-      # RUNBOOK.md is what exercises this before the real tag does.
-      - name: Refuse a tag that is not on main
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${GITHUB_SHA}" --jq .status)"
-          case "$status" in
-            identical|behind) echo "ok: ${GITHUB_REF_NAME} is on main (${status})" ;;
-            *)
-              echo "${GITHUB_REF_NAME} names ${GITHUB_SHA}, which main does not reach (${status})" >&2
-              exit 1
-              ;;
-          esac
-
-      # Gated on the event, not on an input: a manual dispatch runs every check
-      # above bar the tag guard, and can never publish.
+      # Gated on the event, not on an input: a manual dispatch runs the checks
+      # above but never this step, the on-main refusal or the tag guard inside
+      # release-notes.sh, so it cannot publish.
       - name: Publish
         if: github.event_name == 'push'
         env:

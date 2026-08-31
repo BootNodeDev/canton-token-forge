@@ -326,8 +326,9 @@ CI just proved compile.
    the workflow marks any hyphenated tag as a pre-release, so it does not
    become the release that `/releases/latest` serves. Tag a commit that is
    already on `main`, for the rehearsal as much as for the real thing: the
-   workflow refuses to publish anything `main` does not reach, so a tag pushed
-   from an unmerged branch fails after every other check has passed.
+   workflow refuses to publish anything `main` does not reach, and checks that
+   straight after the checkout, so a tag pushed from an unmerged branch is
+   refused before the build starts.
 
    Confirm it by compiling against the asset GitHub is serving, not against a
    local build of it. Nothing before this point has done that: `npm run smoke`
