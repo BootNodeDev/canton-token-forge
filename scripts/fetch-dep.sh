@@ -112,7 +112,12 @@ read_ver() { grep -m1 '^version:' "$1" | awk '{print $2}'; }
 # creates deps/splice-daml/dars/<pkg>.dar -> <pkg>-<derived-version>.dar
 link_stable() {
   local pkg="$1" src="$2" ver
-  ver="$(read_ver "$src")"
+  # The status is swallowed so the report below is reachable. read_ver is a
+  # pipeline, and under pipefail a grep that matches nothing fails the whole
+  # assignment, which set -e turns into an exit right here: an upstream
+  # release that moves or drops the version key aborted the vendor with no
+  # output at all, where the message below names the package and the file.
+  ver="$(read_ver "$src" || true)"
   if [ -z "$ver" ]; then echo "ERROR: could not derive version for $pkg from $src" >&2; exit 1; fi
   if [ ! -f "$DARS/$pkg-$ver.dar" ]; then
     echo "ERROR: expected DAR $DARS/$pkg-$ver.dar not found (tag $SPLICE_TAG)" >&2; exit 1
