@@ -79,7 +79,7 @@ jobs:
       # version and checked against a recorded digest instead of piping an
       # installer into a shell. Pinning is also a correctness requirement, not
       # only a supply-chain one: the installer's "latest" resolves to 3.5.5,
-      # while both daml.yaml files pin 3.4.11. The SDK pin sweep is discovered
+      # while every tracked daml.yaml pins 3.4.11. The SDK pin sweep is discovered
       # rather than listed, for the same reason as the LF-target sweep above.
       - name: Install dpm
         run: |
