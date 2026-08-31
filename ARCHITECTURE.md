@@ -369,7 +369,7 @@ overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 | `npm test` | Build the production DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same as `npm test` with a template-focused coverage report. |
 | `npm run smoke` | Compile a package that data-depends on nothing but the built DAR (`scripts/consumer-smoke.sh`); proves the release artifact is consumable on its own. |
-| `bash scripts/release-notes.sh <tag>` | Emit the release body, with the consumer snippet extracted from `consumer-smoke/consumer/daml.yaml`. Refuses unless `<tag>` names the checked-out commit and the working tree is clean; `ALLOW_UNTAGGED=1` previews a body before the tag exists ([`RUNBOOK.md`](RUNBOOK.md#cutting-a-release)). |
+| `bash scripts/release-notes.sh <tag>` | Emit the release body, with the consumer snippet extracted from `consumer-smoke/consumer/daml.yaml`. Refuses unless `<tag>` names the checked-out commit, the working tree is clean, and `deps/` carries the commit stamp `npm run setup` writes; `ALLOW_UNTAGGED=1` previews a body before the tag exists ([`RUNBOOK.md`](RUNBOOK.md#cutting-a-release)). |
 | `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |

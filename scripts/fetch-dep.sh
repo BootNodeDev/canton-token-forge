@@ -40,8 +40,11 @@ sparse_clone() {
 }
 
 echo "Fetching daml/ + token-standard/ from canton-network/splice@${SPLICE_TAG}..."
+splice_commit=""
 if retry sparse_clone; then
-  :
+  # Read out of the clone rather than resolved over the network: this is the
+  # commit whose tree is about to be vendored, which is the fact worth keeping.
+  splice_commit="$(git -C .tmp-splice rev-parse HEAD)"
 else
   # Fallback for environments where git's smart-HTTP pack transfer is broken
   # (e.g. a corrupting MITM proxy): fetch the same tag as a tarball instead.
@@ -56,12 +59,29 @@ else
     --output .tmp-splice/source.tar.gz
   tar -xzf .tmp-splice/source.tar.gz -C .tmp-splice --strip-components=1 \
       "splice-${SPLICE_TAG}/daml" "splice-${SPLICE_TAG}/token-standard"
+  # A tarball carries no commit, so this path asks the remote what the tag
+  # names. codeload served that same tag moments ago, so the two agree unless
+  # the tag moved in between, which is the case the stamp exists to expose.
+  splice_commit="$(git ls-remote "$REPO" "refs/tags/${SPLICE_TAG}^{}" "refs/tags/${SPLICE_TAG}" \
+                   | tail -n1 | cut -f1)"
 fi
 
 # Vendor: daml/ -> deps/splice-daml ; token-standard/ -> deps/token-standard (siblings).
 rm -rf deps/splice-daml && mkdir -p deps/splice-daml && cp -r .tmp-splice/daml/. deps/splice-daml
 rm -rf deps/token-standard && mkdir -p deps/token-standard && cp -r .tmp-splice/token-standard/. deps/token-standard
 rm -rf .tmp-splice
+
+# A git tag can be re-pointed upstream, so SPLICE_TAG alone does not identify
+# what a build consumed. The release body tells a consumer to rebuild the DAR
+# and compare hashes, which only means something if they can vendor the same
+# source; this records what this run actually vendored so the body can name it.
+# It lives beside the tree it describes, and is rewritten whenever that tree is.
+if [ -z "$splice_commit" ]; then
+  echo "could not resolve the commit for ${SPLICE_TAG}" >&2
+  exit 1
+fi
+echo "$splice_commit" > deps/.splice-commit
+echo "Vendored canton-network/splice@${SPLICE_TAG} (${splice_commit})"
 
 # The upstream token-standard packages reference ../../daml/...; splice-amulet-test
 # references ../../token-standard/... . We vendored daml/ AS splice-daml/, so this

@@ -164,6 +164,14 @@ require "the main package-id out of $DAR" "$pkgid"
 pkgid="${pkgid##*-}"
 splice_tag="$(awk -F= '/^SPLICE_TAG=/ {print $2; exit}' versions.env)"
 require "SPLICE_TAG from versions.env" "$splice_tag"
+# The tag names what we asked for; this names what was vendored. A tag can be
+# re-pointed upstream, and then a consumer following "rebuild it and compare"
+# builds against different source and gets a hash that will never match, with
+# nothing in the body to tell them which of the two moved. Written by
+# scripts/fetch-dep.sh beside the tree it describes, so an absent stamp means
+# deps/ predates that script and the body would be describing an unknown input.
+splice_commit="$(cat deps/.splice-commit 2>/dev/null || true)"
+require "the vendored Splice commit from deps/.splice-commit (run 'npm run setup')" "$splice_commit"
 sdk="$(awk '/^sdk-version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
 require "the SDK pin from daml/canton-token-forge/daml.yaml" "$sdk"
 
@@ -274,6 +282,7 @@ by default, and importing \`Splice.Api.Token.*\` without them fails with
 | Daml SDK | $sdk |
 | LF target | $lf_target |
 | Built against Splice | $splice_tag |
+| Splice commit | $splice_commit |
 
 ## Verifying this asset
 
