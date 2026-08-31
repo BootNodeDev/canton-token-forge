@@ -49,7 +49,12 @@ jobs:
             exit 1
           fi
           while read -r manifest; do
-            count="$(grep -c -- '- --target=2.1' "$manifest")"
+            # A grep that matches nothing exits 1, and under -e that kills the
+            # step at this assignment before the count below is ever checked,
+            # so the zero case (the likely one: a manifest that never got a
+            # --target line, or an SDK bump that moved it) would fail with no
+            # diagnostic at all. Swallow the status and check the value instead.
+            count="$(grep -c -- '- --target=2.1' "$manifest" || true)"
             if [ "$count" != 1 ]; then
               echo "${manifest} must target LF 2.1 exactly once, found ${count}" >&2
               exit 1
@@ -136,8 +141,9 @@ jobs:
         env:
           # A workflow_dispatch run's GITHUB_REF_NAME is the branch that was
           # dispatched, not a tag, so release-notes.sh's tag-exists check
-          # would fail every dry run. A tag push still gets the real check:
-          # ALLOW_UNTAGGED stays unset on that path.
+          # would fail every dry run. On a tag push this evaluates to the
+          # empty string, which is not "1", so the script's tag-exists check
+          # still fires.
           ALLOW_UNTAGGED: ${{ github.event_name != 'push' && '1' || '' }}
         run: |
           set -euo pipefail
