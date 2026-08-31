@@ -94,6 +94,15 @@ else
   exit 1
 fi
 require "the sha256 of $DAR" "$sha"
+
+# Named here rather than left to fail inside the pipeline below, where the
+# `|| true` swallows the status and the reader is told the package-id could
+# not be read out of the DAR, which blames the artifact for a missing tool.
+if ! command -v unzip >/dev/null 2>&1; then
+  echo "release-notes.sh: no unzip on PATH, needed to read the package-id" >&2
+  exit 1
+fi
+
 # The pipeline is allowed to fail here. A grep that matches nothing exits 1,
 # and under pipefail that kills the script AT THE ASSIGNMENT, before anything
 # can say what went wrong. Swallow the status and report on the value instead.
