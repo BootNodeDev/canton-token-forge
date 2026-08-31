@@ -326,6 +326,11 @@ CI just proved compile.
    the workflow marks any hyphenated tag as a pre-release, so it does not
    become the release that `/releases/latest` serves. Delete that release and
    its tag once you have confirmed the asset.
+
+   Tag a commit that is already on `main`, for the rehearsal as much as for the
+   real thing. The workflow refuses to publish anything `main` does not reach,
+   so a tag pushed from an unmerged branch fails after every other check has
+   passed.
 2. Tag and push. This is the decision that matters: a downstream repository pins
    it permanently.
 
