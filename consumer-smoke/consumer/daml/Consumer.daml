@@ -11,6 +11,9 @@ import Splice.Api.Token.AllocationInstructionV1 qualified as AllocationInstructi
 import Splice.Api.Token.BurnMintV1 qualified as BurnMintV1
 import Canton.TokenForge.Token (Token(..), mkToken)
 import Canton.TokenForge.Registry (InstrumentConfig(..))
+import Canton.TokenForge.Locked (LockedToken)
+import Canton.TokenForge.Instruction (TokenTransferInstruction)
+import Canton.TokenForge.Allocation (TokenAllocation)
 
 ownerOf : HoldingV1.HoldingView -> Party
 ownerOf v = v.owner
@@ -44,8 +47,8 @@ template VestingLockShape
         optToken <- downcast (toInterfaceContractId @HoldingV1.Holding locked)
         pure $ fmap (\(_, t) -> t.owner) optToken
 
--- Naming a type from each remaining bundled package, so one dropping out of the
--- DAR is a compile error here rather than a surprise downstream.
+-- One type from each bundled package, so a package dropping out of the DAR is a
+-- compile error here.
 bundledPackagesReachable :
   ( TransferInstructionV1.TransferInstructionResult_Output
   , AllocationV1.AllocationView
@@ -53,3 +56,35 @@ bundledPackagesReachable :
   , BurnMintV1.BurnMintFactoryView
   ) -> ()
 bundledPackagesReachable _ = ()
+
+-- Naming a type proves the package is bundled; it does not prove the production
+-- package still IMPLEMENTS the interface, because the type outlives the
+-- `interface instance` that mentions it. Every conversion below needs the
+-- instance itself, so dropping an implementation breaks this package rather
+-- than a downstream one. There are seven, and each appears exactly once.
+holdingInstances : ContractId Token -> ContractId LockedToken -> [ContractId HoldingV1.Holding]
+holdingInstances token locked =
+  [ toInterfaceContractId @HoldingV1.Holding token
+  , toInterfaceContractId @HoldingV1.Holding locked
+  ]
+
+factoryInstances :
+  InstrumentConfig
+  -> ( TransferInstructionV1.TransferFactory
+     , AllocationInstructionV1.AllocationFactory
+     , BurnMintV1.BurnMintFactory
+     )
+factoryInstances config =
+  ( toInterface @TransferInstructionV1.TransferFactory config
+  , toInterface @AllocationInstructionV1.AllocationFactory config
+  , toInterface @BurnMintV1.BurnMintFactory config
+  )
+
+settlementInstances :
+  ContractId TokenTransferInstruction
+  -> ContractId TokenAllocation
+  -> (ContractId TransferInstructionV1.TransferInstruction, ContractId AllocationV1.Allocation)
+settlementInstances instruction allocation =
+  ( toInterfaceContractId @TransferInstructionV1.TransferInstruction instruction
+  , toInterfaceContractId @AllocationV1.Allocation allocation
+  )
