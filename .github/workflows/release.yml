@@ -166,7 +166,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release create "${GITHUB_REF_NAME}" \
+          # A hyphenated tag is a pre-release under semver, and the way this
+          # workflow gets proved is by pushing one. Unmarked, gh would make it
+          # the release that /releases/latest serves, which is the URL a
+          # downstream repository follows to find the DAR it pins.
+          prerelease=()
+          case "${GITHUB_REF_NAME}" in
+            *-*) prerelease=(--prerelease) ;;
+          esac
+          # Every flag precedes the asset, which is the only trailing operand:
+          # gh's own examples never place one between two positionals, so this
+          # does not lean on how its parser treats that.
+          #
+          # The tag is already known to exist locally and to name this commit,
+          # because release-notes.sh refuses to describe anything else.
+          # --verify-tag asks the same of the remote, so a ref that went
+          # missing in between cannot end as a tag gh created itself.
+          gh release create \
+            --verify-tag \
             --title "${GITHUB_REF_NAME}" \
             --notes-file "${RUNNER_TEMP}/notes.md" \
+            "${prerelease[@]}" \
+            "${GITHUB_REF_NAME}" \
             "${DAR}"
