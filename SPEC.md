@@ -575,9 +575,11 @@ Stated plainly, because they are what an evaluation turns on.
   `registry/` runs that package's lint, its typechecks and the registry unit
   suite as the `registry` check. The end-to-end suite needs a live
   participant, so only its types are checked there and it is never run. Off
-  that path too is `npm run test:coverage`, which re-runs Splice's own suites:
-  nothing runs it on a pull request, so only the coverage report itself, not
-  downstream consumability, stays unverified until someone runs it by hand.
+  that path too is `npm run test:coverage`, which re-runs Splice's own suites
+  and which nothing runs automatically. A pull request in the `daml` check's
+  scope compiles the smoke package, but the check that compares the published
+  snippet against the artifact, and the assertion that every manifest still
+  targets LF 2.1, run only when a release is cut.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 
