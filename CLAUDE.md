@@ -274,13 +274,15 @@ Run before declaring work done:
   renamed module or template, its dependencies, its interface instances, or its
   `build-options`
 
-Every pull request has the strings that spell a template id verified against
-`daml/`, whatever it touches: the `daml` check runs that comparison, and a
-sweep of every tracked SDK pin, both ahead of its toolchain install and both
-ignoring its own scope gate. One that touches
+Every pull request gets three comparisons whatever it touches, because the
+`daml` check runs them ahead of its toolchain install and outside its own
+scope gate: the strings that spell a template id, against `daml/`; the
+consumer snippet in `README.md`, against `consumer-smoke/consumer/daml.yaml`;
+and every tracked `daml.yaml`, against both the SDK version the workflow
+installs and LF 2.1. One that touches
 `daml/`, `consumer-smoke/`, `scripts/consumer-smoke.sh` or the root build
 inputs runs four of these five automatically in that same check, after those
-two steps: only `npm run test:coverage` does not. One that touches `registry/`
+three steps: only `npm run test:coverage` does not. One that touches `registry/`
 runs that package's own lint, both typechecks, and unit suite as the
 `registry` check, not the root commands above. `npm run test:coverage` and
 the registry's `npm run test:e2e` are both off the pull-request path: the
