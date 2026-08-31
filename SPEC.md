@@ -567,18 +567,17 @@ Stated plainly, because they are what an evaluation turns on.
   holding a null `decimals` and the static `supportedApis`. Response validation
   is off, so nothing catches it on the way out; get-by-id escapes only because
   no id can match such a row.
-- **One of the three suites above never runs on a pull request, and neither do
-  two checks outside them.** A pull request that touches `daml/` runs the Daml
-  script suite as the `daml` check; one that touches `registry/` runs that
-  package's lint, its typechecks and the registry unit suite as the `registry`
-  check. The end-to-end suite needs a live participant, so only its types are
-  checked there and it is never run. Off that path too are
-  `npm run test:coverage`, which re-runs Splice's own suites, and
-  `npm run smoke`, which compiles `consumer-smoke/` against nothing but the
-  built DAR. Neither is one of the three above: the release workflow runs the
-  smoke test, nothing runs the coverage report, so a change that strands a
-  downstream consumer stays green until a release is cut or someone runs it by
-  hand.
+- **One of the three suites above never runs on a pull request, and neither
+  does one check outside them.** A pull request that touches `daml/` runs the
+  Daml script suite as the `daml` check, and, when the change is in that
+  check's scope, `npm run smoke` alongside it, which compiles
+  `consumer-smoke/` against nothing but the built DAR. One that touches
+  `registry/` runs that package's lint, its typechecks and the registry unit
+  suite as the `registry` check. The end-to-end suite needs a live
+  participant, so only its types are checked there and it is never run. Off
+  that path too is `npm run test:coverage`, which re-runs Splice's own suites:
+  nothing runs it on a pull request, so only the coverage report itself, not
+  downstream consumability, stays unverified until someone runs it by hand.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 
