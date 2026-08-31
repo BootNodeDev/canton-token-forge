@@ -326,15 +326,22 @@ jobs:
           # the smoke package onto; the second catches one it kept after the
           # smoke package dropped it, which is the quieter of the two because
           # every line still present is individually valid.
+          #
+          # Every pattern below is passed after '--'. The selection pattern
+          # allows no leading whitespace, and unindented block entries are
+          # valid YAML that dpm accepts, so a reformatted manifest hands grep
+          # a pattern beginning with '-'. Without the terminator grep reads
+          # that as an option cluster and exits 2, which '!' turns into
+          # "README.md does not carry" a line it carries verbatim.
           while IFS= read -r line; do
-            if ! grep -qxF "$line" README.md; then
+            if ! grep -qxF -- "$line" README.md; then
               echo "README.md does not carry '${line}' from ${smoke}" >&2
               status=1
             fi
           done <<<"$from_smoke"
           while IFS= read -r line; do
             [ -n "$line" ] || continue
-            if ! grep -qxF "$line" "$smoke"; then
+            if ! grep -qxF -- "$line" "$smoke"; then
               echo "README.md carries '${line}', which ${smoke} does not" >&2
               status=1
             fi
