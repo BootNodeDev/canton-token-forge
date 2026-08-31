@@ -57,7 +57,17 @@ if [ ! -f "$DAR" ]; then
   exit 1
 fi
 
-sha="$(sha256sum "$DAR" | cut -d' ' -f1)"
+# GNU coreutils on the CI runner, BSD tooling on a maintainer's macOS. Both
+# print "<hash>  <file>", so only the command name differs.
+if command -v sha256sum >/dev/null 2>&1; then
+  sha="$(sha256sum "$DAR" | cut -d' ' -f1)"
+elif command -v shasum >/dev/null 2>&1; then
+  sha="$(shasum -a 256 "$DAR" | cut -d' ' -f1)"
+else
+  echo "release-notes.sh: no sha256sum or shasum on PATH" >&2
+  exit 1
+fi
+require "the sha256 of $DAR" "$sha"
 # The pipeline is allowed to fail here. A grep that matches nothing exits 1,
 # and under pipefail that kills the script AT THE ASSIGNMENT, before anything
 # can say what went wrong. Swallow the status and report on the value instead.
