@@ -2,6 +2,11 @@
 # The DAR is copied into vendor/ by scripts/consumer-smoke.sh rather than
 # referenced in the build tree, because a consumer has no build tree of ours to
 # point at.
+#
+# scripts/release-notes.sh publishes the data-dependencies and build-options
+# blocks below VERBATIM as the instructions a downstream repository follows, so
+# every line of them is downstream-facing: a path or a flag that only suits this
+# package silently becomes what we tell consumers to write.
 sdk-version: 3.4.11
 name: consumer-smoke
 source: daml
@@ -16,8 +21,7 @@ build-options:
   # The DAR bundles these six packages but damlc hides them: importing
   # Splice.Api.Token.* without these lines fails with "member of the hidden
   # package". The compiler suggests ':set -package', which is a GHCi command
-  # and not the fix. These exact lines are what the release body publishes,
-  # extracted from this file by scripts/release-notes.sh.
+  # and not the fix.
   - --package=splice-api-token-holding-v1-1.0.0
   - --package=splice-api-token-metadata-v1-1.0.0
   - --package=splice-api-token-transfer-instruction-v1-1.0.0
