@@ -273,16 +273,16 @@ Every pull request has the strings that spell a template id verified against
 `daml/`, whatever it touches: the `daml` check runs that comparison, and a
 sweep of every tracked SDK pin, both ahead of its toolchain install and both
 ignoring its own scope gate. One that touches
-`daml/` or the root build inputs runs the first three of these automatically
-in that same check, after those two steps. One that touches
-`registry/` runs that package's own lint, both typechecks, and unit suite as
-the `registry` check, not the root commands above. `npm run test:coverage`,
-`npm run smoke` and the registry's `npm run test:e2e` are all off the
-pull-request path: the first re-runs Splice's own suites, the third needs a live
-participant, and no pull request runs the second, so a change that strands a
-downstream consumer is green until someone runs it by hand or the `release`
-workflow does. The end-to-end suite is typechecked on that path even so,
-which is the point of typechecking it separately from the run.
+`daml/`, `consumer-smoke/`, `scripts/consumer-smoke.sh` or the root build
+inputs runs four of these five automatically in that same check, after those
+two steps: only `npm run test:coverage` does not. One that touches `registry/`
+runs that package's own lint, both typechecks, and unit suite as the
+`registry` check, not the root commands above. `npm run test:coverage` and
+the registry's `npm run test:e2e` are both off the pull-request path: the
+first re-runs Splice's own suites, the second needs a live participant. The
+`release` workflow adds checks of its own that no pull request runs. The
+end-to-end suite is typechecked on that path even so, which is the point of
+typechecking it separately from the run.
 
 A pushed `v*` tag runs the `release` workflow instead: it builds from a clean
 checkout, runs the suite, checks the DAR is byte-reproducible, compiles

@@ -567,18 +567,24 @@ Stated plainly, because they are what an evaluation turns on.
   holding a null `decimals` and the static `supportedApis`. Response validation
   is off, so nothing catches it on the way out; get-by-id escapes only because
   no id can match such a row.
-- **One of the three suites above never runs on a pull request, and neither do
-  two checks outside them.** A pull request that touches `daml/` runs the Daml
-  script suite as the `daml` check; one that touches `registry/` runs that
-  package's lint, its typechecks and the registry unit suite as the `registry`
-  check. The end-to-end suite needs a live participant, so only its types are
-  checked there and it is never run. Off that path too are
-  `npm run test:coverage`, which re-runs Splice's own suites, and
-  `npm run smoke`, which compiles `consumer-smoke/` against nothing but the
-  built DAR. Neither is one of the three above: the release workflow runs the
-  smoke test, nothing runs the coverage report, so a change that strands a
-  downstream consumer stays green until a release is cut or someone runs it by
-  hand.
+- **One of the three suites above never runs on a pull request, and neither
+  does the coverage report nor the checks the release workflow adds of its
+  own.** A pull request that touches `daml/`, `consumer-smoke/`,
+  `scripts/consumer-smoke.sh`, or a root build input such as `versions.env`,
+  runs the Daml script suite as the `daml` check, and `npm run smoke`
+  alongside it, which compiles `consumer-smoke/` against nothing but the
+  built DAR. `versions.env` is in that list because a `SPLICE_TAG` bump can
+  ship a new interface version that compiles green while the smoke package
+  still names the old one, and compiling that package is what catches it.
+  One that touches `registry/` runs that package's lint, its typechecks and
+  the registry unit suite as the `registry` check. The end-to-end suite
+  needs a live participant, so only its types are checked there and it is
+  never run. Off that path too is `npm run test:coverage`, which re-runs
+  Splice's own suites and which nothing runs automatically. A pull request
+  in the `daml` check's scope compiles the smoke package, but the check that
+  compares the published snippet against the artifact, the assertion that
+  every manifest still targets LF 2.1, and the rebuild that proves the DAR
+  is byte-reproducible all run only when a release is cut.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 
