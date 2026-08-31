@@ -158,9 +158,10 @@ pkgid="$(printf '%s\n' "$DAR_LISTING" \
 require "the main package-id out of $DAR" "$pkgid"
 # One line, not merely non-empty. sort -u collapses the repeated matches a
 # single dalf produces, but two dalfs of this package at different package-ids
-# survive it as two lines, and the strip below would then return the tail of
-# the last one: a package-id identifying neither, published with no diagnostic
-# in the one section whose purpose is letting a consumer verify the asset.
+# survive it as two lines, and the strip below reads to the last '-' in the
+# whole value, so it returns the second one and the body publishes that as
+# the main package-id, with no diagnostic, in the section whose purpose is
+# letting a consumer verify the asset.
 if [ "$(wc -l <<< "$pkgid" | tr -d ' ')" != 1 ]; then
   echo "release-notes.sh: $DAR_NAME carries more than one package-id for" \
        "canton-token-forge-$VERSION" >&2

@@ -255,11 +255,11 @@ jobs:
           # draft flag, rather than passing the body alone. Both describe the
           # release this workflow would have created, and neither is implied
           # by the release that is already there: a hand-made one carries
-          # whatever its author chose, and an unmarked hyphenated tag is
-          # served from /releases/latest, which is the failure the create
-          # path's marking exists to prevent. A draft is the same shape one
-          # step further on, since the upload below attaches the asset to
-          # something never published and the step still succeeds.
+          # whatever its author chose, and an unmarked hyphenated tag can
+          # become the release /releases/latest serves, which is the failure
+          # the create path's marking exists to prevent. A draft is the same
+          # shape one step further on, leaving the tag published with nothing
+          # a consumer can download.
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             echo "release ${GITHUB_REF_NAME} exists; refreshing its body and attaching the asset"
             gh release edit "${GITHUB_REF_NAME}" \

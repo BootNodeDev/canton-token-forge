@@ -312,15 +312,17 @@ jobs:
           # keeps the dependencies: entries (daml-prim, daml-stdlib) out
           # without a second block parser living here.
           pattern='^[[:space:]]*-[[:space:]]*(--|vendor/)'
-          # The entries alone do not make a snippet. Nothing above ties one to
-          # the block it belongs under, so README could carry all eight lines
-          # with build-options: renamed, dropped, or the --package flags moved
-          # under data-dependencies:, and every comparison below would still
-          # match. A consumer copying that gets a file that does not parse, or
-          # one that silently drops every flag and fails on "member of the
-          # hidden package", which is the error this section exists to avoid.
-          # The generated release body cannot drift this way: yaml_block cuts
-          # each header out of the smoke package itself.
+          # The entries alone do not make a snippet. Nothing else here ties
+          # one to the block it belongs under, so README could carry every
+          # entry line with build-options: renamed, dropped, or the --package
+          # flags moved under data-dependencies:, and each comparison below
+          # would still match. Measured on the smoke package with the header
+          # renamed: dpm accepts the file, ignores the key it does not know,
+          # and the imports fail on "member of the hidden package", the same
+          # error a consumer gets with the flags missing altogether, which is
+          # what this whole section exists to prevent. The generated release
+          # body cannot drift this way: yaml_block cuts each header out of the
+          # smoke package itself.
           for header in data-dependencies: build-options:; do
             if ! grep -qxF -- "$header" README.md; then
               echo "README.md does not carry the '${header}' block header" >&2
@@ -342,12 +344,13 @@ jobs:
           # smoke package dropped it, which is the quieter of the two because
           # every line still present is individually valid.
           #
-          # Every pattern below is passed after '--'. The selection pattern
-          # allows no leading whitespace, and unindented block entries are
-          # valid YAML that dpm accepts, so a reformatted manifest hands grep
-          # a pattern beginning with '-'. Without the terminator grep reads
-          # that as an option cluster and exits 2, which '!' turns into
-          # "README.md does not carry" a line it carries verbatim.
+          # The two comparisons below, and the header loop above, take their
+          # pattern after '--'. The selection pattern allows no leading
+          # whitespace, and unindented block entries build green under dpm, so
+          # a manifest reformatted that way hands grep a pattern beginning
+          # with '-'. Without the terminator grep reads that as an option
+          # cluster and exits 2, which '!' turns into "README.md does not
+          # carry" a line it carries verbatim.
           while IFS= read -r line; do
             if ! grep -qxF -- "$line" README.md; then
               echo "README.md does not carry '${line}' from ${smoke}" >&2
