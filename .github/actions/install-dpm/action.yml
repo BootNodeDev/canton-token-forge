@@ -1,0 +1,65 @@
+name: install dpm
+description: >
+  Install the pinned dpm SDK, having first asserted that every tracked daml.yaml
+  pins the same version. Shared by ci.yml and release.yml so the download, the
+  digest that verifies it and the sweep exist once rather than once per workflow.
+
+inputs:
+  sdk-version:
+    description: >
+      The dpm SDK version to install. Passed in rather than defaulted here
+      because ci.yml needs the same value in a step that runs before this one,
+      outside its scope gate and without a toolchain.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        DPM_SDK_VERSION: ${{ inputs.sdk-version }}
+      run: |
+        set -euo pipefail
+        test "$(uname -m)" = "x86_64"
+        # The digest lives here and only here. A caller supplies the version it
+        # wants and this refuses any version it has no recorded hash for, so a
+        # bump cannot quietly install an unverified tarball: it has to be
+        # accompanied by the hash of the new one.
+        case "$DPM_SDK_VERSION" in
+          3.4.11) tarball_sha256='177328b8d8b5781a6eee37fbd172a8445f18e07b46292c40fe32207d4cd72ccd' ;;
+          *)
+            echo "no recorded tarball digest for dpm ${DPM_SDK_VERSION}" >&2
+            echo "  add it to .github/actions/install-dpm/action.yml" >&2
+            exit 1
+            ;;
+        esac
+        # Discovered rather than listed, because a package added later carries a
+        # pin of its own and a list written today cannot name it.
+        pins="$(git ls-files '*daml.yaml')"
+        if [ -z "$pins" ]; then
+          echo "no daml.yaml is tracked, so the SDK pin went unchecked" >&2
+          exit 1
+        fi
+        while read -r manifest; do
+          pinned="$(awk '/^sdk-version:/ {print $2; exit}' "$manifest")"
+          if [ "$pinned" != "$DPM_SDK_VERSION" ]; then
+            echo "${manifest} pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
+            exit 1
+          fi
+          echo "ok: ${manifest} pins SDK ${pinned}"
+        done <<<"$pins"
+        # The published tarball is fetched by exact version and checked against
+        # the recorded digest instead of piping an installer into a shell.
+        # Pinning is also a correctness requirement, not only a supply-chain
+        # one: the installer's "latest" resolves to 3.5.5, while every tracked
+        # daml.yaml pins 3.4.11.
+        tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
+        url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
+        curl -SLf --retry 3 --retry-all-errors --retry-delay 5 \
+          "$url" --output "${RUNNER_TEMP}/${tarball}"
+        echo "${tarball_sha256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
+        mkdir -p "${RUNNER_TEMP}/dpm-extracted"
+        tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/dpm-extracted" --strip-components 1
+        "${RUNNER_TEMP}/dpm-extracted/bin/dpm" bootstrap "${RUNNER_TEMP}/dpm-extracted"
+        rm -rf "${RUNNER_TEMP}/${tarball}" "${RUNNER_TEMP}/dpm-extracted"
+        echo "$HOME/.dpm/bin" >> "$GITHUB_PATH"

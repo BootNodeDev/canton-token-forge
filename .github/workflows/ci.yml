@@ -135,7 +135,6 @@ jobs:
       # dies with a UTF-8 decoding error under a C or POSIX locale.
       LANG: C.UTF-8
       DPM_SDK_VERSION: '3.4.11'
-      DPM_TARBALL_SHA256: '177328b8d8b5781a6eee37fbd172a8445f18e07b46292c40fe32207d4cd72ccd'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -355,9 +354,10 @@ jobs:
           # files that merely name template ids are not listed: the check
           # that reads them runs ahead of this gate and ignores it, so
           # listing them here would install a toolchain and build both
-          # packages to verify nothing the change can reach. release.yml is
-          # left out for that same reason: no step in this job runs it.
-          if grep -Eq '^(daml/|consumer-smoke/|scripts/fetch-dep\.sh$|scripts/consumer-smoke\.sh$|scripts/release-notes\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          # packages to verify nothing the change can reach. The install
+          # action is listed because this job runs it; release.yml is left
+          # out for that same reason, since no step in this job does.
+          if grep -Eq '^(daml/|consumer-smoke/|scripts/fetch-dep\.sh$|scripts/consumer-smoke\.sh$|scripts/release-notes\.sh$|\.github/actions/|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
@@ -369,27 +369,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # The published tarball is fetched by exact version and checked against a
-      # recorded digest instead of piping an installer into a shell. Pinning is
-      # also a correctness requirement, not only a supply-chain one: the
-      # installer's "latest" resolves to 3.5.5, while every tracked daml.yaml
-      # pins 3.4.11. The step that holds those two in agreement runs ungated,
-      # above.
+      # The download, the digest that verifies it and the pin sweep live in the
+      # action, so release.yml runs the same three and neither workflow carries
+      # its own copy. It sweeps the pins again, which the ungated step above has
+      # already done here: that step exists to report before the toolchain and
+      # outside the gate, and this one is what gives release.yml the same check
+      # without a second copy of it.
       - name: Install dpm
         if: steps.scope.outputs.run == 'true'
-        run: |
-          set -euo pipefail
-          test "$(uname -m)" = "x86_64"
-          tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
-          url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
-          curl -SLf --retry 3 --retry-all-errors --retry-delay 5 \
-            "$url" --output "${RUNNER_TEMP}/${tarball}"
-          echo "${DPM_TARBALL_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
-          mkdir -p "${RUNNER_TEMP}/dpm-extracted"
-          tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/dpm-extracted" --strip-components 1
-          "${RUNNER_TEMP}/dpm-extracted/bin/dpm" bootstrap "${RUNNER_TEMP}/dpm-extracted"
-          rm -rf "${RUNNER_TEMP}/${tarball}" "${RUNNER_TEMP}/dpm-extracted"
-          echo "$HOME/.dpm/bin" >> "$GITHUB_PATH"
+        uses: ./.github/actions/install-dpm
+        with:
+          sdk-version: ${{ env.DPM_SDK_VERSION }}
 
       - name: Report the installed SDK
         if: steps.scope.outputs.run == 'true'

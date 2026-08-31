@@ -24,7 +24,6 @@ jobs:
       # dies with a UTF-8 decoding error under a C or POSIX locale.
       LANG: C.UTF-8
       DPM_SDK_VERSION: '3.4.11'
-      DPM_TARBALL_SHA256: '177328b8d8b5781a6eee37fbd172a8445f18e07b46292c40fe32207d4cd72ccd'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,39 +74,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Copied from ci.yml's daml job. The published tarball is fetched by exact
-      # version and checked against a recorded digest instead of piping an
-      # installer into a shell. Pinning is also a correctness requirement, not
-      # only a supply-chain one: the installer's "latest" resolves to 3.5.5,
-      # while every tracked daml.yaml pins 3.4.11. The SDK pin sweep is discovered
-      # rather than listed, for the same reason as the LF-target sweep above.
+      # Shared with ci.yml's daml job, which is what keeps the download, the
+      # digest that verifies it and the SDK pin sweep to one copy between the
+      # two workflows. The sweep is discovered rather than listed, for the same
+      # reason as the LF-target sweep above.
       - name: Install dpm
-        run: |
-          set -euo pipefail
-          test "$(uname -m)" = "x86_64"
-          pins="$(git ls-files '*daml.yaml')"
-          if [ -z "$pins" ]; then
-            echo "no daml.yaml is tracked, so the SDK pin went unchecked" >&2
-            exit 1
-          fi
-          while read -r manifest; do
-            pinned="$(awk '/^sdk-version:/ {print $2; exit}' "$manifest")"
-            if [ "$pinned" != "$DPM_SDK_VERSION" ]; then
-              echo "${manifest} pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
-              exit 1
-            fi
-            echo "ok: ${manifest} pins SDK ${pinned}"
-          done <<<"$pins"
-          tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
-          url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
-          curl -SLf --retry 3 --retry-all-errors --retry-delay 5 \
-            "$url" --output "${RUNNER_TEMP}/${tarball}"
-          echo "${DPM_TARBALL_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
-          mkdir -p "${RUNNER_TEMP}/dpm-extracted"
-          tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/dpm-extracted" --strip-components 1
-          "${RUNNER_TEMP}/dpm-extracted/bin/dpm" bootstrap "${RUNNER_TEMP}/dpm-extracted"
-          rm -rf "${RUNNER_TEMP}/${tarball}" "${RUNNER_TEMP}/dpm-extracted"
-          echo "$HOME/.dpm/bin" >> "$GITHUB_PATH"
+        uses: ./.github/actions/install-dpm
+        with:
+          sdk-version: ${{ env.DPM_SDK_VERSION }}
 
       # No cache. A tag build is rare, and a cache that can go stale is a
       # liability on the one build whose output is permanent.
