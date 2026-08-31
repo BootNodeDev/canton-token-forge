@@ -273,9 +273,9 @@ Every pull request has the strings that spell a template id verified against
 `daml/`, whatever it touches: the `daml` check runs that comparison, and a
 sweep of every tracked SDK pin, both ahead of its toolchain install and both
 ignoring its own scope gate. One that touches
-`daml/` or the root build inputs runs four of these five automatically in
-that same check, after those two steps: only `npm run test:coverage` does
-not, because it re-runs Splice's own suites. One that touches `registry/`
+`daml/`, `consumer-smoke/`, `scripts/consumer-smoke.sh` or the root build
+inputs runs four of these five automatically in that same check, after those
+two steps: only `npm run test:coverage` does not. One that touches `registry/`
 runs that package's own lint, both typechecks, and unit suite as the
 `registry` check, not the root commands above. `npm run test:coverage` and
 the registry's `npm run test:e2e` are the only checks left off the
