@@ -27,6 +27,14 @@ jobs:
       DPM_TARBALL_SHA256: '177328b8d8b5781a6eee37fbd172a8445f18e07b46292c40fe32207d4cd72ccd'
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The job token is write-scoped in this workflow, and checkout
+          # otherwise leaves it in .git/config for every step that follows,
+          # including the whole Daml toolchain and the Splice source it
+          # vendors. Nothing here needs it: the publish step is handed its own
+          # token, and fetch-dep.sh clones a public repository into a separate
+          # working copy that does not inherit this one's config.
+          persist-credentials: false
 
       # Asserted against each other rather than against literals repeated here:
       # a copy of SPLICE_TAG in this file would have to be bumped in lockstep
