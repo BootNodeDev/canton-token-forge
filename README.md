@@ -141,9 +141,11 @@ the hidden package". You still need SDK 3.4.11 and LF 2.1 to compile against it.
 implemented, so it is not bundled. Take it from Splice directly if you need it.
 
 This snippet is transcribed from the `data-dependencies` and `build-options`
-blocks in `consumer-smoke/consumer/daml.yaml`, and the `daml` check compares the
-two on every pull request, so they cannot drift apart. The release body carries
-the same blocks, generated straight from that file.
+blocks in `consumer-smoke/consumer/daml.yaml`. On every pull request the `daml`
+check compares both block headers and every entry under them against that file,
+in both directions, so a flag, target or path that changes on one side reds
+rather than ships. The release body carries the same blocks, generated straight
+from that file.
 
 ## Requirements
 
