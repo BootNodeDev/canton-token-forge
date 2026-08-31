@@ -61,7 +61,12 @@ jobs:
             # so the zero case (the likely one: a manifest that never got a
             # --target line, or an SDK bump that moved it) would fail with no
             # diagnostic at all. Swallow the status and check the value instead.
-            count="$(grep -c -- '- --target=2.1' "$manifest" || true)"
+            #
+            # Anchored to the whole entry, because a substring match counts
+            # what does not pin anything: a commented-out '# - --target=2.1'
+            # beside a live '- --target=2.dev' reported one match and passed,
+            # and '--target=2.10' contains the literal too.
+            count="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=2\.1[[:space:]]*$' "$manifest" || true)"
             if [ "$count" != 1 ]; then
               echo "${manifest} must target LF 2.1 exactly once, found ${count}" >&2
               exit 1
