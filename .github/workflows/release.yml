@@ -2,8 +2,8 @@ name: release
 
 # A tag push is the human gate. The name and the decision to push are the
 # owner's, and a downstream repository pins the result permanently, so nothing
-# here creates a tag on its own. A manual dispatch runs every check and stops
-# short of publishing, which is how this workflow is rehearsed.
+# here creates a tag on its own. A manual dispatch runs every check but the tag
+# guard, and stops short of publishing, which is how this workflow is rehearsed.
 on:
   push:
     tags: ['v*']
@@ -166,7 +166,7 @@ jobs:
             | tee "${RUNNER_TEMP}/notes.md"
 
       # Gated on the event, not on an input: a manual dispatch runs every check
-      # above and can never publish.
+      # above bar the tag guard, and can never publish.
       - name: Publish
         if: github.event_name == 'push'
         env:
