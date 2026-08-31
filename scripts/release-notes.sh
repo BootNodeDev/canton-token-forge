@@ -69,7 +69,12 @@ SMOKE="consumer-smoke/consumer/daml.yaml"
 # A tag that exists but names another commit is always a refusal: whichever of
 # the two is wrong, the pair we would publish is. Only the not-yet-tagged case
 # has an override, for previewing a body while preparing a release.
-tagged="$(git rev-parse -q --verify "$TAG^{commit}" || true)"
+#
+# Resolved under refs/tags/ rather than as a bare commit-ish, which would also
+# accept a branch, HEAD or an abbreviated sha. A release body tells a consumer
+# to rebuild at this name forever, so a name that moves with the next commit,
+# or means nothing outside this checkout, is not one we can publish.
+tagged="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" || true)"
 if [ -z "$tagged" ]; then
   if [ "${ALLOW_UNTAGGED:-0}" != "1" ]; then
     echo "release-notes.sh: $TAG is not a tag in this repository" >&2
