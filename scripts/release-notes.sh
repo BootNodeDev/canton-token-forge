@@ -27,6 +27,20 @@ require() {
   fi
 }
 
+# One top-level block of a daml.yaml: its header line plus every line up to the
+# next top-level key. Reading the two blocks BY NAME, rather than everything
+# from data-dependencies to end of file, is what keeps the published snippet
+# right no matter where in that file the blocks sit or what is added after
+# them. The old range silently published an empty snippet when they were
+# reordered, and swallowed any block appended below them.
+yaml_block() {
+  awk -v key="$2" '
+    $0 ~ "^" key ":[[:space:]]*$" { inblock = 1; print; next }
+    inblock && /^[A-Za-z][A-Za-z0-9_-]*:/ { inblock = 0 }
+    inblock { print }
+  ' "$1"
+}
+
 TAG="${1:?usage: release-notes.sh <tag>}"
 SMOKE="consumer-smoke/consumer/daml.yaml"
 
@@ -56,12 +70,14 @@ require "SPLICE_TAG from versions.env" "$splice_tag"
 sdk="$(awk '/^sdk-version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
 require "the SDK pin from daml/canton-token-forge/daml.yaml" "$sdk"
 
-# data-dependencies: and build-options: are the last two blocks of the smoke
-# package's daml.yaml, so "from data-dependencies to end of file" is the whole
-# snippet. Its comments are dropped: they explain the file to us, not the
-# artifact to a consumer.
-snippet="$(awk '/^data-dependencies:/,0' "$SMOKE" | grep -v '^[[:space:]]*#' || true)"
-require "the consumer snippet out of $SMOKE" "$snippet"
+# Comments are dropped: they explain that file to us, not the artifact to a
+# consumer.
+deps_block="$(yaml_block "$SMOKE" data-dependencies | grep -v '^[[:space:]]*#' || true)"
+require "the data-dependencies block of $SMOKE" "$deps_block"
+opts_block="$(yaml_block "$SMOKE" build-options | grep -v '^[[:space:]]*#' || true)"
+require "the build-options block of $SMOKE" "$opts_block"
+snippet="$deps_block
+$opts_block"
 
 cat <<EOF
 \`$DAR_NAME\` is the whole dependency. It bundles the six
