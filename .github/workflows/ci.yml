@@ -478,8 +478,10 @@ jobs:
       # canton-token-forge-test lists the Splice interface DARs separately,
       # so it never exercises the artifact in isolation, and a change to what
       # the production package bundles or exposes is otherwise green until a
-      # release is cut. The Test step above just built the DAR, so building
-      # it again here would only verify the build step twice.
+      # release is cut. The Test step above just built the DAR, so a rebuild
+      # here would only repeat that work. release.yml sets the same variable
+      # for a stronger reason: the bytes it publishes must be the ones its
+      # reproducibility check hashed.
       - name: Consumer smoke test
         if: steps.scope.outputs.run == 'true'
         env:
