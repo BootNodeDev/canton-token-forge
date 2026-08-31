@@ -108,6 +108,43 @@ users when settling a DvP. That is
 the settlement venue's role rather than a token registry's, so this package
 declares the DAR without implementing the interface.
 
+## Consuming a release
+
+Any downstream Daml package that depends on this one needs one file:
+`canton-token-forge-0.0.1.dar`, attached to each
+[release](https://github.com/BootNodeDev/canton-token-forge/releases). It
+bundles the six `splice-api-token-*` interface packages it links against, at the
+package-ids it was compiled with, so a consumer does not vendor Splice, does not
+run `npm run setup`, and does not have to match `SPLICE_TAG`.
+
+Download it and save it as `vendor/canton-token-forge.dar`, then in your
+`daml.yaml`:
+
+```yaml
+data-dependencies:
+  - vendor/canton-token-forge.dar
+build-options:
+  - --target=2.1
+  - --package=splice-api-token-holding-v1-1.0.0
+  - --package=splice-api-token-metadata-v1-1.0.0
+  - --package=splice-api-token-transfer-instruction-v1-1.0.0
+  - --package=splice-api-token-allocation-v1-1.0.0
+  - --package=splice-api-token-allocation-instruction-v1-1.0.0
+  - --package=splice-api-token-burn-mint-v1-1.0.0
+```
+
+The `--package` lines are required: the bundled interface packages are hidden by
+default, and importing `Splice.Api.Token.*` without them fails with "member of
+the hidden package". You still need SDK 3.4.11 and LF 2.1 to compile against it.
+
+`splice-api-token-allocation-request-v1` is declared by this package but never
+implemented, so it is not bundled. Take it from Splice directly if you need it.
+
+This snippet is a hand-kept copy of the `data-dependencies` and `build-options`
+blocks in `consumer-smoke/consumer/daml.yaml`. The release body carries the same
+blocks generated straight from that file, so trust the release body if the two
+ever disagree.
+
 ## Requirements
 
 - `dpm` (Digital Asset Package Manager) and a JDK 17+ on `PATH`
@@ -118,9 +155,14 @@ declares the DAR without implementing the interface.
 
 ## Bumping Splice
 
-Edit `SPLICE_TAG` in `versions.env`, run `npm run setup`. No other file changes -
-unless the new tag ships a different SDK, in which case also update `sdk-version`
-in every tracked `daml.yaml` (see CLAUDE.md).
+Edit `SPLICE_TAG` in `versions.env`, run `npm run setup`. Two things do not
+follow from that knob (see CLAUDE.md). If the new tag ships a different SDK,
+update `sdk-version` in every tracked `daml.yaml`, and if it moves the LF
+target, `--target` there and in the LF grep in
+`.github/workflows/release.yml`. If it ships different interface versions,
+update the `--package` unit-ids in `consumer-smoke/consumer/daml.yaml`, which
+spell the version out because the compiler rejects the unversioned form. The
+snippet above copies that file's `build-options`, so it follows either edit.
 
 ## License
 

@@ -567,14 +567,18 @@ Stated plainly, because they are what an evaluation turns on.
   holding a null `decimals` and the static `supportedApis`. Response validation
   is off, so nothing catches it on the way out; get-by-id escapes only because
   no id can match such a row.
-- **One of the three suites above is still run by hand, and so is a further
-  check outside them.** A pull request that touches `daml/` runs the Daml
+- **One of the three suites above never runs on a pull request, and neither do
+  two checks outside them.** A pull request that touches `daml/` runs the Daml
   script suite as the `daml` check; one that touches `registry/` runs that
   package's lint, its typechecks and the registry unit suite as the `registry`
   check. The end-to-end suite needs a live participant, so only its types are
-  checked there and it is never run; off the pull-request path too is
-  `npm run test:coverage`, which re-runs Splice's own suites and is not one of
-  the three above.
+  checked there and it is never run. Off that path too are
+  `npm run test:coverage`, which re-runs Splice's own suites, and
+  `npm run smoke`, which compiles `consumer-smoke/` against nothing but the
+  built DAR. Neither is one of the three above: the release workflow runs the
+  smoke test, nothing runs the coverage report, so a change that strands a
+  downstream consumer stays green until a release is cut or someone runs it by
+  hand.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 
@@ -600,8 +604,12 @@ registry/                            Read-only HTTP service
   src/                               Config, ledger client, mapping, disclosure, routes
   openapi/                           The four standard specs it validates against
   test/                              Unit suites, plus test/e2e against a live participant
+consumer-smoke/                      Data-depends only on the built DAR, proving the
+                                     release asset is consumable on its own
 scripts/
   fetch-dep.sh                       Vendor Splice, derive versions, symlink DARs
+  consumer-smoke.sh                  Build consumer-smoke/ against the built DAR
+  release-notes.sh                   Emit the release body from the smoke package
   sandbox.sh                         Local Canton sandbox with the JSON Ledger API
   seed.mjs                           Seed an admin, demo users and one instrument
 versions.env                         The single version knob: SPLICE_TAG
