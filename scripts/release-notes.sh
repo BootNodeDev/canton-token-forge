@@ -216,15 +216,29 @@ while IFS= read -r unit; do
   fi
 done <<< "$bundled"
 
+# Three values below appear in prose as well as in the snippet, and a literal
+# copy of any of them goes stale silently: the count when the interface set
+# changes, the LF target when an SDK bump moves it, the vendor path when the
+# smoke package renames what it depends on. Each is read from the same file the
+# snippet is cut from, so the prose and the yaml cannot disagree.
+# wc, not grep -c: grep exits 1 on no match, which under set -e would kill the
+# script at the assignment and leave the guard below unreachable. $packages is
+# already known non-empty here, so this only has to count it honestly.
+pkg_count="$(wc -l <<< "$packages" | tr -d ' ')"
+lf_target="$(sed -n 's/^[[:space:]]*-[[:space:]]*--target=//p' <<< "$opts_block")"
+require "the LF target from the build-options block of $SMOKE" "$lf_target"
+vendor_path="$(sed -n 's/^[[:space:]]*-[[:space:]]*//p' <<< "$deps_block" | head -1)"
+require "the data-dependency path from $SMOKE" "$vendor_path"
+
 cat <<EOF
-\`$DAR_NAME\` is the whole dependency. It bundles the six
+\`$DAR_NAME\` is the whole dependency. It bundles all $pkg_count
 \`splice-api-token-*\` interface packages it links against, at the package-ids
 it was compiled with, so a consumer does not vendor Splice, does not run our
 setup, and does not need to match \`SPLICE_TAG\`.
 
 ## Consuming it
 
-Download \`$DAR_NAME\` and save it as \`vendor/canton-token-forge.dar\`, then in your \`daml.yaml\`:
+Download \`$DAR_NAME\` and save it as \`$vendor_path\`, then in your \`daml.yaml\`:
 
 \`\`\`yaml
 $snippet
@@ -239,7 +253,7 @@ by default, and importing \`Splice.Api.Token.*\` without them fails with
 | | |
 |---|---|
 | Daml SDK | $sdk |
-| LF target | 2.1 |
+| LF target | $lf_target |
 | Built against Splice | $splice_tag |
 
 ## Verifying this asset
