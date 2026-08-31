@@ -31,7 +31,7 @@ Two packages:
 | Category | Technology | Notes |
 |----------|-----------|-------|
 | Language | Daml | LF target **2.1** (`build-options: --target=2.1`) |
-| SDK | 3.4.11 | pinned in both `daml.yaml` files |
+| SDK | 3.4.11 | pinned in all three `daml.yaml` files; CI asserts them |
 | Build tool | `dpm` (Digital Asset Package Manager) | NOT the legacy `daml` assistant (removed as of SDK 3.5) |
 | Task runner | `npm` scripts | thin wrappers over `dpm`; they set `LANG=C.UTF-8` |
 | Dependencies | Splice interface DARs | vendored into `deps/` by `scripts/fetch-dep.sh` (gitignored) |
@@ -44,8 +44,11 @@ Two packages:
   assistant (removed as of SDK 3.5). Commands: `dpm build`, `dpm test`,
   `dpm install <version>`.
 - SDK pinned to **3.4.11**, LF target **2.1** (`build-options: --target=2.1`) in
-  both `daml.yaml` files. Do not bump casually - the deps are built at this SDK/LF
-  and the test package unifies `daml-script` against it.
+  every tracked `daml.yaml`, of which there are three: the two packages under
+  `daml/` and the consumer smoke package. Do not bump casually - the deps are
+  built at this SDK/LF and the test package unifies `daml-script` against it.
+  The `daml` CI check reads the pin out of each one and fails if any disagrees
+  with the SDK the workflow installs.
 - A JDK (17+) and `dpm` must be on `PATH`. Install dpm with
   `curl https://get.digitalasset.com/install/install.sh | sh`, then
   `dpm install 3.4.11`.
@@ -62,10 +65,22 @@ The **only** version you pin is the Splice release tag, in **`versions.env`**
   tracked Daml config**.
 - To move to a new Splice release: edit `SPLICE_TAG`, run `npm run setup`.
 
-Exception: the **SDK/LF** pins live in the two `daml.yaml` files (static YAML
-can't read env vars). If a new tag ships a different SDK, update `sdk-version`
-(and possibly `--target`) there too. `scripts/build-harness.sh` derives the SDK
-it installs from the vendored harness, so at least the install matches the tag.
+Two exceptions. The **SDK/LF** pins live in the three `daml.yaml` files (static
+YAML can't read env vars). If a new tag ships a different SDK, update
+`sdk-version` (and possibly `--target`) there too, along with
+`DPM_SDK_VERSION` in both workflows and the tarball digest in
+`.github/actions/install-dpm/action.yml`, which is where the one copy of that
+digest lives. Neither workflow installs an SDK a manifest disagrees with, and
+the action refuses a version it holds no digest for, so a half-finished bump
+reds rather than installing something unverified.
+`scripts/build-harness.sh` derives the SDK it installs from the vendored
+harness, so at least the install matches the tag.
+
+The second is `consumer-smoke/consumer/daml.yaml`, which names the six bundled
+Splice interfaces as versioned unit-ids (`--package=splice-api-token-holding-v1-1.0.0`
+and its five siblings). The compiler rejects the unversioned form, so there is no
+stable name to point at, and a `SPLICE_TAG` that ships a different interface
+version has to be followed by hand here. Nothing derives these.
 
 ## Build & test
 
@@ -86,7 +101,8 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 | `npm run build:canton-token-forge` | Build only the production package. |
 | `npm test` | Build the `canton-token-forge` DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same, with a coverage report focused on your templates. |
-| `npm run clean` | Remove both `.daml` build dirs. |
+| `npm run smoke` | Build the DAR, then compile a package that data-depends on nothing but it, proving the artifact is consumable on its own. |
+| `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
 | `npm run setup` | Re-vendor deps + re-create the stable symlinks. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
@@ -254,18 +270,40 @@ Run before declaring work done:
 - `npm run build` - both packages compile
 - `npm test` - the integration suite passes
 - `npm run test:coverage` - when you touched or added templates
+- `npm run smoke` - when you changed what the production DAR exposes: a
+  renamed module or template, its dependencies, its interface instances, or its
+  `build-options`
 
-Every pull request has the strings that spell a template id verified against
-`daml/`, whatever it touches: the `daml` check runs that comparison ahead of
-its toolchain install and ignores its own scope gate. One that touches
-`daml/` or the root build inputs runs the first three of these automatically
-in that same check, after that step. One that touches
-`registry/` runs that package's own lint, both typechecks, and unit suite as
-the `registry` check, not the root commands above. `npm run test:coverage` and
-the registry's `npm run test:e2e` stay manual: the first re-runs Splice's own
-suites, and the second needs a live participant. The end-to-end suite is
-typechecked on that path even so, which is the point of typechecking it
-separately from the run.
+Every pull request gets three comparisons whatever it touches, because the
+`daml` check runs them ahead of its toolchain install and outside its own
+scope gate: the strings that spell a template id, against `daml/`; the
+consumer snippet in `README.md`, against `consumer-smoke/consumer/daml.yaml`;
+and every tracked `daml.yaml`, against both the SDK version the workflow
+installs and LF 2.1. One that touches
+`daml/`, `consumer-smoke/`, `scripts/consumer-smoke.sh` or the root build
+inputs runs four of these five automatically in that same check, after those
+three steps: only `npm run test:coverage` does not. One that touches `registry/`
+runs that package's own lint, both typechecks, and unit suite as the
+`registry` check, not the root commands above. `npm run test:coverage` and
+the registry's `npm run test:e2e` are both off the pull-request path: the
+first re-runs Splice's own suites, the second needs a live participant. The
+`release` workflow adds checks of its own that no pull request runs. The
+end-to-end suite is typechecked on that path even so, which is the point of
+typechecking it separately from the run.
+
+A pushed tag whose `v` is followed by a digit (`v[0-9]*`, so `vnext` and
+`vendor` trigger nothing) runs the `release` workflow instead: it refuses a
+tag `main` does not reach, builds from a clean checkout, runs the suite,
+checks the DAR is byte-reproducible, compiles `consumer-smoke/` against the
+built artifact, generates the release body, and publishes the DAR as a
+release asset. A manual
+dispatch of that workflow runs the build and those artifact checks, cannot
+publish, and leaves three things unexercised: the on-main refusal, the publish,
+and `release-notes.sh`'s tag guard, which `ALLOW_UNTAGGED` waives so that a
+body can be emitted for a ref that is not a tag at all. See
+[`RUNBOOK.md`](RUNBOOK.md#cutting-a-release) for the procedure, including the
+pre-release rehearsal, the only run that exercises that guard before the real
+tag.
 
 ## References
 

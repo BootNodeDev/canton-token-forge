@@ -135,7 +135,6 @@ jobs:
       # dies with a UTF-8 decoding error under a C or POSIX locale.
       LANG: C.UTF-8
       DPM_SDK_VERSION: '3.4.11'
-      DPM_TARBALL_SHA256: '177328b8d8b5781a6eee37fbd172a8445f18e07b46292c40fe32207d4cd72ccd'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -175,6 +174,9 @@ jobs:
           fi
           checked=(
             RUNBOOK.md
+            # Listed to keep the comparison below exhaustive. Unlike the rest,
+            # this file's imports are compiler-checked, by `npm run smoke`.
+            consumer-smoke/consumer/daml/Consumer.daml
             registry/.env.example
             registry/test/e2e/helpers/sandbox.ts
             registry/test/helpers/fixtures.ts
@@ -291,6 +293,135 @@ jobs:
           done
           exit "$status"
 
+      # README.md's "Consuming a release" snippet is a hand transcription of
+      # the two blocks scripts/release-notes.sh cuts from the smoke package,
+      # and it is the first page a consumer reads. Nothing else compared the
+      # two: a SPLICE_TAG bump that ships new interface versions reds this
+      # job through the smoke package, the author fixes that daml.yaml, CI
+      # goes green, and README still tells a consumer to write the flags we
+      # moved off. Ungated for the same reason the step above is, and because
+      # README.md appears in the gate's path list nowhere at all, so a change
+      # to either file has to be able to red this.
+      - name: Verify the README consumer snippet
+        run: |
+          set -euo pipefail
+          smoke=consumer-smoke/consumer/daml.yaml
+          # The vendor path, the LF target and the --package flags: the lines
+          # a consumer copies. Selected by their leading '- --' or
+          # '- vendor/' rather than by parsing the YAML blocks, which is what
+          # keeps the dependencies: entries (daml-prim, daml-stdlib) out
+          # without a second block parser living here.
+          pattern='^[[:space:]]*-[[:space:]]*(--|vendor/)'
+          # The entries alone do not make a snippet. Nothing else here ties
+          # one to the block it belongs under, so README could carry every
+          # entry line with build-options: renamed, dropped, or the --package
+          # flags moved under data-dependencies:, and each comparison below
+          # would still match. Measured on the smoke package with the header
+          # renamed: dpm accepts the file, ignores the key it does not know,
+          # and the imports fail on "member of the hidden package", the same
+          # error a consumer gets with the flags missing altogether, which is
+          # what this whole section exists to prevent. The generated release
+          # body cannot drift this way: yaml_block cuts each header out of the
+          # smoke package itself.
+          for header in data-dependencies: build-options:; do
+            if ! grep -qxF -- "$header" README.md; then
+              echo "README.md does not carry the '${header}' block header" >&2
+              exit 1
+            fi
+          done
+          # A grep that matches nothing exits 1, which under -e kills the
+          # step at the assignment and leaves the emptiness report below
+          # unreachable.
+          from_smoke="$(grep -E "$pattern" "$smoke" || true)"
+          if [ -z "$from_smoke" ]; then
+            echo "${smoke} names no --package, --target or vendor entry" >&2
+            exit 1
+          fi
+          from_readme="$(grep -E "$pattern" README.md || true)"
+          status=0
+          # Both directions. The first catches a flag README never followed
+          # the smoke package onto; the second catches one it kept after the
+          # smoke package dropped it, which is the quieter of the two because
+          # every line still present is individually valid.
+          #
+          # The two comparisons below, and the header loop above, take their
+          # pattern after '--'. The selection pattern allows no leading
+          # whitespace, and unindented block entries build green under dpm, so
+          # a manifest reformatted that way hands grep a pattern beginning
+          # with '-'. Without the terminator grep reads that as an option
+          # cluster and exits 2, which '!' turns into "README.md does not
+          # carry" a line it carries verbatim.
+          while IFS= read -r line; do
+            if ! grep -qxF -- "$line" README.md; then
+              echo "README.md does not carry '${line}' from ${smoke}" >&2
+              status=1
+            fi
+          done <<<"$from_smoke"
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            if ! grep -qxF -- "$line" "$smoke"; then
+              echo "README.md carries '${line}', which ${smoke} does not" >&2
+              status=1
+            fi
+          done <<<"$from_readme"
+          if [ "$status" = 0 ]; then
+            echo "ok: README.md's snippet matches ${smoke}"
+          fi
+          exit "$status"
+
+      # DPM_SDK_VERSION is one more copy of a pin whose other homes are the
+      # daml.yaml files. Assert rather than trust: bumping those and forgetting
+      # this one otherwise fails much later, or silently makes dpm download a
+      # second SDK. Discovered rather than listed, because a package added
+      # later carries a pin of its own and a list written today cannot name it.
+      # Ungated for the same reason the step above is: the sweep discovers its
+      # manifests instead of reading the gate's list, so gating it would let a
+      # pull request that bumps a manifest the gate does not list pass while
+      # the merge to main reds. Every tracked manifest sits inside the gate
+      # today, but that list is written by hand and this sweep is not. It needs
+      # no toolchain, only the checkout, so it can run here rather than beside
+      # the install it guards.
+      # The LF target is swept here as well as in release.yml. It used to be
+      # asserted only there, which meant a manifest moved off 2.1 built, tested
+      # and merged green, and first reded on the tag push, with the tag already
+      # public. The two sweeps read the same manifests for the same literal;
+      # keeping release.yml's is what makes the one run whose output is
+      # permanent self-contained rather than trusting a check in another file.
+      - name: Verify the SDK and LF pins
+        run: |
+          set -euo pipefail
+          pins="$(git ls-files '*daml.yaml')"
+          if [ -z "$pins" ]; then
+            echo "no daml.yaml is tracked, so the SDK pin went unchecked" >&2
+            exit 1
+          fi
+          while read -r manifest; do
+            pinned="$(awk '/^sdk-version:/ {print $2; exit}' "$manifest")"
+            if [ "$pinned" != "$DPM_SDK_VERSION" ]; then
+              echo "${manifest} pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
+              exit 1
+            fi
+            # Anchored to the whole entry: a substring match counts a
+            # commented-out line, and matches --target=2.10 as readily as 2.1.
+            # A grep that matches nothing exits 1, which under -e would kill
+            # the step here and leave the report below unreachable.
+            #
+            # Counted twice, because the anchored count says only that a live
+            # 2.1 entry is present, never that it is the only one. A second
+            # entry beside it leaves the manifest naming a target nothing
+            # here has inspected, whichever of the two damlc ends up using,
+            # and it reaches release-notes.sh as an LF row carrying two
+            # values. Counting every entry as well is what closes both.
+            entries="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=' "$manifest" || true)"
+            target="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=2\.1[[:space:]]*$' "$manifest" || true)"
+            if [ "$entries" != 1 ] || [ "$target" != 1 ]; then
+              echo "${manifest} must carry exactly one --target entry, naming LF 2.1;" \
+                   "found ${entries} entries, ${target} of them 2.1" >&2
+              exit 1
+            fi
+            echo "ok: ${manifest} pins SDK ${pinned} and targets LF 2.1"
+          done <<<"$pins"
+
       - name: Scope
         id: scope
         env:
@@ -304,9 +435,9 @@ jobs:
             exit 0
           fi
           # A blip on this fetch reds the job having verified nothing, so it
-          # is retried rather than taken at its word. The template-id step is
-          # ungated so that it runs whatever the change touches; it sits above
-          # this one so that a red here finds it already run and reported,
+          # is retried rather than taken at its word. Every step above this
+          # one is ungated, so they run whatever the change touches; they sit
+          # above it so that a red here finds them already run and reported,
           # rather than never run at all.
           for attempt in 1 2 3; do
             git fetch --no-tags --prune origin \
@@ -318,12 +449,15 @@ jobs:
           changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
-          # Build and test inputs only. The files that merely name template
-          # ids are not listed: the check that reads them runs ahead of this
-          # gate and ignores it, so listing them here would install a
-          # toolchain and build both packages to verify nothing the change can
-          # reach.
-          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          # Build and test inputs, including the smoke package the smoke
+          # step compiles and every script a step below runs. The
+          # files that merely name template ids are not listed: the check
+          # that reads them runs ahead of this gate and ignores it, so
+          # listing them here would install a toolchain and build both
+          # packages to verify nothing the change can reach. The install
+          # action is listed because this job runs it; release.yml is left
+          # out for that same reason, since no step in this job does.
+          if grep -Eq '^(daml/|consumer-smoke/|scripts/fetch-dep\.sh$|scripts/consumer-smoke\.sh$|scripts/release-notes\.sh$|\.github/actions/|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
@@ -335,37 +469,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # The published tarball is fetched by exact version and checked against a
-      # recorded digest instead of piping an installer into a shell. Pinning is
-      # also a correctness requirement, not only a supply-chain one: the
-      # installer's "latest" resolves to 3.5.5, while both daml.yaml files pin
-      # 3.4.11.
+      # The download, the digest that verifies it and the pin sweep live in the
+      # action, so release.yml runs the same three and neither workflow carries
+      # its own copy. It sweeps the pins again, which the ungated step above has
+      # already done here: that step exists to report before the toolchain and
+      # outside the gate, and this one is what gives release.yml the same check
+      # without a second copy of it.
       - name: Install dpm
         if: steps.scope.outputs.run == 'true'
-        run: |
-          set -euo pipefail
-          test "$(uname -m)" = "x86_64"
-          # DPM_SDK_VERSION is a third copy of a pin whose other two homes are
-          # the daml.yaml files. Assert rather than trust: bumping those and
-          # forgetting this one otherwise fails much later, or silently makes
-          # dpm download a second SDK.
-          for pkg in canton-token-forge canton-token-forge-test; do
-            pinned="$(awk '/^sdk-version:/ {print $2; exit}' "daml/${pkg}/daml.yaml")"
-            if [ "$pinned" != "$DPM_SDK_VERSION" ]; then
-              echo "daml/${pkg}/daml.yaml pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
-              exit 1
-            fi
-          done
-          tarball="dpm-${DPM_SDK_VERSION}-linux-amd64.tar.gz"
-          url="https://artifactregistry.googleapis.com/download/v1/projects/da-images/locations/europe/repositories/public-generic/files/dpm-sdk:${DPM_SDK_VERSION}:${tarball}:download?alt=media"
-          curl -SLf --retry 3 --retry-all-errors --retry-delay 5 \
-            "$url" --output "${RUNNER_TEMP}/${tarball}"
-          echo "${DPM_TARBALL_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum -c -
-          mkdir -p "${RUNNER_TEMP}/dpm-extracted"
-          tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/dpm-extracted" --strip-components 1
-          "${RUNNER_TEMP}/dpm-extracted/bin/dpm" bootstrap "${RUNNER_TEMP}/dpm-extracted"
-          rm -rf "${RUNNER_TEMP}/${tarball}" "${RUNNER_TEMP}/dpm-extracted"
-          echo "$HOME/.dpm/bin" >> "$GITHUB_PATH"
+        uses: ./.github/actions/install-dpm
+        with:
+          sdk-version: ${{ env.DPM_SDK_VERSION }}
 
       - name: Report the installed SDK
         if: steps.scope.outputs.run == 'true'
@@ -453,3 +567,39 @@ jobs:
       - name: Test
         if: steps.scope.outputs.run == 'true'
         run: npm test
+
+      # canton-token-forge-test lists the Splice interface DARs separately,
+      # so it never exercises the artifact in isolation, and a change to what
+      # the production package bundles or exposes is otherwise green until a
+      # release is cut. The Test step above just built the DAR, so a rebuild
+      # here would only repeat that work. release.yml sets the same variable
+      # for a stronger reason: the bytes it publishes must be the ones its
+      # reproducibility check hashed.
+      - name: Consumer smoke test
+        if: steps.scope.outputs.run == 'true'
+        env:
+          SKIP_BUILD: '1'
+        run: npm run smoke
+
+      # The generator reads the smoke package and the built DAR and compares
+      # the two, so a change that leaves both compiling can still break the
+      # release body: a flag naming something the DAR stopped bundling, a
+      # bundled interface the snippet stopped naming, a block it can no longer
+      # find. Only the release workflow runs it otherwise, which would put its
+      # first automated run after the tag was already public. Under SKIP_BUILD
+      # it only reads, and it writes the body to stdout, so running it here
+      # costs almost nothing and leaves that body in the log to read.
+      #
+      # ALLOW_UNTAGGED because GITHUB_REF_NAME is a branch or a merge ref here,
+      # never a tag. It waives the refusal of a name that is not a tag, and so
+      # also the comparison against the checked-out commit, which only a real
+      # tag reaches: the body this step prints says "rebuild it at" whatever
+      # ref the run carries. Those two are what the step does not cover; the
+      # tag push
+      # in RUNBOOK.md's rehearsal is where it stays covered.
+      - name: Generate the release notes
+        if: steps.scope.outputs.run == 'true'
+        env:
+          SKIP_BUILD: '1'
+          ALLOW_UNTAGGED: '1'
+        run: bash scripts/release-notes.sh "${GITHUB_REF_NAME}"

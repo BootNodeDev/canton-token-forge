@@ -1,0 +1,277 @@
+name: release
+
+# A tag push is the human gate. The name and the decision to push are the
+# owner's, and a downstream repository pins the result permanently, so nothing
+# here creates a tag on its own. A manual dispatch runs every step below except
+# two, the on-main refusal and the publish, which are gated on a push; it also
+# sets ALLOW_UNTAGGED, which waives release-notes.sh's refusal of a name that
+# is not a tag in this repository, and with it the comparison against the
+# checked-out commit that only a real tag ever reaches. A dispatch therefore
+# emits a body naming whatever ref it was dispatched from. That is how this
+# workflow is rehearsed short of publishing, and the pre-release tag push in
+# RUNBOOK.md is what covers the three it leaves.
+#
+# The trigger requires a digit after the v. 'v*' also matches names that are
+# not versions at all, such as vnext or vendor, and an unhyphenated one is
+# left unmarked by the pre-release case below, so GitHub serves it from
+# /releases/latest, which is the URL the README and the release body both
+# send a consumer to for the DAR they pin.
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+
+# Creating a release needs write, and it is confined to this workflow. ci.yml
+# stays at contents: read; this permission must not be added there.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # damlc regenerates data-dependency interface source on every build and
+      # dies with a UTF-8 decoding error under a C or POSIX locale.
+      LANG: C.UTF-8
+      DPM_SDK_VERSION: '3.4.11'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The job token is write-scoped in this workflow, and checkout
+          # otherwise leaves it in .git/config for every step that follows,
+          # including the whole Daml toolchain and the Splice source it
+          # vendors. Nothing here needs it: the publish step is handed its own
+          # token, and fetch-dep.sh clones a public repository into a separate
+          # working copy that does not inherit this one's config.
+          persist-credentials: false
+
+      # A v* tag can be pushed from any commit, including one that never
+      # reached main, and only a hyphenated tag is marked as a pre-release. An
+      # unhyphenated tag on unmerged work would become the release that
+      # /releases/latest serves, which a downstream repository then pins.
+      # release-notes.sh cannot catch this: its guard asserts the tag names the
+      # checked-out commit, which a tag-push checkout satisfies by definition.
+      #
+      # Asked over the API rather than with merge-base, because this repository
+      # is private and the checkout deliberately keeps no credentials, so a
+      # later git fetch has nothing to authenticate with. compare reports the
+      # tagged commit as identical to main or behind it exactly when main
+      # reaches it; ahead and diverged are the two that must not publish.
+      #
+      # First, because it needs nothing but the checkout and a token: a tag
+      # that can never publish should not first pay for two Splice vendorings,
+      # the suite and a reproducibility rebuild. Gated with the publish below
+      # rather than run always,
+      # so a dispatched rehearsal still works from a branch. The pre-release
+      # tag push in RUNBOOK.md is what exercises this before the real tag does.
+      - name: Refuse a tag that is not on main
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${GITHUB_SHA}" --jq .status)"
+          case "$status" in
+            identical|behind) echo "ok: ${GITHUB_REF_NAME} is on main (${status})" ;;
+            *)
+              echo "${GITHUB_REF_NAME} names ${GITHUB_SHA}, which main does not reach (${status})" >&2
+              exit 1
+              ;;
+          esac
+
+      # SPLICE_TAG is read out of versions.env rather than copied here, where
+      # it would have to be bumped in lockstep with that file forever; the
+      # value is recorded in the release body instead. The LF target is the one
+      # pin this file does spell out, so moving off 2.1 means editing the grep
+      # below as well as every manifest. The manifests are discovered rather
+      # than listed, so a package added later is covered without naming it here.
+      - name: Assert the pins agree
+        run: |
+          set -euo pipefail
+          splice_tag="$(awk -F= '/^SPLICE_TAG=/ {print $2; exit}' versions.env)"
+          if [ -z "$splice_tag" ]; then
+            echo "versions.env names no SPLICE_TAG" >&2
+            exit 1
+          fi
+          echo "SPLICE_TAG=${splice_tag}"
+          manifests="$(git ls-files '*daml.yaml')"
+          if [ -z "$manifests" ]; then
+            echo "no daml.yaml is tracked, so the LF target went unchecked" >&2
+            exit 1
+          fi
+          while read -r manifest; do
+            # A grep that matches nothing exits 1, and under -e that kills the
+            # step at this assignment before the count below is ever checked,
+            # so the zero case (the likely one: a manifest that never got a
+            # --target line, or an SDK bump that moved it) would fail with no
+            # diagnostic at all. Swallow the status and check the value instead.
+            #
+            # Anchored to the whole entry, because a substring match counts
+            # what does not pin anything: a commented-out '# - --target=2.1'
+            # beside a live '- --target=2.dev' reported one match and passed,
+            # and '--target=2.10' contains the literal too.
+            #
+            # The anchor answers only half of that. It says a live 2.1 entry
+            # is present once; it says nothing about a second entry beside
+            # it, which leaves the manifest naming a target nothing here has
+            # inspected. Every entry is counted as well, so the manifest has
+            # to carry exactly one and it has to be the pinned one.
+            entries="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=' "$manifest" || true)"
+            count="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=2\.1[[:space:]]*$' "$manifest" || true)"
+            if [ "$entries" != 1 ] || [ "$count" != 1 ]; then
+              echo "${manifest} must carry exactly one --target entry, naming LF 2.1;" \
+                   "found ${entries} entries, ${count} of them 2.1" >&2
+              exit 1
+            fi
+            echo "ok: ${manifest} targets LF 2.1"
+          done <<<"$manifests"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Shared with ci.yml's daml job, which is what keeps the download, the
+      # digest that verifies it and the SDK pin sweep to one copy between the
+      # two workflows. The sweep is discovered rather than listed, for the same
+      # reason as the LF-target sweep above.
+      - name: Install dpm
+        uses: ./.github/actions/install-dpm
+        with:
+          sdk-version: ${{ env.DPM_SDK_VERSION }}
+
+      # No cache. A tag build is rare, and a cache that can go stale is a
+      # liability on the one build whose output is permanent.
+      - name: Vendor deps
+        run: bash scripts/fetch-dep.sh
+
+      - name: Test
+        run: npm test
+
+      # The DAR is byte-reproducible from a clean tree today. The release body
+      # tells consumers they can verify the asset by rebuilding, so that
+      # property is checked here rather than assumed to hold forever. The
+      # path is read out of daml.yaml, the same idiom scripts/consumer-smoke.sh
+      # and scripts/release-notes.sh use, so a version bump needs no edit here.
+      #
+      # deps/ is discarded between the two builds, because a consumer verifying
+      # the asset starts from a clone and runs npm run setup: vendoring is one
+      # of the inputs their rebuild has and a second local build does not.
+      # npm run clean removes build output and the smoke test's copied DAR, not
+      # deps/, so keeping it would compare two builds over identical vendored
+      # source and prove only that damlc is deterministic, not the claim made.
+      - name: Verify the DAR is reproducible
+        run: |
+          set -euo pipefail
+          version="$(awk '/^version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
+          if [ -z "$version" ]; then
+            echo "daml/canton-token-forge/daml.yaml names no version" >&2
+            exit 1
+          fi
+          dar="daml/canton-token-forge/.daml/dist/canton-token-forge-${version}.dar"
+          echo "DAR=${dar}" >> "$GITHUB_ENV"
+          first="$(sha256sum "$dar" | cut -d' ' -f1)"
+          npm run clean
+          rm -rf deps
+          bash scripts/fetch-dep.sh
+          npm run build:canton-token-forge
+          second="$(sha256sum "$dar" | cut -d' ' -f1)"
+          if [ "$first" != "$second" ]; then
+            echo "DAR is not reproducible: ${first} then ${second}" >&2
+            exit 1
+          fi
+          echo "reproducible: ${first}"
+
+      # This step and the one below both default to building the DAR again.
+      # Skipping that leaves the artifact the step above verified in place, so
+      # the bytes uploaded and the sha256 printed into the release body are the
+      # ones whose reproducibility was checked rather than a later build's.
+      - name: Consumer smoke test
+        env:
+          SKIP_BUILD: '1'
+        run: npm run smoke
+
+      - name: Generate the release notes
+        env:
+          SKIP_BUILD: '1'
+          # A workflow_dispatch run's GITHUB_REF_NAME is whatever ref was
+          # picked to dispatch from and is not necessarily a tag, so
+          # release-notes.sh would refuse the dry run. On a tag push this
+          # evaluates to the empty string, which is not "1", so that refusal
+          # still stands where it matters.
+          ALLOW_UNTAGGED: ${{ github.event_name != 'push' && '1' || '' }}
+        run: |
+          set -euo pipefail
+          bash scripts/release-notes.sh "${GITHUB_REF_NAME}" \
+            | tee "${RUNNER_TEMP}/notes.md"
+
+      # Gated on the event, not on an input: a manual dispatch runs the checks
+      # above but never this step, the on-main refusal or the tag guard inside
+      # release-notes.sh, so it cannot publish.
+      - name: Publish
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # A hyphenated tag is a pre-release under semver, and the way this
+          # workflow gets proved is by pushing one. Unmarked, gh would make it
+          # the release that /releases/latest serves, which is the URL a
+          # downstream repository follows to find the DAR it pins.
+          prerelease=()
+          case "${GITHUB_REF_NAME}" in
+            *-*) prerelease=(--prerelease) ;;
+          esac
+          # Every flag precedes the positionals: gh's own examples never place
+          # one between two of them, so this does not lean on how its parser
+          # treats that.
+          #
+          # Creating and uploading are separate calls because `gh release
+          # create` refuses outright when the release exists. Doing both in one
+          # call meant that a run which created the release and then lost the
+          # upload left a published tag carrying no DAR, and every retry died
+          # on "already exists" instead of finishing the job. Creating only
+          # when there is nothing there makes the step re-runnable until the
+          # asset lands.
+          #
+          # The body is written on both passes. Leaving it alone would be
+          # harmless only for a release this workflow made, where a
+          # regenerated body is identical because it is derived from this
+          # same commit and tag. Nothing establishes that: a release created
+          # by hand to unblock a consumer after a failed run need carry none
+          # of the sha256, package-id or consumer snippet, and attaching the DAR
+          # under it would publish the asset with nothing to verify it
+          # against. Rewriting costs a call and makes the published body the
+          # generated one either way.
+          #
+          # The tag is already known to exist locally and to name this commit,
+          # because release-notes.sh refuses to describe anything else.
+          # --verify-tag asks the same of the remote, so a ref that went
+          # missing in between cannot end as a tag gh created itself.
+          #
+          # The edit path re-applies the pre-release marking and clears the
+          # draft flag, rather than passing the body alone. Both describe the
+          # release this workflow would have created, and neither is implied
+          # by the release that is already there: a hand-made one carries
+          # whatever its author chose, and an unmarked hyphenated tag can
+          # become the release /releases/latest serves, which is the failure
+          # the create path's marking exists to prevent. A draft is the same
+          # shape one step further on, leaving the tag published with nothing
+          # a consumer can download.
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release ${GITHUB_REF_NAME} exists; refreshing its body and attaching the asset"
+            gh release edit "${GITHUB_REF_NAME}" \
+              --notes-file "${RUNNER_TEMP}/notes.md" \
+              --draft=false \
+              "${prerelease[@]}"
+          else
+            gh release create \
+              --verify-tag \
+              --title "${GITHUB_REF_NAME}" \
+              --notes-file "${RUNNER_TEMP}/notes.md" \
+              "${prerelease[@]}" \
+              "${GITHUB_REF_NAME}"
+          fi
+          gh release upload --clobber "${GITHUB_REF_NAME}" "${DAR}"
