@@ -66,19 +66,22 @@ else
   # The status is swallowed deliberately. This path is reached because git's
   # transport to that host is broken, so ls-remote can fail here for the same
   # reason the clone did, and under pipefail a failing one kills the script AT
-  # THIS ASSIGNMENT, before the check below names the tag it could not resolve.
+  # THIS ASSIGNMENT, before anything can say which step could not resolve.
   splice_commit="$(git ls-remote "$REPO" "refs/tags/${SPLICE_TAG}^{}" "refs/tags/${SPLICE_TAG}" \
                    | tail -n1 | cut -f1 || true)"
-fi
-
-# Checked before anything is replaced. The vendoring below wipes the previous
-# deps/splice-daml and deps/token-standard, and the stable-name symlinks are
-# created further down, so aborting between the two leaves a tree that no
-# build can use and whose failure reads as a missing dependency rather than as
-# the failed vendor it is. Nothing above this line has written to deps/.
-if [ -z "$splice_commit" ]; then
-  echo "could not resolve the commit for ${SPLICE_TAG}" >&2
-  exit 1
+  # Not fatal, and that asymmetry is the point. The tarball has already been
+  # unpacked, so the sources this script exists to provide are in hand; only
+  # a release body needs the commit. Refusing here would mean the fallback
+  # aborts for precisely the reason it was written - a broken git transport
+  # to this host - and every contributor on such a network would find
+  # `npm install` failing where it used to work. The stamp records what is
+  # known, and scripts/release-notes.sh is what refuses to publish without
+  # the rest.
+  if [ -z "$splice_commit" ]; then
+    echo "warning: could not resolve the commit for ${SPLICE_TAG}" >&2
+    echo "  deps/ will still be vendored; scripts/release-notes.sh will refuse" >&2
+    echo "  to describe it until a run resolves the commit" >&2
+  fi
 fi
 
 # Vendor: daml/ -> deps/splice-daml ; token-standard/ -> deps/token-standard (siblings).
@@ -96,9 +99,16 @@ rm -rf .tmp-splice
 # whether deps/ still answers to versions.env. Without it a SPLICE_TAG bump
 # that was never followed by a re-vendor is invisible: the tree keeps serving
 # the old source while versions.env names the new tag.
+#
+# An unresolved commit is written as no line at all rather than as an empty
+# value or a placeholder: release-notes.sh reads this file with awk, which
+# reports both of those as the empty string anyway, and a placeholder is a
+# string that could reach the published Requirements table if a later reader
+# forgets to test for it. Absence cannot.
 { echo "SPLICE_TAG=${SPLICE_TAG}"
-  echo "SPLICE_COMMIT=${splice_commit}"; } > deps/.splice-commit
-echo "Vendored canton-network/splice@${SPLICE_TAG} (${splice_commit})"
+  if [ -n "$splice_commit" ]; then echo "SPLICE_COMMIT=${splice_commit}"; fi
+} > deps/.splice-commit
+echo "Vendored canton-network/splice@${SPLICE_TAG} (${splice_commit:-commit unresolved})"
 
 # The upstream token-standard packages reference ../../daml/...; splice-amulet-test
 # references ../../token-standard/... . We vendored daml/ AS splice-daml/, so this
