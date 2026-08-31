@@ -156,6 +156,16 @@ pkgid="$(printf '%s\n' "$DAR_LISTING" \
          | grep -oE "canton-token-forge-${VERSION//./\\.}-[0-9a-f]{64}" \
          | sort -u || true)"
 require "the main package-id out of $DAR" "$pkgid"
+# One line, not merely non-empty. sort -u collapses the repeated matches a
+# single dalf produces, but two dalfs of this package at different package-ids
+# survive it as two lines, and the strip below would then return the tail of
+# the last one: a package-id identifying neither, published with no diagnostic
+# in the one section whose purpose is letting a consumer verify the asset.
+if [ "$(wc -l <<< "$pkgid" | tr -d ' ')" != 1 ]; then
+  echo "release-notes.sh: $DAR_NAME carries more than one package-id for" \
+       "canton-token-forge-$VERSION" >&2
+  exit 1
+fi
 # The dalf is named <package>-<version>-<package-id>, and matching that whole
 # name is what picks the MAIN package out of the bundled ones. Only the
 # trailing hash is the package-id itself: it is what `damlc inspect-dar --json`
