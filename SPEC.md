@@ -568,10 +568,11 @@ Stated plainly, because they are what an evaluation turns on.
   is off, so nothing catches it on the way out; get-by-id escapes only because
   no id can match such a row.
 - **One of the three suites above never runs on a pull request, and neither
-  does one check outside them.** A pull request that touches `daml/`,
-  `consumer-smoke/` or `scripts/consumer-smoke.sh` runs the Daml script suite
-  as the `daml` check, and `npm run smoke` alongside it, which compiles
-  `consumer-smoke/` against nothing but the built DAR. One that touches
+  does the coverage report nor the checks the release workflow carries.** A
+  pull request that touches `daml/`, `consumer-smoke/` or
+  `scripts/consumer-smoke.sh` runs the Daml script suite as the `daml` check,
+  and `npm run smoke` alongside it, which compiles `consumer-smoke/` against
+  nothing but the built DAR. One that touches
   `registry/` runs that package's lint, its typechecks and the registry unit
   suite as the `registry` check. The end-to-end suite needs a live
   participant, so only its types are checked there and it is never run. Off
