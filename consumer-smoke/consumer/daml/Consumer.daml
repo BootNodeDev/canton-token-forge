@@ -47,9 +47,12 @@ template VestingLockShape
         optToken <- downcast (toInterfaceContractId @HoldingV1.Holding locked)
         pure $ fmap (\(_, t) -> t.owner) optToken
 
--- A type from each bundled package the rest of the file does not already name
--- (HoldingV1 and MetadataV1 are reached above), so a package dropping out of
--- the DAR is a compile error here.
+-- A type from four of the six bundled packages, so a package dropping out of
+-- the DAR is a compile error here. Every package this names is also reached by
+-- the conversions below, which is the stronger check: a type survives its
+-- `interface instance` being deleted and a conversion does not. Kept because
+-- the two prove different things, and a package can stop being bundled without
+-- any implementation changing.
 bundledPackagesReachable :
   ( TransferInstructionV1.TransferInstructionResult_Output
   , AllocationV1.AllocationView
