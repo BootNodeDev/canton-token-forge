@@ -72,7 +72,7 @@ consumer-smoke/                          Stands in for a downstream repo that re
   multi-package.yaml                     Stops dpm resolving the package below against the root workspace
   consumer/
     daml.yaml                            Data-depends on the vendored DAR alone; exposes its six bundled Splice packages
-    daml/Consumer.daml                   Names a type from each bundled package and downcasts a Holding to our Token
+    daml/Consumer.daml                   Converts to all seven interface instances, so dropping one breaks this build
 scripts/
   fetch-dep.sh                           Vendor Splice sources, derive DAR versions, create stable-name symlinks
   build-harness.sh                       Build the Amulet test harness (unused by default; conformance only)
