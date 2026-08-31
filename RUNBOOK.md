@@ -337,12 +337,13 @@ To run the smoke test locally without the workflow:
 npm run smoke
 ```
 
-Two environment variables tune both scripts:
+Two environment variables tune this path:
 
 - `SKIP_BUILD=1` skips the `dpm build` step in `scripts/consumer-smoke.sh` and
   `scripts/release-notes.sh`, working against whatever DAR is already on disk.
-  The release workflow sets it on both steps, so the bytes it publishes are the
-  ones the reproducibility check just verified.
+  The release workflow sets it on both of those steps, so the bytes it
+  publishes are the ones the reproducibility check just verified.
+  `scripts/sandbox.sh` reads the same variable, as above.
 - `ALLOW_UNTAGGED=1` lets `scripts/release-notes.sh` emit a preview body before
   the tag exists. The release workflow sets it only for a `workflow_dispatch`
   run. Preview a body locally with:
