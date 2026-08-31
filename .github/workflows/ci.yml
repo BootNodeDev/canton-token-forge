@@ -299,11 +299,13 @@ jobs:
       # this one otherwise fails much later, or silently makes dpm download a
       # second SDK. Discovered rather than listed, because a package added
       # later carries a pin of its own and a list written today cannot name it.
-      # Ungated for the same reason the step above is: the sweep ranges over
-      # every tracked manifest, including packages outside the paths the gate
-      # lists, and gating it would let a pull request that bumps one of those
-      # pass while the merge to main reds. It needs no toolchain, only the
-      # checkout, so it can run here rather than beside the install it guards.
+      # Ungated for the same reason the step above is: the sweep discovers its
+      # manifests instead of reading the gate's list, so gating it would let a
+      # pull request that bumps a manifest the gate does not list pass while
+      # the merge to main reds. Every tracked manifest sits inside the gate
+      # today, but that list is written by hand and this sweep is not. It needs
+      # no toolchain, only the checkout, so it can run here rather than beside
+      # the install it guards.
       - name: Verify the SDK pins
         run: |
           set -euo pipefail
