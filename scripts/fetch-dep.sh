@@ -144,8 +144,8 @@ link_stable splice-api-token-burn-mint-v1              deps/splice-daml/splice-a
 # Written last, once the symlinks above exist. Copying the sources and linking
 # them are separate steps that fail separately: a tag that renames or drops a
 # package copies fine and then dies in link_stable, and a stamp written before
-# that point would name the new tag over a tree with no symlinks, which is the
-# pair release-notes.sh reads as evidence deps/ can be described. Writing it
+# that point would name the new tag over a tree whose symlinks stop partway,
+# which is the pair release-notes.sh reads as evidence deps/ can be described. Writing it
 # here makes its presence mean the vendor completed rather than that the copy
 # ran.
 #

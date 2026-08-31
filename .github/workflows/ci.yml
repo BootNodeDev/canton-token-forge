@@ -382,12 +382,11 @@ jobs:
             # the step here and leave the report below unreachable.
             #
             # Counted twice, because the anchored count says only that a live
-            # 2.1 entry is present, never that it is the only one. damlc
-            # honours the last --target it is handed, so a 2.dev entry added
-            # below a 2.1 one builds at 2.dev while a single anchored count
-            # still reports 1. Counting every entry as well is what closes
-            # that, and it is also what keeps release-notes.sh's LF row from
-            # being handed two values to print.
+            # 2.1 entry is present, never that it is the only one. A second
+            # entry beside it leaves the manifest naming a target nothing
+            # here has inspected, whichever of the two damlc ends up using,
+            # and it reaches release-notes.sh as an LF row carrying two
+            # values. Counting every entry as well is what closes both.
             entries="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=' "$manifest" || true)"
             target="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=2\.1[[:space:]]*$' "$manifest" || true)"
             if [ "$entries" != 1 ] || [ "$target" != 1 ]; then

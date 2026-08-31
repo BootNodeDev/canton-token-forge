@@ -10,10 +10,10 @@ name: release
 # RUNBOOK.md is what covers the three it leaves.
 #
 # The trigger requires a digit after the v. 'v*' also matches names that are
-# not versions at all - vnext, vendor, viz-demo - and none of them contain a
-# hyphen, so the pre-release detection below leaves them unmarked and GitHub
-# serves the first one from /releases/latest, which is the URL the README and
-# the release body both send a consumer to for the DAR they pin.
+# not versions at all, such as vnext or vendor, and an unhyphenated one is
+# left unmarked by the pre-release case below, so GitHub serves it from
+# /releases/latest, which is the URL the README and the release body both
+# send a consumer to for the DAR they pin.
 on:
   push:
     tags: ['v[0-9]*']
@@ -113,10 +113,9 @@ jobs:
             #
             # The anchor answers only half of that. It says a live 2.1 entry
             # is present once; it says nothing about a second entry beside
-            # it, and damlc honours the last --target it is handed, so a
-            # 2.dev line below a 2.1 one built at 2.dev and still counted 1.
-            # Every entry is counted as well, so the manifest has to carry
-            # one and it has to be the pinned one.
+            # it, which leaves the manifest naming a target nothing here has
+            # inspected. Every entry is counted as well, so the manifest has
+            # to carry exactly one and it has to be the pinned one.
             entries="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=' "$manifest" || true)"
             count="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=2\.1[[:space:]]*$' "$manifest" || true)"
             if [ "$entries" != 1 ] || [ "$count" != 1 ]; then
@@ -239,8 +238,8 @@ jobs:
           # harmless only for a release this workflow made, where a
           # regenerated body is identical because it is derived from this
           # same commit and tag. Nothing establishes that: a release created
-          # by hand to unblock a consumer after a failed run carries none of
-          # the sha256, package-id or consumer snippet, and attaching the DAR
+          # by hand to unblock a consumer after a failed run need carry none
+          # of the sha256, package-id or consumer snippet, and attaching the DAR
           # under it would publish the asset with nothing to verify it
           # against. Rewriting costs a call and makes the published body the
           # generated one either way.
