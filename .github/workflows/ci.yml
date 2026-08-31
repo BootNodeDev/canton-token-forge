@@ -447,7 +447,7 @@ jobs:
           echo "Changed files:"
           echo "$changed"
           # Build and test inputs, including the smoke package the smoke
-          # step compiles and the two scripts the steps below run. The
+          # step compiles and every script a step below runs. The
           # files that merely name template ids are not listed: the check
           # that reads them runs ahead of this gate and ignores it, so
           # listing them here would install a toolchain and build both
