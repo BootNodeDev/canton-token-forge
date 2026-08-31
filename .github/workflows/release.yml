@@ -2,12 +2,12 @@ name: release
 
 # A tag push is the human gate. The name and the decision to push are the
 # owner's, and a downstream repository pins the result permanently, so nothing
-# here creates a tag on its own. A manual dispatch runs the build, the suite,
-# the reproducibility check and the smoke test, and leaves three things
-# unexercised: the on-main refusal and the publish are both gated on a push,
-# and it sets ALLOW_UNTAGGED so release-notes.sh does not check the tag either.
-# That is how this workflow is rehearsed short of publishing; the pre-release
-# tag push in RUNBOOK.md is what covers those three.
+# here creates a tag on its own. A manual dispatch runs every step below except
+# two, the on-main refusal and the publish, which are gated on a push; it also
+# sets ALLOW_UNTAGGED, which switches off a third check, the one inside
+# release-notes.sh that the tag names the checked-out commit. That is how this
+# workflow is rehearsed short of publishing, and the pre-release tag push in
+# RUNBOOK.md is what covers the three it leaves.
 on:
   push:
     tags: ['v*']
@@ -53,8 +53,9 @@ jobs:
       # reaches it; ahead and diverged are the two that must not publish.
       #
       # First, because it needs nothing but the checkout and a token: a tag
-      # that can never publish should not first pay for two Splice vendorings
-      # and three builds. Gated with the publish below rather than run always,
+      # that can never publish should not first pay for two Splice vendorings,
+      # the suite and a reproducibility rebuild. Gated with the publish below
+      # rather than run always,
       # so a dispatched rehearsal still works from a branch. The pre-release
       # tag push in RUNBOOK.md is what exercises this before the real tag does.
       - name: Refuse a tag that is not on main

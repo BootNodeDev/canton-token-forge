@@ -48,11 +48,11 @@ template VestingLockShape
         pure $ fmap (\(_, t) -> t.owner) optToken
 
 -- A type from four of the six bundled packages, so a package dropping out of
--- the DAR is a compile error here. Every package this names is also reached by
--- the conversions below, which is the stronger check: a type survives its
--- `interface instance` being deleted and a conversion does not. Kept because
--- the two prove different things, and a package can stop being bundled without
--- any implementation changing.
+-- the DAR is a compile error here. The conversions below already reach all
+-- four, and reach them more strongly, since a type survives its `interface
+-- instance` being deleted and a conversion does not. This is kept as the plain
+-- statement of what the DAR has to bundle, not because it catches anything the
+-- conversions would miss.
 bundledPackagesReachable :
   ( TransferInstructionV1.TransferInstructionResult_Output
   , AllocationV1.AllocationView

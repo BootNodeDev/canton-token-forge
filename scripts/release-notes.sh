@@ -176,9 +176,10 @@ splice_commit="$(awk -F= '/^SPLICE_COMMIT=/ {print $2; exit}' deps/.splice-commi
 require "the vendored Splice commit from deps/.splice-commit (run 'npm run setup')" "$splice_commit"
 # Absence is not the only way the stamp fails to describe deps/. Editing
 # SPLICE_TAG and not re-running the vendor step leaves a tree that answers to
-# the old tag while versions.env, and so the row above, names the new one: the
-# body would then pair a tag with a commit that is not on it, and a consumer
-# rebuilding at either one cannot reach the hash below.
+# the old tag while versions.env, and so the row above, names the new one. The
+# body would then pair a tag with a commit that tag does not name, and a
+# consumer who follows the tag row vendors source this DAR was not built
+# from, so the hash below is one they cannot reach.
 if [ "$stamped_tag" != "$splice_tag" ]; then
   echo "release-notes.sh: versions.env asks for Splice $splice_tag," \
        "but deps/ was vendored from $stamped_tag" >&2

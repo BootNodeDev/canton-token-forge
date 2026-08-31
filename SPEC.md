@@ -584,10 +584,10 @@ Stated plainly, because they are what an evaluation turns on.
   in the `daml` check's scope compiles the smoke package, generates the
   release body, which is the check that compares the published snippet
   against the artifact, and asserts that every tracked manifest still pins
-  the SDK and targets LF 2.1. What is left to the release workflow: the
-  rebuild that proves the DAR is byte-reproducible, the refusal of a tag
-  `main` does not reach, and `release-notes.sh`'s check that the tag names
-  the checked-out commit, which the pull-request path switches off with
+  the SDK and targets LF 2.1. The release workflow still carries the rebuild
+  that proves the DAR is byte-reproducible, the refusal of a tag `main` does
+  not reach, and `release-notes.sh`'s check that the tag names the
+  checked-out commit, which the pull-request path switches off with
   `ALLOW_UNTAGGED`.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.

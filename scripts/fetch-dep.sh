@@ -64,9 +64,9 @@ else
   # the tag moved in between, which is the case the stamp exists to expose.
   #
   # The status is swallowed deliberately. This path is reached because git's
-  # transport to that host is broken, so ls-remote is the call most likely to
-  # fail here, and under pipefail a failing one kills the script AT THIS
-  # ASSIGNMENT, before the check below can name the tag it could not resolve.
+  # transport to that host is broken, so ls-remote can fail here for the same
+  # reason the clone did, and under pipefail a failing one kills the script AT
+  # THIS ASSIGNMENT, before the check below names the tag it could not resolve.
   splice_commit="$(git ls-remote "$REPO" "refs/tags/${SPLICE_TAG}^{}" "refs/tags/${SPLICE_TAG}" \
                    | tail -n1 | cut -f1 || true)"
 fi
@@ -75,7 +75,7 @@ fi
 # deps/splice-daml and deps/token-standard, and the stable-name symlinks are
 # created further down, so aborting between the two leaves a tree that no
 # build can use and whose failure reads as a missing dependency rather than as
-# the failed vendor it is. Nothing above this line has touched deps/.
+# the failed vendor it is. Nothing above this line has written to deps/.
 if [ -z "$splice_commit" ]; then
   echo "could not resolve the commit for ${SPLICE_TAG}" >&2
   exit 1
@@ -95,7 +95,7 @@ rm -rf .tmp-splice
 # The tag is recorded next to the commit so a reader of the stamp can tell
 # whether deps/ still answers to versions.env. Without it a SPLICE_TAG bump
 # that was never followed by a re-vendor is invisible: the tree keeps serving
-# the old source while every file that names a tag names the new one.
+# the old source while versions.env names the new tag.
 { echo "SPLICE_TAG=${SPLICE_TAG}"
   echo "SPLICE_COMMIT=${splice_commit}"; } > deps/.splice-commit
 echo "Vendored canton-network/splice@${SPLICE_TAG} (${splice_commit})"
