@@ -291,10 +291,12 @@ first re-runs Splice's own suites, the second needs a live participant. The
 end-to-end suite is typechecked on that path even so, which is the point of
 typechecking it separately from the run.
 
-A pushed `v*` tag runs the `release` workflow instead: it refuses a tag `main`
-does not reach, builds from a clean checkout, runs the suite, checks the DAR is
-byte-reproducible, compiles `consumer-smoke/` against the built artifact,
-generates the release body, and publishes the DAR as a release asset. A manual
+A pushed tag whose `v` is followed by a digit (`v[0-9]*`, so `vnext` and
+`vendor` trigger nothing) runs the `release` workflow instead: it refuses a
+tag `main` does not reach, builds from a clean checkout, runs the suite,
+checks the DAR is byte-reproducible, compiles `consumer-smoke/` against the
+built artifact, generates the release body, and publishes the DAR as a
+release asset. A manual
 dispatch of that workflow runs the build and those artifact checks, cannot
 publish, and leaves three things unexercised: the on-main refusal, the publish,
 and `release-notes.sh`'s check that the tag names the checked-out commit. See
