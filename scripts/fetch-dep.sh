@@ -71,6 +71,16 @@ else
                    | tail -n1 | cut -f1 || true)"
 fi
 
+# Checked before anything is replaced. The vendoring below wipes the previous
+# deps/splice-daml and deps/token-standard, and the stable-name symlinks are
+# created further down, so aborting between the two leaves a tree that no
+# build can use and whose failure reads as a missing dependency rather than as
+# the failed vendor it is. Nothing above this line has touched deps/.
+if [ -z "$splice_commit" ]; then
+  echo "could not resolve the commit for ${SPLICE_TAG}" >&2
+  exit 1
+fi
+
 # Vendor: daml/ -> deps/splice-daml ; token-standard/ -> deps/token-standard (siblings).
 rm -rf deps/splice-daml && mkdir -p deps/splice-daml && cp -r .tmp-splice/daml/. deps/splice-daml
 rm -rf deps/token-standard && mkdir -p deps/token-standard && cp -r .tmp-splice/token-standard/. deps/token-standard
@@ -81,10 +91,6 @@ rm -rf .tmp-splice
 # and compare hashes, which only means something if they can vendor the same
 # source; this records what this run actually vendored so the body can name it.
 # It lives beside the tree it describes, and is rewritten whenever that tree is.
-if [ -z "$splice_commit" ]; then
-  echo "could not resolve the commit for ${SPLICE_TAG}" >&2
-  exit 1
-fi
 echo "$splice_commit" > deps/.splice-commit
 echo "Vendored canton-network/splice@${SPLICE_TAG} (${splice_commit})"
 
