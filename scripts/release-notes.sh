@@ -84,7 +84,16 @@ fi
 # Untracked files count: an untracked .daml source under daml/ is compiled into
 # the DAR and exists at no commit, which is the same irreproducible hash as an
 # uncommitted edit. Build output and deps are gitignored, so neither shows here.
-if [ -n "$(git status --porcelain)" ]; then
+#
+# Checked on the status rather than on the output alone: a git that cannot read
+# the tree (a held index.lock, a refused ownership check) prints nothing, and
+# testing only for emptiness reads that silence as "clean" and publishes the
+# very hash this guard exists to withhold.
+if ! tree_state="$(git status --porcelain)"; then
+  echo "release-notes.sh: git could not report the working tree state" >&2
+  exit 1
+fi
+if [ -n "$tree_state" ]; then
   echo "release-notes.sh: the working tree is dirty, so the sha256 below" >&2
   echo "  would not be reproducible from $TAG" >&2
   exit 1
