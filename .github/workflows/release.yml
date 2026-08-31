@@ -142,11 +142,18 @@ jobs:
           fi
           echo "reproducible: ${first}"
 
+      # This step and the one below both default to building the DAR again.
+      # Skipping that leaves the artifact the step above verified in place, so
+      # the bytes uploaded and the sha256 printed into the release body are the
+      # ones whose reproducibility was checked rather than a later build's.
       - name: Consumer smoke test
+        env:
+          SKIP_BUILD: '1'
         run: npm run smoke
 
       - name: Generate the release notes
         env:
+          SKIP_BUILD: '1'
           # A workflow_dispatch run's GITHUB_REF_NAME is whatever ref was
           # picked to dispatch from and is not necessarily a tag, so
           # release-notes.sh would refuse the dry run. On a tag push this
