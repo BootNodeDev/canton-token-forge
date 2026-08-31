@@ -89,27 +89,6 @@ rm -rf deps/splice-daml && mkdir -p deps/splice-daml && cp -r .tmp-splice/daml/.
 rm -rf deps/token-standard && mkdir -p deps/token-standard && cp -r .tmp-splice/token-standard/. deps/token-standard
 rm -rf .tmp-splice
 
-# A git tag can be re-pointed upstream, so SPLICE_TAG alone does not identify
-# what a build consumed. The release body tells a consumer to rebuild the DAR
-# and compare hashes, which only means something if they can vendor the same
-# source; this records what this run actually vendored so the body can name it.
-# It lives beside the tree it describes, and is rewritten whenever that tree is.
-#
-# The tag is recorded next to the commit so a reader of the stamp can tell
-# whether deps/ still answers to versions.env. Without it a SPLICE_TAG bump
-# that was never followed by a re-vendor is invisible: the tree keeps serving
-# the old source while versions.env names the new tag.
-#
-# An unresolved commit is written as no line at all rather than as an empty
-# value or a placeholder: release-notes.sh reads this file with awk, which
-# reports both of those as the empty string anyway, and a placeholder is a
-# string that could reach the published Requirements table if a later reader
-# forgets to test for it. Absence cannot.
-{ echo "SPLICE_TAG=${SPLICE_TAG}"
-  if [ -n "$splice_commit" ]; then echo "SPLICE_COMMIT=${splice_commit}"; fi
-} > deps/.splice-commit
-echo "Vendored canton-network/splice@${SPLICE_TAG} (${splice_commit:-commit unresolved})"
-
 # The upstream token-standard packages reference ../../daml/...; splice-amulet-test
 # references ../../token-standard/... . We vendored daml/ AS splice-daml/, so this
 # symlink makes both path shapes resolve.
@@ -151,4 +130,33 @@ link_stable splice-api-token-allocation-request-v1     deps/token-standard/splic
 # the compiled DAR is still in deps/splice-daml/dars/, so the symlink resolves.
 link_stable splice-api-token-burn-mint-v1              deps/splice-daml/splice-api-token-burn-mint-v1/daml.yaml
 
+# A git tag can be re-pointed upstream, so SPLICE_TAG alone does not identify
+# what a build consumed. The release body tells a consumer to rebuild the DAR
+# and compare hashes, which only means something if they can vendor the same
+# source; this records what this run actually vendored so the body can name it.
+# It lives beside the tree it describes, and is rewritten whenever that tree is.
+#
+# The tag is recorded next to the commit so a reader of the stamp can tell
+# whether deps/ still answers to versions.env. Without it a SPLICE_TAG bump
+# that was never followed by a re-vendor is invisible: the tree keeps serving
+# the old source while versions.env names the new tag.
+#
+# Written last, once the symlinks above exist. Copying the sources and linking
+# them are separate steps that fail separately: a tag that renames or drops a
+# package copies fine and then dies in link_stable, and a stamp written before
+# that point would name the new tag over a tree with no symlinks, which is the
+# pair release-notes.sh reads as evidence deps/ can be described. Writing it
+# here makes its presence mean the vendor completed rather than that the copy
+# ran.
+#
+# An unresolved commit is written as no line at all rather than as an empty
+# value or a placeholder: release-notes.sh reads this file with awk, which
+# reports both of those as the empty string anyway, and a placeholder is a
+# string that could reach the published Requirements table if a later reader
+# forgets to test for it. Absence cannot.
+{ echo "SPLICE_TAG=${SPLICE_TAG}"
+  if [ -n "$splice_commit" ]; then echo "SPLICE_COMMIT=${splice_commit}"; fi
+} > deps/.splice-commit
+
+echo "Vendored canton-network/splice@${SPLICE_TAG} (${splice_commit:-commit unresolved})"
 echo "Done. Vendored deps + stable symlinks ready under deps/."
