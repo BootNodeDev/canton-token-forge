@@ -570,10 +570,14 @@ Stated plainly, because they are what an evaluation turns on.
 - **One of the three suites above never runs on a pull request, and neither
   does the coverage report nor the checks the release workflow adds of its
   own.** A
-  pull request that touches `daml/`, `consumer-smoke/` or
-  `scripts/consumer-smoke.sh` runs the Daml script suite as the `daml` check,
-  and `npm run smoke` alongside it, which compiles `consumer-smoke/` against
-  nothing but the built DAR. One that touches
+  pull request that touches `daml/`, `consumer-smoke/`,
+  `scripts/consumer-smoke.sh`, or a root build input such as `versions.env`,
+  runs the Daml script suite as the `daml` check, and `npm run smoke`
+  alongside it, which compiles `consumer-smoke/` against nothing but the built
+  DAR. `versions.env` is in that list because a `SPLICE_TAG` bump can ship a
+  new interface version that compiles green while the smoke package still
+  names the old one, and compiling that package is what catches it. One that
+  touches
   `registry/` runs that package's lint, its typechecks and the registry unit
   suite as the `registry` check. The end-to-end suite needs a live
   participant, so only its types are checked there and it is never run. Off
