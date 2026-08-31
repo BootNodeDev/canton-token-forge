@@ -359,6 +359,7 @@ Two environment variables tune this path:
   ```
 
   This one refuses on a dirty working tree, untracked files included, because
-  the sha256 it prints has to be reproducible from the tag. Commit or stash
-  first: a single untracked file is enough to stop it, and the message says
-  "dirty" rather than naming the file.
+  the sha256 it prints has to be reproducible from the tag. A single untracked
+  file is enough to stop it, and the message says "dirty" rather than naming
+  the file. Commit first, or `git stash -u`: a plain `git stash` never takes
+  untracked files, so it leaves the refusal exactly where it was.
