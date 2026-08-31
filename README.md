@@ -160,11 +160,15 @@ follow from that knob (see CLAUDE.md). If the new tag ships a different SDK,
 update `sdk-version` in every tracked `daml.yaml`, `DPM_SDK_VERSION` in both
 workflows, and the tarball digest recorded for that version in
 `.github/actions/install-dpm/action.yml`; and if it moves the LF target,
-`--target` in those manifests and in the LF grep in
-`.github/workflows/release.yml`. If it ships different interface versions,
-update the `--package` unit-ids in `consumer-smoke/consumer/daml.yaml`, which
-spell the version out because the compiler rejects the unversioned form. The
-snippet above copies that file's `build-options`, so it follows either edit.
+`--target` in those manifests and in the LF greps both workflows run. If it
+ships different interface versions, update the `--package` unit-ids in
+`consumer-smoke/consumer/daml.yaml`, which spell the version out because the
+compiler rejects the unversioned form.
+
+Then update this file by hand for any of the three. The snippet above and the
+SDK and LF target named beneath it are transcriptions, not derivations: no
+check reads them, so an edit that stops short of here leaves the first page a
+consumer reads telling them to use the version we just moved off.
 
 ## License
 
