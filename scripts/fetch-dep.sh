@@ -91,7 +91,13 @@ rm -rf .tmp-splice
 # and compare hashes, which only means something if they can vendor the same
 # source; this records what this run actually vendored so the body can name it.
 # It lives beside the tree it describes, and is rewritten whenever that tree is.
-echo "$splice_commit" > deps/.splice-commit
+#
+# The tag is recorded next to the commit so a reader of the stamp can tell
+# whether deps/ still answers to versions.env. Without it a SPLICE_TAG bump
+# that was never followed by a re-vendor is invisible: the tree keeps serving
+# the old source while every file that names a tag names the new one.
+{ echo "SPLICE_TAG=${SPLICE_TAG}"
+  echo "SPLICE_COMMIT=${splice_commit}"; } > deps/.splice-commit
 echo "Vendored canton-network/splice@${SPLICE_TAG} (${splice_commit})"
 
 # The upstream token-standard packages reference ../../daml/...; splice-amulet-test

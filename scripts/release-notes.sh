@@ -170,8 +170,21 @@ require "SPLICE_TAG from versions.env" "$splice_tag"
 # nothing in the body to tell them which of the two moved. Written by
 # scripts/fetch-dep.sh beside the tree it describes, so an absent stamp means
 # deps/ predates that script and the body would be describing an unknown input.
-splice_commit="$(cat deps/.splice-commit 2>/dev/null || true)"
+stamped_tag="$(awk -F= '/^SPLICE_TAG=/ {print $2; exit}' deps/.splice-commit 2>/dev/null || true)"
+require "the vendored Splice tag from deps/.splice-commit (run 'npm run setup')" "$stamped_tag"
+splice_commit="$(awk -F= '/^SPLICE_COMMIT=/ {print $2; exit}' deps/.splice-commit 2>/dev/null || true)"
 require "the vendored Splice commit from deps/.splice-commit (run 'npm run setup')" "$splice_commit"
+# Absence is not the only way the stamp fails to describe deps/. Editing
+# SPLICE_TAG and not re-running the vendor step leaves a tree that answers to
+# the old tag while versions.env, and so the row above, names the new one: the
+# body would then pair a tag with a commit that is not on it, and a consumer
+# rebuilding at either one cannot reach the hash below.
+if [ "$stamped_tag" != "$splice_tag" ]; then
+  echo "release-notes.sh: versions.env asks for Splice $splice_tag," \
+       "but deps/ was vendored from $stamped_tag" >&2
+  echo "  (run 'npm run setup' to re-vendor)" >&2
+  exit 1
+fi
 sdk="$(awk '/^sdk-version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
 require "the SDK pin from daml/canton-token-forge/daml.yaml" "$sdk"
 
