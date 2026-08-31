@@ -147,11 +147,11 @@ jobs:
 
       - name: Generate the release notes
         env:
-          # A workflow_dispatch run's GITHUB_REF_NAME is the branch that was
-          # dispatched, not a tag, so release-notes.sh's tag-exists check
-          # would fail every dry run. On a tag push this evaluates to the
-          # empty string, which is not "1", so the script's tag-exists check
-          # still fires.
+          # A workflow_dispatch run's GITHUB_REF_NAME is whatever ref was
+          # picked to dispatch from and is not necessarily a tag, so
+          # release-notes.sh would refuse the dry run. On a tag push this
+          # evaluates to the empty string, which is not "1", so that refusal
+          # still stands where it matters.
           ALLOW_UNTAGGED: ${{ github.event_name != 'push' && '1' || '' }}
         run: |
           set -euo pipefail
