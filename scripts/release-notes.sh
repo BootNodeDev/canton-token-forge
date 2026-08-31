@@ -230,6 +230,17 @@ require "the LF target from the build-options block of $SMOKE" "$lf_target"
 vendor_path="$(sed -n 's/^[[:space:]]*-[[:space:]]*//p' <<< "$deps_block" | head -1)"
 require "the data-dependency path from $SMOKE" "$vendor_path"
 
+# The "Not included" section below names this package as absent, which is a
+# claim about the archive and not about our source. If it ever ships bundled
+# the section becomes a lie that sends a consumer to Splice for something they
+# already have, so it is checked rather than asserted.
+ABSENT="splice-api-token-allocation-request-v1"
+if grep -q "^$ABSENT-" <<< "$bundled"; then
+  echo "release-notes.sh: $DAR_NAME bundles $ABSENT," \
+       "which this script's \"Not included\" section says it does not" >&2
+  exit 1
+fi
+
 cat <<EOF
 \`$DAR_NAME\` is the whole dependency. It bundles all $pkg_count
 \`splice-api-token-*\` interface packages it links against, at the package-ids
@@ -268,7 +279,7 @@ package-id  $pkgid
 
 ## Not included
 
-\`splice-api-token-allocation-request-v1\` is declared by this package but never
+\`$ABSENT\` is declared by this package but never
 implemented, so it is not bundled. A consumer needing \`AllocationRequest\` takes
 it from Splice directly.
 EOF
