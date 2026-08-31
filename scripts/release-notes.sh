@@ -75,6 +75,12 @@ pkgid="$(unzip -l "$DAR" \
          | grep -oE "canton-token-forge-${VERSION//./\\.}-[0-9a-f]{64}" \
          | sort -u || true)"
 require "the main package-id out of $DAR" "$pkgid"
+# The dalf is named <package>-<version>-<package-id>, and matching that whole
+# name is what picks the MAIN package out of the bundled ones. Only the
+# trailing hash is the package-id itself: it is what `damlc inspect-dar --json`
+# reports as main_package_id and what a template id carries, so publishing the
+# prefixed form fails a consumer's literal comparison against an identical DAR.
+pkgid="${pkgid##*-}"
 splice_tag="$(awk -F= '/^SPLICE_TAG=/ {print $2; exit}' versions.env)"
 require "SPLICE_TAG from versions.env" "$splice_tag"
 sdk="$(awk '/^sdk-version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
