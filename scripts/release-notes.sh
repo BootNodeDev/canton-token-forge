@@ -14,6 +14,7 @@
 #
 # Env overrides:
 #   SKIP_BUILD        set to 1 to skip the dpm build step
+#   ALLOW_UNTAGGED    set to 1 to emit a preview body before <tag> exists
 #
 set -euo pipefail
 
@@ -60,6 +61,34 @@ yaml_block() {
 
 TAG="${1:?usage: release-notes.sh <tag>}"
 SMOKE="consumer-smoke/consumer/daml.yaml"
+
+# The body invites a consumer to rebuild the DAR at $TAG and compare hashes,
+# and $TAG is otherwise just a string this script prints. Checked before the
+# build because a failure here invalidates everything the build would produce.
+#
+# A tag that exists but names another commit is always a refusal: whichever of
+# the two is wrong, the pair we would publish is. Only the not-yet-tagged case
+# has an override, for previewing a body while preparing a release.
+tagged="$(git rev-parse -q --verify "$TAG^{commit}" || true)"
+if [ -z "$tagged" ]; then
+  if [ "${ALLOW_UNTAGGED:-0}" != "1" ]; then
+    echo "release-notes.sh: $TAG is not a tag in this repository" >&2
+    echo "  (set ALLOW_UNTAGGED=1 to emit a preview body)" >&2
+    exit 1
+  fi
+elif [ "$tagged" != "$(git rev-parse HEAD)" ]; then
+  echo "release-notes.sh: $TAG is $tagged, not the checked-out commit" >&2
+  exit 1
+fi
+
+# Untracked files count: an untracked .daml source under daml/ is compiled into
+# the DAR and exists at no commit, which is the same irreproducible hash as an
+# uncommitted edit. Build output and deps are gitignored, so neither shows here.
+if [ -n "$(git status --porcelain)" ]; then
+  echo "release-notes.sh: the working tree is dirty, so the sha256 below" >&2
+  echo "  would not be reproducible from $TAG" >&2
+  exit 1
+fi
 
 # Building by default is what keeps the body honest: the sha256 and package-id
 # below describe whatever DAR is on disk, and a stale one publishes an artifact
