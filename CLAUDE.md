@@ -274,7 +274,7 @@ Every pull request has the strings that spell a template id verified against
 sweep of every tracked SDK pin, both ahead of its toolchain install and both
 ignoring its own scope gate. One that touches
 `daml/` or the root build inputs runs the first three of these automatically
-in that same check, after that step. One that touches
+in that same check, after those two steps. One that touches
 `registry/` runs that package's own lint, both typechecks, and unit suite as
 the `registry` check, not the root commands above. `npm run test:coverage`,
 `npm run smoke` and the registry's `npm run test:e2e` are all off the
