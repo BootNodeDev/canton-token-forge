@@ -312,6 +312,21 @@ jobs:
           # keeps the dependencies: entries (daml-prim, daml-stdlib) out
           # without a second block parser living here.
           pattern='^[[:space:]]*-[[:space:]]*(--|vendor/)'
+          # The entries alone do not make a snippet. Nothing above ties one to
+          # the block it belongs under, so README could carry all eight lines
+          # with build-options: renamed, dropped, or the --package flags moved
+          # under data-dependencies:, and every comparison below would still
+          # match. A consumer copying that gets a file that does not parse, or
+          # one that silently drops every flag and fails on "member of the
+          # hidden package", which is the error this section exists to avoid.
+          # The generated release body cannot drift this way: yaml_block cuts
+          # each header out of the smoke package itself.
+          for header in data-dependencies: build-options:; do
+            if ! grep -qxF -- "$header" README.md; then
+              echo "README.md does not carry the '${header}' block header" >&2
+              exit 1
+            fi
+          done
           # A grep that matches nothing exits 1, which under -e kills the
           # step at the assignment and leaves the emptiness report below
           # unreachable.
