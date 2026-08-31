@@ -359,8 +359,11 @@ CI just proved compile.
    worth repeating here, against the real tag.
 
    If the release appears but the DAR is missing, the upload failed after the
-   release was created. Re-run the workflow from the Actions tab: it attaches
-   the asset to the release already there rather than failing on it.
+   release was created. Re-run that failed run from its own page in the Actions
+   tab: it attaches the asset to the release already there rather than failing
+   on it. Re-running preserves the original tag push, which is what the publish
+   step is gated on; starting a fresh `workflow_dispatch` run instead skips
+   that step entirely and goes green having attached nothing.
 
 To run the smoke test locally without the workflow:
 
