@@ -15,6 +15,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Every field below is read out of a file, and both awk and grep report "found
+# nothing" by producing no output rather than by failing. An unguarded read
+# therefore publishes a release body with a blank where a version or a hash
+# should be, which is worse than no release at all.
+require() {
+  local what="$1" value="$2"
+  if [ -z "$value" ]; then
+    echo "release-notes.sh: could not read $what" >&2
+    exit 1
+  fi
+}
+
 TAG="${1:?usage: release-notes.sh <tag>}"
 SMOKE="consumer-smoke/consumer/daml.yaml"
 
@@ -22,10 +34,7 @@ SMOKE="consumer-smoke/consumer/daml.yaml"
 # moment the package version bumps and would report the wrong DAR name in a
 # release body that otherwise describes the artifact just built.
 VERSION="$(awk '/^version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
-if [ -z "$VERSION" ]; then
-  echo "daml/canton-token-forge/daml.yaml names no version" >&2
-  exit 1
-fi
+require "the package version from daml/canton-token-forge/daml.yaml" "$VERSION"
 DAR="daml/canton-token-forge/.daml/dist/canton-token-forge-$VERSION.dar"
 DAR_NAME="$(basename "$DAR")"
 
@@ -42,7 +51,9 @@ if [ -z "$pkgid" ]; then
   exit 1
 fi
 splice_tag="$(awk -F= '/^SPLICE_TAG=/ {print $2; exit}' versions.env)"
+require "SPLICE_TAG from versions.env" "$splice_tag"
 sdk="$(awk '/^sdk-version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
+require "the SDK pin from daml/canton-token-forge/daml.yaml" "$sdk"
 
 # data-dependencies: and build-options: are the last two blocks of the smoke
 # package's daml.yaml, so "from data-dependencies to end of file" is the whole
