@@ -199,6 +199,23 @@ while IFS= read -r unit; do
   fi
 done <<< "$packages"
 
+# The loop above is one-directional: it catches a flag naming something the DAR
+# does not bundle, but not a bundled package the snippet has stopped naming.
+# That is the same broken consumer build, and it is the quieter of the two,
+# because every flag that remains is still valid. Derived from the archive so
+# it tracks whatever interface set the DAR actually carries.
+bundled="$(printf '%s\n' "$DAR_LISTING" \
+           | sed -nE 's#.*/(splice-api-token-.*)-[0-9a-f]{64}\.dalf#\1#p' \
+           | sort -u)"
+require "the bundled splice-api-token packages of $DAR_NAME" "$bundled"
+while IFS= read -r unit; do
+  if ! grep -qxF "$unit" <<< "$packages"; then
+    echo "release-notes.sh: $DAR_NAME bundles $unit, which $SMOKE" \
+         "does not name with a --package flag" >&2
+    exit 1
+  fi
+done <<< "$bundled"
+
 cat <<EOF
 \`$DAR_NAME\` is the whole dependency. It bundles the six
 \`splice-api-token-*\` interface packages it links against, at the package-ids
