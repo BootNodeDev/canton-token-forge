@@ -351,12 +351,13 @@ jobs:
           echo "Changed files:"
           echo "$changed"
           # Build and test inputs, including the smoke package the smoke
-          # step compiles and the script that runs it. The files that
-          # merely name template ids are not listed: the check that reads
-          # them runs ahead of this gate and ignores it, so listing them
-          # here would install a toolchain and build both packages to
-          # verify nothing the change can reach.
-          if grep -Eq '^(daml/|consumer-smoke/|scripts/fetch-dep\.sh$|scripts/consumer-smoke\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          # step compiles and the two scripts the steps below run. The
+          # files that merely name template ids are not listed: the check
+          # that reads them runs ahead of this gate and ignores it, so
+          # listing them here would install a toolchain and build both
+          # packages to verify nothing the change can reach. release.yml is
+          # left out for that same reason: no step in this job runs it.
+          if grep -Eq '^(daml/|consumer-smoke/|scripts/fetch-dep\.sh$|scripts/consumer-smoke\.sh$|scripts/release-notes\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
@@ -489,3 +490,22 @@ jobs:
         env:
           SKIP_BUILD: '1'
         run: npm run smoke
+
+      # The generator reads the smoke package and the built DAR and compares
+      # the two, so a change that leaves both compiling can still break the
+      # release body: a flag naming something the DAR stopped bundling, a
+      # bundled interface the snippet stopped naming, a block it can no longer
+      # find. Publishing is the only thing that ever ran it, which put the
+      # first execution after the tag was already public. It emits to stdout
+      # and touches nothing, so running it here costs a second and leaves the
+      # body in the log to read.
+      #
+      # ALLOW_UNTAGGED because GITHUB_REF_NAME is a branch or a merge ref here,
+      # never a tag; that is the one guard this cannot exercise, and the
+      # workflow_dispatch rehearsal in RUNBOOK.md is where it stays covered.
+      - name: Generate the release notes
+        if: steps.scope.outputs.run == 'true'
+        env:
+          SKIP_BUILD: '1'
+          ALLOW_UNTAGGED: '1'
+        run: bash scripts/release-notes.sh "${GITHUB_REF_NAME}"
