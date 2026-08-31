@@ -248,9 +248,22 @@ jobs:
           # because release-notes.sh refuses to describe anything else.
           # --verify-tag asks the same of the remote, so a ref that went
           # missing in between cannot end as a tag gh created itself.
+          #
+          # The edit path re-applies the pre-release marking and clears the
+          # draft flag, rather than passing the body alone. Both describe the
+          # release this workflow would have created, and neither is implied
+          # by the release that is already there: a hand-made one carries
+          # whatever its author chose, and an unmarked hyphenated tag is
+          # served from /releases/latest, which is the failure the create
+          # path's marking exists to prevent. A draft is the same shape one
+          # step further on, since the upload below attaches the asset to
+          # something never published and the step still succeeds.
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             echo "release ${GITHUB_REF_NAME} exists; refreshing its body and attaching the asset"
-            gh release edit "${GITHUB_REF_NAME}" --notes-file "${RUNNER_TEMP}/notes.md"
+            gh release edit "${GITHUB_REF_NAME}" \
+              --notes-file "${RUNNER_TEMP}/notes.md" \
+              --draft=false \
+              "${prerelease[@]}"
           else
             gh release create \
               --verify-tag \
