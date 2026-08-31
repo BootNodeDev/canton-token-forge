@@ -62,8 +62,13 @@ else
   # A tarball carries no commit, so this path asks the remote what the tag
   # names. codeload served that same tag moments ago, so the two agree unless
   # the tag moved in between, which is the case the stamp exists to expose.
+  #
+  # The status is swallowed deliberately. This path is reached because git's
+  # transport to that host is broken, so ls-remote is the call most likely to
+  # fail here, and under pipefail a failing one kills the script AT THIS
+  # ASSIGNMENT, before the check below can name the tag it could not resolve.
   splice_commit="$(git ls-remote "$REPO" "refs/tags/${SPLICE_TAG}^{}" "refs/tags/${SPLICE_TAG}" \
-                   | tail -n1 | cut -f1)"
+                   | tail -n1 | cut -f1 || true)"
 fi
 
 # Vendor: daml/ -> deps/splice-daml ; token-standard/ -> deps/token-standard (siblings).
