@@ -305,7 +305,13 @@ jobs:
       # today, but that list is written by hand and this sweep is not. It needs
       # no toolchain, only the checkout, so it can run here rather than beside
       # the install it guards.
-      - name: Verify the SDK pins
+      # The LF target is swept here as well as in release.yml. It used to be
+      # asserted only there, which meant a manifest moved off 2.1 built, tested
+      # and merged green, and first reded on the tag push, with the tag already
+      # public. The two sweeps read the same manifests for the same literal;
+      # keeping release.yml's is what makes the one run whose output is
+      # permanent self-contained rather than trusting a check in another file.
+      - name: Verify the SDK and LF pins
         run: |
           set -euo pipefail
           pins="$(git ls-files '*daml.yaml')"
@@ -319,7 +325,16 @@ jobs:
               echo "${manifest} pins SDK ${pinned}, this workflow installs ${DPM_SDK_VERSION}" >&2
               exit 1
             fi
-            echo "ok: ${manifest} pins SDK ${pinned}"
+            # Anchored to the whole entry: a substring match counts a
+            # commented-out line, and matches --target=2.10 as readily as 2.1.
+            # A grep that matches nothing exits 1, which under -e would kill
+            # the step here and leave the report below unreachable.
+            target="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=2\.1[[:space:]]*$' "$manifest" || true)"
+            if [ "$target" != 1 ]; then
+              echo "${manifest} must target LF 2.1 exactly once, found ${target}" >&2
+              exit 1
+            fi
+            echo "ok: ${manifest} pins SDK ${pinned} and targets LF 2.1"
           done <<<"$pins"
 
       - name: Scope
