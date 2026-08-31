@@ -103,10 +103,13 @@ if ! command -v unzip >/dev/null 2>&1; then
   exit 1
 fi
 
+DAR_LISTING="$(unzip -l "$DAR" || true)"
+require "the contents of $DAR" "$DAR_LISTING"
+
 # The pipeline is allowed to fail here. A grep that matches nothing exits 1,
 # and under pipefail that kills the script AT THE ASSIGNMENT, before anything
 # can say what went wrong. Swallow the status and report on the value instead.
-pkgid="$(unzip -l "$DAR" \
+pkgid="$(printf '%s\n' "$DAR_LISTING" \
          | grep -oE "canton-token-forge-${VERSION//./\\.}-[0-9a-f]{64}" \
          | sort -u || true)"
 require "the main package-id out of $DAR" "$pkgid"
@@ -129,6 +132,29 @@ opts_block="$(yaml_block "$SMOKE" build-options | grep -v '^[[:space:]]*#' || tr
 require_entries "the build-options block of $SMOKE" "$opts_block"
 snippet="$deps_block
 $opts_block"
+
+# The snippet is only correct for the DAR it is published beside, and nothing
+# else in this repo ties the two together: the forge reaches its dependencies
+# through version-free symlinks, so a SPLICE_TAG bump that ships a new
+# interface version builds green while these flags still name the old one.
+# Compiling the smoke package is what would catch that, and this script does
+# not compile, so check the names against the archive itself. Every bundled
+# package is filed as <dir>/<unit-id>-<package-id>.dalf.
+packages="$(printf '%s\n' "$opts_block" \
+            | sed -n 's/^[[:space:]]*-[[:space:]]*--package=//p')"
+# Without these the imports fail on "member of the hidden package", so a
+# snippet that has lost them is broken in the one way this package exists to
+# prevent. An emptied block is caught above; this catches a block that kept
+# --target and nothing else.
+require "any --package flag in the build-options block of $SMOKE" "$packages"
+while IFS= read -r unit; do
+  if ! printf '%s\n' "$DAR_LISTING" \
+       | grep -qE "/${unit//./\\.}-[0-9a-f]{64}\.dalf"; then
+    echo "release-notes.sh: $SMOKE names --package=$unit," \
+         "which $DAR_NAME does not bundle" >&2
+    exit 1
+  fi
+done <<< "$packages"
 
 cat <<EOF
 \`$DAR_NAME\` is the whole dependency. It bundles the six
