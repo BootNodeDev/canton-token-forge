@@ -27,6 +27,18 @@ require() {
   fi
 }
 
+# A block whose entries are gone still yields its header line, so requiring a
+# non-empty value passes and the body publishes "data-dependencies:" with
+# nothing under it. The snippet is only worth publishing if it names something.
+require_entries() {
+  local what="$1" block="$2"
+  require "$what" "$block"
+  if ! printf '%s\n' "$block" | grep -q '^[[:space:]]*-[[:space:]]'; then
+    echo "release-notes.sh: $what has no entries" >&2
+    exit 1
+  fi
+}
+
 # One top-level block of a daml.yaml: its header line plus every line up to the
 # next top-level key. Reading the two blocks BY NAME, rather than everything
 # from data-dependencies to end of file, is what keeps the published snippet
@@ -89,9 +101,9 @@ require "the SDK pin from daml/canton-token-forge/daml.yaml" "$sdk"
 # Comments are dropped: they explain that file to us, not the artifact to a
 # consumer.
 deps_block="$(yaml_block "$SMOKE" data-dependencies | grep -v '^[[:space:]]*#' || true)"
-require "the data-dependencies block of $SMOKE" "$deps_block"
+require_entries "the data-dependencies block of $SMOKE" "$deps_block"
 opts_block="$(yaml_block "$SMOKE" build-options | grep -v '^[[:space:]]*#' || true)"
-require "the build-options block of $SMOKE" "$opts_block"
+require_entries "the build-options block of $SMOKE" "$opts_block"
 snippet="$deps_block
 $opts_block"
 
