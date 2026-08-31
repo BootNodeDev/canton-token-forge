@@ -122,6 +122,13 @@ jobs:
       # property is checked here rather than assumed to hold forever. The
       # path is read out of daml.yaml, the same idiom scripts/consumer-smoke.sh
       # and scripts/release-notes.sh use, so a version bump needs no edit here.
+      #
+      # deps/ is discarded between the two builds, because a consumer verifying
+      # the asset starts from a clone and runs npm run setup: vendoring is one
+      # of the inputs their rebuild has and a second local build does not.
+      # npm run clean removes build output and the smoke test's copied DAR, not
+      # deps/, so keeping it would compare two builds over identical vendored
+      # source and prove only that damlc is deterministic, not the claim made.
       - name: Verify the DAR is reproducible
         run: |
           set -euo pipefail
@@ -134,6 +141,8 @@ jobs:
           echo "DAR=${dar}" >> "$GITHUB_ENV"
           first="$(sha256sum "$dar" | cut -d' ' -f1)"
           npm run clean
+          rm -rf deps
+          bash scripts/fetch-dep.sh
           npm run build:canton-token-forge
           second="$(sha256sum "$dar" | cut -d' ' -f1)"
           if [ "$first" != "$second" ]; then
