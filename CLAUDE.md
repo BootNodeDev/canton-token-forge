@@ -288,7 +288,10 @@ A pushed `v*` tag runs the `release` workflow instead: it builds from a clean
 checkout, runs the suite, checks the DAR is byte-reproducible, compiles
 `consumer-smoke/` against the built artifact, and publishes the DAR as a
 release asset. A manual dispatch of that workflow runs every check but the
-tag guard, and cannot publish.
+tag guard, and cannot publish. See
+[`RUNBOOK.md`](RUNBOOK.md#cutting-a-release) for the procedure, including the
+pre-release rehearsal, the only run that exercises that guard before the real
+tag.
 
 ## References
 
