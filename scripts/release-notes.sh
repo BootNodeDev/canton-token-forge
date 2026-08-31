@@ -257,6 +257,15 @@ done <<< "$bundled"
 pkg_count="$(wc -l <<< "$bundled" | tr -d ' ')"
 lf_target="$(sed -n 's/^[[:space:]]*-[[:space:]]*--target=//p' <<< "$opts_block")"
 require "the LF target from the build-options block of $SMOKE" "$lf_target"
+# One line, not merely non-empty. The sed above collects every --target
+# entry, and a second one reaches the Requirements table as a cell broken
+# across two rows naming two different targets, which is neither readable nor
+# true. Both workflows now refuse such a manifest; this is the copy that runs
+# on a maintainer's machine, where neither has looked at it yet.
+if [ "$(wc -l <<< "$lf_target" | tr -d ' ')" != 1 ]; then
+  echo "release-notes.sh: $SMOKE names more than one --target entry" >&2
+  exit 1
+fi
 vendor_path="$(sed -n 's/^[[:space:]]*-[[:space:]]*//p' <<< "$deps_block" | head -1)"
 require "the data-dependency path from $SMOKE" "$vendor_path"
 

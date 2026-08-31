@@ -104,9 +104,18 @@ jobs:
             # what does not pin anything: a commented-out '# - --target=2.1'
             # beside a live '- --target=2.dev' reported one match and passed,
             # and '--target=2.10' contains the literal too.
+            #
+            # The anchor answers only half of that. It says a live 2.1 entry
+            # is present once; it says nothing about a second entry beside
+            # it, and damlc honours the last --target it is handed, so a
+            # 2.dev line below a 2.1 one built at 2.dev and still counted 1.
+            # Every entry is counted as well, so the manifest has to carry
+            # one and it has to be the pinned one.
+            entries="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=' "$manifest" || true)"
             count="$(grep -cE '^[[:space:]]*-[[:space:]]*--target=2\.1[[:space:]]*$' "$manifest" || true)"
-            if [ "$count" != 1 ]; then
-              echo "${manifest} must target LF 2.1 exactly once, found ${count}" >&2
+            if [ "$entries" != 1 ] || [ "$count" != 1 ]; then
+              echo "${manifest} must carry exactly one --target entry, naming LF 2.1;" \
+                   "found ${entries} entries, ${count} of them 2.1" >&2
               exit 1
             fi
             echo "ok: ${manifest} targets LF 2.1"
