@@ -584,8 +584,9 @@ Stated plainly, because they are what an evaluation turns on.
   that path too is `npm run test:coverage`, which re-runs Splice's own suites
   and which nothing runs automatically. A pull request in the `daml` check's
   scope compiles the smoke package, but the check that compares the published
-  snippet against the artifact, and the assertion that every manifest still
-  targets LF 2.1, run only when a release is cut.
+  snippet against the artifact, the assertion that every manifest still targets
+  LF 2.1, and the rebuild that proves the DAR is byte-reproducible all run only
+  when a release is cut.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 
