@@ -155,9 +155,14 @@ ever disagree.
 
 ## Bumping Splice
 
-Edit `SPLICE_TAG` in `versions.env`, run `npm run setup`. No other file changes -
-unless the new tag ships a different SDK, in which case also update `sdk-version`
-in every tracked `daml.yaml` (see CLAUDE.md).
+Edit `SPLICE_TAG` in `versions.env`, run `npm run setup`. Two things do not
+follow from that knob (see CLAUDE.md). If the new tag ships a different SDK,
+update `sdk-version` in every tracked `daml.yaml`, and if it moves the LF
+target, `--target` there and in the LF grep in
+`.github/workflows/release.yml`. If it ships different interface versions,
+update the `--package` unit-ids in `consumer-smoke/consumer/daml.yaml`, which
+spell the version out because the compiler rejects the unversioned form. The
+snippet above copies that file's `build-options`, so it follows either edit.
 
 ## License
 
