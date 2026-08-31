@@ -324,13 +324,27 @@ CI just proved compile.
    The tag guard and the publish itself are the two halves a dispatch cannot
    reach. To rehearse those, push a hyphenated tag such as `v0.1.0-rc1` first:
    the workflow marks any hyphenated tag as a pre-release, so it does not
-   become the release that `/releases/latest` serves. Delete that release and
-   its tag once you have confirmed the asset.
+   become the release that `/releases/latest` serves. Tag a commit that is
+   already on `main`, for the rehearsal as much as for the real thing: the
+   workflow refuses to publish anything `main` does not reach, so a tag pushed
+   from an unmerged branch fails after every other check has passed.
 
-   Tag a commit that is already on `main`, for the rehearsal as much as for the
-   real thing. The workflow refuses to publish anything `main` does not reach,
-   so a tag pushed from an unmerged branch fails after every other check has
-   passed.
+   Confirm it by compiling against the asset GitHub is serving, not against a
+   local build of it. Nothing before this point has done that: `npm run smoke`
+   compiles against the copy in `.daml/dist`, so the uploaded bytes are
+   unexercised until someone downloads them. Following the release body's own
+   instructions is the check:
+
+   ```bash
+   gh release download v0.1.0-rc1 --pattern '*.dar' --dir /tmp/rc
+   shasum -a 256 /tmp/rc/canton-token-forge-0.0.1.dar   # must match the body
+   mkdir -p consumer-smoke/consumer/vendor
+   cp /tmp/rc/canton-token-forge-0.0.1.dar \
+      consumer-smoke/consumer/vendor/canton-token-forge.dar
+   ( cd consumer-smoke/consumer && LANG=C.UTF-8 dpm build )
+   ```
+
+   Then `npm run clean`, and delete that release and its tag.
 2. Tag and push. This is the decision that matters: a downstream repository pins
    it permanently.
 
@@ -340,7 +354,8 @@ CI just proved compile.
    ```
 
 3. Confirm the release carries `canton-token-forge-0.0.1.dar` and that its body
-   shows the sha256 and package-id.
+   shows the sha256 and package-id. The download-and-compile from step 1 is
+   worth repeating here, against the real tag.
 
    If the release appears but the DAR is missing, the upload failed after the
    release was created. Re-run the workflow from the Actions tab: it attaches
