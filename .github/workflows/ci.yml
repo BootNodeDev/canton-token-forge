@@ -411,10 +411,10 @@ jobs:
             exit 0
           fi
           # A blip on this fetch reds the job having verified nothing, so it
-          # is retried rather than taken at its word. The two steps above are
-          # ungated so that they run whatever the change touches; they sit
-          # above this one so that a red here finds them already run and
-          # reported, rather than never run at all.
+          # is retried rather than taken at its word. Every step above this
+          # one is ungated, so they run whatever the change touches; they sit
+          # above it so that a red here finds them already run and reported,
+          # rather than never run at all.
           for attempt in 1 2 3; do
             git fetch --no-tags --prune origin \
               "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
