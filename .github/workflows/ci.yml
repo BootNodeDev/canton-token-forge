@@ -293,6 +293,57 @@ jobs:
           done
           exit "$status"
 
+      # README.md's "Consuming a release" snippet is a hand transcription of
+      # the two blocks scripts/release-notes.sh cuts from the smoke package,
+      # and it is the first page a consumer reads. Nothing else compared the
+      # two: a SPLICE_TAG bump that ships new interface versions reds this
+      # job through the smoke package, the author fixes that daml.yaml, CI
+      # goes green, and README still tells a consumer to write the flags we
+      # moved off. Ungated for the same reason the step above is, and because
+      # README.md appears in the gate's path list nowhere at all, so a change
+      # to either file has to be able to red this.
+      - name: Verify the README consumer snippet
+        run: |
+          set -euo pipefail
+          smoke=consumer-smoke/consumer/daml.yaml
+          # The vendor path, the LF target and the --package flags: the lines
+          # a consumer copies. Selected by their leading '- --' or
+          # '- vendor/' rather than by parsing the YAML blocks, which is what
+          # keeps the dependencies: entries (daml-prim, daml-stdlib) out
+          # without a second block parser living here.
+          pattern='^[[:space:]]*-[[:space:]]*(--|vendor/)'
+          # A grep that matches nothing exits 1, which under -e kills the
+          # step at the assignment and leaves the emptiness report below
+          # unreachable.
+          from_smoke="$(grep -E "$pattern" "$smoke" || true)"
+          if [ -z "$from_smoke" ]; then
+            echo "${smoke} names no --package, --target or vendor entry" >&2
+            exit 1
+          fi
+          from_readme="$(grep -E "$pattern" README.md || true)"
+          status=0
+          # Both directions. The first catches a flag README never followed
+          # the smoke package onto; the second catches one it kept after the
+          # smoke package dropped it, which is the quieter of the two because
+          # every line still present is individually valid.
+          while IFS= read -r line; do
+            if ! grep -qxF "$line" README.md; then
+              echo "README.md does not carry '${line}' from ${smoke}" >&2
+              status=1
+            fi
+          done <<<"$from_smoke"
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            if ! grep -qxF "$line" "$smoke"; then
+              echo "README.md carries '${line}', which ${smoke} does not" >&2
+              status=1
+            fi
+          done <<<"$from_readme"
+          if [ "$status" = 0 ]; then
+            echo "ok: README.md's snippet matches ${smoke}"
+          fi
+          exit "$status"
+
       # DPM_SDK_VERSION is one more copy of a pin whose other homes are the
       # daml.yaml files. Assert rather than trust: bumping those and forgetting
       # this one otherwise fails much later, or silently makes dpm download a

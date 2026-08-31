@@ -140,10 +140,10 @@ the hidden package". You still need SDK 3.4.11 and LF 2.1 to compile against it.
 `splice-api-token-allocation-request-v1` is declared by this package but never
 implemented, so it is not bundled. Take it from Splice directly if you need it.
 
-This snippet is a hand-kept copy of the `data-dependencies` and `build-options`
-blocks in `consumer-smoke/consumer/daml.yaml`. The release body carries the same
-blocks generated straight from that file, so trust the release body if the two
-ever disagree.
+This snippet is transcribed from the `data-dependencies` and `build-options`
+blocks in `consumer-smoke/consumer/daml.yaml`, and the `daml` check compares the
+two on every pull request, so they cannot drift apart. The release body carries
+the same blocks, generated straight from that file.
 
 ## Requirements
 
@@ -165,10 +165,11 @@ ships different interface versions, update the `--package` unit-ids in
 `consumer-smoke/consumer/daml.yaml`, which spell the version out because the
 compiler rejects the unversioned form.
 
-Then update this file by hand for any of the three. The snippet above and the
-SDK and LF target named beneath it are transcriptions, not derivations: no
-check reads them, so an edit that stops short of here leaves the first page a
-consumer reads telling them to use the version we just moved off.
+Then update this file by hand for any of the three. The snippet above is
+compared against the smoke package by the `daml` check, so forgetting it reds
+rather than ships. The SDK and LF versions named in the prose under it are
+transcriptions that nothing reads, so an edit that stops short of them leaves
+the first page a consumer reads naming a version we just moved off.
 
 ## License
 
