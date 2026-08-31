@@ -67,9 +67,14 @@ The **only** version you pin is the Splice release tag, in **`versions.env`**
 
 Two exceptions. The **SDK/LF** pins live in the three `daml.yaml` files (static
 YAML can't read env vars). If a new tag ships a different SDK, update
-`sdk-version` (and possibly `--target`) there too. `scripts/build-harness.sh`
-derives the SDK it installs from the vendored harness, so at least the install
-matches the tag.
+`sdk-version` (and possibly `--target`) there too, along with
+`DPM_SDK_VERSION` in both workflows and the tarball digest in
+`.github/actions/install-dpm/action.yml`, which is where the one copy of that
+digest lives. Neither workflow installs an SDK a manifest disagrees with, and
+the action refuses a version it holds no digest for, so a half-finished bump
+reds rather than installing something unverified.
+`scripts/build-harness.sh` derives the SDK it installs from the vendored
+harness, so at least the install matches the tag.
 
 The second is `consumer-smoke/consumer/daml.yaml`, which names the six bundled
 Splice interfaces as versioned unit-ids (`--package=splice-api-token-holding-v1-1.0.0`

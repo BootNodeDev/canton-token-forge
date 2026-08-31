@@ -157,8 +157,10 @@ ever disagree.
 
 Edit `SPLICE_TAG` in `versions.env`, run `npm run setup`. Two things do not
 follow from that knob (see CLAUDE.md). If the new tag ships a different SDK,
-update `sdk-version` in every tracked `daml.yaml`, and if it moves the LF
-target, `--target` there and in the LF grep in
+update `sdk-version` in every tracked `daml.yaml`, `DPM_SDK_VERSION` in both
+workflows, and the tarball digest recorded for that version in
+`.github/actions/install-dpm/action.yml`; and if it moves the LF target,
+`--target` in those manifests and in the LF grep in
 `.github/workflows/release.yml`. If it ships different interface versions,
 update the `--package` unit-ids in `consumer-smoke/consumer/daml.yaml`, which
 spell the version out because the compiler rejects the unversioned form. The
