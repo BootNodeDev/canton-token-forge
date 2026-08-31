@@ -581,10 +581,14 @@ Stated plainly, because they are what an evaluation turns on.
   needs a live participant, so only its types are checked there and it is
   never run. Off that path too is `npm run test:coverage`, which re-runs
   Splice's own suites and which nothing runs automatically. A pull request
-  in the `daml` check's scope compiles the smoke package, but the check that
-  compares the published snippet against the artifact, the assertion that
-  every manifest still targets LF 2.1, and the rebuild that proves the DAR
-  is byte-reproducible all run only when a release is cut.
+  in the `daml` check's scope compiles the smoke package, generates the
+  release body, which is the check that compares the published snippet
+  against the artifact, and asserts that every tracked manifest still pins
+  the SDK and targets LF 2.1. What is left to the release workflow: the
+  rebuild that proves the DAR is byte-reproducible, the refusal of a tag
+  `main` does not reach, and `release-notes.sh`'s check that the tag names
+  the checked-out commit, which the pull-request path switches off with
+  `ALLOW_UNTAGGED`.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 
