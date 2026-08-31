@@ -586,9 +586,9 @@ Stated plainly, because they are what an evaluation turns on.
   against the artifact, and asserts that every tracked manifest still pins
   the SDK and targets LF 2.1. The release workflow still carries the rebuild
   that proves the DAR is byte-reproducible, the refusal of a tag `main` does
-  not reach, and `release-notes.sh`'s check that the tag names the
-  checked-out commit, which the pull-request path switches off with
-  `ALLOW_UNTAGGED`.
+  not reach, and `release-notes.sh`'s tag guard, which the pull-request path
+  waives with `ALLOW_UNTAGGED` so that a body can be generated for a ref that
+  is not a tag.
 - **Pre-release.** Version `0.0.1`, no downstream users, no migration story, and
   no compatibility guarantees.
 

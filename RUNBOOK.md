@@ -322,8 +322,10 @@ CI just proved compile.
 
    Those two are the refusal of a tag `main` does not reach and the publish
    itself, both gated on a tag push. A dispatch also sets `ALLOW_UNTAGGED=1`,
-   which switches off a third check: `release-notes.sh`'s own assertion that
-   the tag names the checked-out commit. To rehearse all three, push a
+   which waives `release-notes.sh`'s refusal of a name that is not a tag, and
+   with it the comparison against the checked-out commit that only a real tag
+   reaches, so the body it emits names the dispatched ref. To rehearse all
+   three, push a
    hyphenated tag such as `v0.1.0-rc1` first:
    the workflow marks any hyphenated tag as a pre-release, so it does not
    become the release that `/releases/latest` serves. Tag a commit that is

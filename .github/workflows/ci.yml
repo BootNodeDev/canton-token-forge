@@ -588,8 +588,11 @@ jobs:
       # costs almost nothing and leaves that body in the log to read.
       #
       # ALLOW_UNTAGGED because GITHUB_REF_NAME is a branch or a merge ref here,
-      # never a tag. That switches off the tag guard and nothing else, so it is
-      # the single check in this script the step does not cover; the tag push
+      # never a tag. It waives the refusal of a name that is not a tag, and so
+      # also the comparison against the checked-out commit, which only a real
+      # tag reaches: the body this step prints says "rebuild it at" whatever
+      # ref the run carries. Those two are what the step does not cover; the
+      # tag push
       # in RUNBOOK.md's rehearsal is where it stays covered.
       - name: Generate the release notes
         if: steps.scope.outputs.run == 'true'

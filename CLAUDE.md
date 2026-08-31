@@ -299,7 +299,8 @@ built artifact, generates the release body, and publishes the DAR as a
 release asset. A manual
 dispatch of that workflow runs the build and those artifact checks, cannot
 publish, and leaves three things unexercised: the on-main refusal, the publish,
-and `release-notes.sh`'s check that the tag names the checked-out commit. See
+and `release-notes.sh`'s tag guard, which `ALLOW_UNTAGGED` waives so that a
+body can be emitted for a ref that is not a tag at all. See
 [`RUNBOOK.md`](RUNBOOK.md#cutting-a-release) for the procedure, including the
 pre-release rehearsal, the only run that exercises that guard before the real
 tag.

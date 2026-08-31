@@ -4,8 +4,10 @@ name: release
 # owner's, and a downstream repository pins the result permanently, so nothing
 # here creates a tag on its own. A manual dispatch runs every step below except
 # two, the on-main refusal and the publish, which are gated on a push; it also
-# sets ALLOW_UNTAGGED, which switches off a third check, the one inside
-# release-notes.sh that the tag names the checked-out commit. That is how this
+# sets ALLOW_UNTAGGED, which waives release-notes.sh's refusal of a name that
+# is not a tag in this repository, and with it the comparison against the
+# checked-out commit that only a real tag ever reaches. A dispatch therefore
+# emits a body naming whatever ref it was dispatched from. That is how this
 # workflow is rehearsed short of publishing, and the pre-release tag push in
 # RUNBOOK.md is what covers the three it leaves.
 #
