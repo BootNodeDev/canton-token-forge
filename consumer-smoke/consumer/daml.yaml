@@ -2,6 +2,11 @@
 # The DAR is copied into vendor/ by scripts/consumer-smoke.sh rather than
 # referenced in the build tree, because a consumer has no build tree of ours to
 # point at.
+#
+# scripts/release-notes.sh publishes the data-dependencies and build-options
+# blocks below VERBATIM as the instructions a downstream repository follows, so
+# every line of them is downstream-facing: a path or a flag that only suits this
+# package silently becomes what we tell consumers to write.
 sdk-version: 3.4.11
 name: consumer-smoke
 source: daml
