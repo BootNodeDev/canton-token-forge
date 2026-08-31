@@ -336,9 +336,15 @@ CI just proved compile.
    unexercised until someone downloads them. Following the release body's own
    instructions is the check:
 
+   The `rm -rf` is what `scripts/consumer-smoke.sh` does before every build,
+   and it matters more here: if `npm run smoke` has already run, both the
+   vendored DAR and the build output are the local artifact, and this is the
+   one step meant to exercise the downloaded one.
+
    ```bash
    gh release download v0.1.0-rc1 --pattern '*.dar' --dir /tmp/rc
    shasum -a 256 /tmp/rc/canton-token-forge-0.0.1.dar   # must match the body
+   rm -rf consumer-smoke/consumer/vendor consumer-smoke/consumer/.daml
    mkdir -p consumer-smoke/consumer/vendor
    cp /tmp/rc/canton-token-forge-0.0.1.dar \
       consumer-smoke/consumer/vendor/canton-token-forge.dar
