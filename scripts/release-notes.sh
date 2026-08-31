@@ -44,12 +44,13 @@ if [ ! -f "$DAR" ]; then
 fi
 
 sha="$(sha256sum "$DAR" | cut -d' ' -f1)"
+# The pipeline is allowed to fail here. A grep that matches nothing exits 1,
+# and under pipefail that kills the script AT THE ASSIGNMENT, before anything
+# can say what went wrong. Swallow the status and report on the value instead.
 pkgid="$(unzip -l "$DAR" \
-         | grep -oE "canton-token-forge-${VERSION//./\\.}-[0-9a-f]{64}" | sort -u)"
-if [ -z "$pkgid" ]; then
-  echo "could not read the main package-id out of $DAR" >&2
-  exit 1
-fi
+         | grep -oE "canton-token-forge-${VERSION//./\\.}-[0-9a-f]{64}" \
+         | sort -u || true)"
+require "the main package-id out of $DAR" "$pkgid"
 splice_tag="$(awk -F= '/^SPLICE_TAG=/ {print $2; exit}' versions.env)"
 require "SPLICE_TAG from versions.env" "$splice_tag"
 sdk="$(awk '/^sdk-version:/ {print $2; exit}' daml/canton-token-forge/daml.yaml)"
@@ -59,7 +60,8 @@ require "the SDK pin from daml/canton-token-forge/daml.yaml" "$sdk"
 # package's daml.yaml, so "from data-dependencies to end of file" is the whole
 # snippet. Its comments are dropped: they explain the file to us, not the
 # artifact to a consumer.
-snippet="$(awk '/^data-dependencies:/,0' "$SMOKE" | grep -v '^[[:space:]]*#')"
+snippet="$(awk '/^data-dependencies:/,0' "$SMOKE" | grep -v '^[[:space:]]*#' || true)"
+require "the consumer snippet out of $SMOKE" "$snippet"
 
 cat <<EOF
 \`$DAR_NAME\` is the whole dependency. It bundles the six
