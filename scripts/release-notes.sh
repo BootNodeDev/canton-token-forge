@@ -3,9 +3,10 @@
 # release-notes.sh - emit the GitHub release body for a canton-token-forge DAR.
 #
 # The consumer snippet is EXTRACTED from consumer-smoke/consumer/daml.yaml
-# rather than written here. That package is compiled against the same DAR
-# moments earlier in the release workflow, so the instructions published are
-# the ones just proved to compile, and the two cannot drift apart.
+# rather than written here, so what gets published is what a package really
+# builds with and the two cannot drift apart. Compiling that package is what
+# proves the snippet, and this script does not compile it: run
+# `npm run smoke` before publishing a release.
 #
 # Usage:
 #   bash scripts/release-notes.sh <tag>              # build, then emit the body
