@@ -348,12 +348,13 @@ jobs:
           changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
-          # Build and test inputs only. The files that merely name template
-          # ids or carry an SDK pin are not listed: the checks that read them
-          # run ahead of this gate and ignore it, so listing them here would
-          # install a toolchain and build both packages to verify nothing the
-          # change can reach.
-          if grep -Eq '^(daml/|scripts/fetch-dep\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          # Build and test inputs, now including the smoke package, whose own
+          # contents the smoke step compiles. The files that merely name
+          # template ids or carry an SDK pin are otherwise not listed: the
+          # checks that read them run ahead of this gate and ignore it, so
+          # listing them here would install a toolchain and build both
+          # packages to verify nothing the change can reach.
+          if grep -Eq '^(daml/|consumer-smoke/|scripts/fetch-dep\.sh$|scripts/consumer-smoke\.sh$|versions\.env$|package\.json$|package-lock\.json$|multi-package\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
@@ -473,3 +474,14 @@ jobs:
       - name: Test
         if: steps.scope.outputs.run == 'true'
         run: npm test
+
+      # canton-token-forge-test lists the Splice interface DARs separately,
+      # so it never exercises the artifact in isolation, and a change to what
+      # the production package bundles or exposes is otherwise green until a
+      # release is cut. The Test step above just built the DAR, so building
+      # it again here would only verify the build step twice.
+      - name: Consumer smoke test
+        if: steps.scope.outputs.run == 'true'
+        env:
+          SKIP_BUILD: '1'
+        run: npm run smoke
