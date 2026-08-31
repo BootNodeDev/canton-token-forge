@@ -5,8 +5,9 @@
 #
 # This is the check that guards what a downstream repository actually does: that
 # the artifact is consumable on its own, and that the exposure flags still match
-# what the DAR bundles. The release workflow runs it before publishing, and
-# ci.yml runs it on a pull request whose changes fall in the daml job's scope.
+# what the DAR bundles. The release workflow runs it before publishing. ci.yml
+# runs it on every push to main and every merge group whatever the change
+# touches, and on a pull request whose changes fall in the daml job's scope.
 #
 # Usage:
 #   bash scripts/consumer-smoke.sh              # build the DAR, then compile against it
