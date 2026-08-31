@@ -47,8 +47,9 @@ template VestingLockShape
         optToken <- downcast (toInterfaceContractId @HoldingV1.Holding locked)
         pure $ fmap (\(_, t) -> t.owner) optToken
 
--- One type from each bundled package, so a package dropping out of the DAR is a
--- compile error here.
+-- A type from each bundled package the rest of the file does not already name
+-- (HoldingV1 and MetadataV1 are reached above), so a package dropping out of
+-- the DAR is a compile error here.
 bundledPackagesReachable :
   ( TransferInstructionV1.TransferInstructionResult_Output
   , AllocationV1.AllocationView
@@ -61,7 +62,8 @@ bundledPackagesReachable _ = ()
 -- package still IMPLEMENTS the interface, because the type outlives the
 -- `interface instance` that mentions it. Every conversion below needs the
 -- instance itself, so dropping an implementation breaks this package rather
--- than a downstream one. There are seven, and each appears exactly once.
+-- than a downstream one. The production package declares seven and all seven
+-- are converted below; Holding for Token is also reached above, by downcast.
 holdingInstances : ContractId Token -> ContractId LockedToken -> [ContractId HoldingV1.Holding]
 holdingInstances token locked =
   [ toInterfaceContractId @HoldingV1.Holding token

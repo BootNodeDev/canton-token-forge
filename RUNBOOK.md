@@ -331,7 +331,7 @@ CI just proved compile.
 
    Confirm it by compiling against the asset GitHub is serving, not against a
    local build of it. Nothing before this point has done that: `npm run smoke`
-   compiles against the copy in `.daml/dist`, so the uploaded bytes are
+   compiles against the DAR in `.daml/dist`, so the uploaded bytes are
    unexercised until someone downloads them. Following the release body's own
    instructions is the check:
 

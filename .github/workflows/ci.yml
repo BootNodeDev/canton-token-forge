@@ -485,14 +485,15 @@ jobs:
       # the two, so a change that leaves both compiling can still break the
       # release body: a flag naming something the DAR stopped bundling, a
       # bundled interface the snippet stopped naming, a block it can no longer
-      # find. Publishing is the only thing that ever ran it, which put the
-      # first execution after the tag was already public. It emits to stdout
-      # and touches nothing, so running it here costs a second and leaves the
-      # body in the log to read.
+      # find. Only the release workflow runs it otherwise, which would put its
+      # first automated run after the tag was already public. Under SKIP_BUILD
+      # it only reads, and it writes the body to stdout, so running it here
+      # costs almost nothing and leaves that body in the log to read.
       #
       # ALLOW_UNTAGGED because GITHUB_REF_NAME is a branch or a merge ref here,
-      # never a tag; that is the one guard this cannot exercise, and the
-      # workflow_dispatch rehearsal in RUNBOOK.md is where it stays covered.
+      # never a tag. That switches off the tag guard and nothing else, so it is
+      # the single check in this script the step does not cover; the tag push
+      # in RUNBOOK.md's rehearsal is where it stays covered.
       - name: Generate the release notes
         if: steps.scope.outputs.run == 'true'
         env:
