@@ -65,8 +65,9 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 976 lines of production Daml, 2508 lines of Daml tests, 1724 lines of TypeScript
 service, 4343 lines of TypeScript tests. MIT licensed. Pre-release: the package
-version is `0.0.1`, published and pinnable as release `v0.1.0`, with no
-compatibility guarantee offered across releases.
+version is `0.0.1`, and the build is published as release `v0.1.0` for
+downstream repositories to pin (the tag is deliberately decoupled from the
+package version), with no compatibility guarantee offered across releases.
 
 ---
 
@@ -589,8 +590,9 @@ Stated plainly, because they are what an evaluation turns on.
   not reach, and `release-notes.sh`'s tag guard, which the pull-request path
   waives with `ALLOW_UNTAGGED` so that a body can be generated for a ref that
   is not a tag.
-- **Pre-release.** Version `0.0.1`, published and pinnable as release `v0.1.0`,
-  no migration story, and no compatibility guarantees.
+- **Pre-release.** Version `0.0.1`, with the build published as release `v0.1.0`
+  for downstream repositories to pin (the tag is deliberately decoupled from the
+  package version). No migration story and no compatibility guarantees.
 
 ---
 
