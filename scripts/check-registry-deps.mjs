@@ -3,9 +3,12 @@
 // check-registry-deps.mjs - the root package.json ships registry/dist as its
 // bin, so a consumer install resolves the service's imports against the root
 // dependency list, while every test suite that vetted that code ran against
-// registry/package.json's list. The two are deliberate duplicates: this
-// guard fails when they drift apart, in either the declared ranges or the
-// versions each lockfile actually resolved.
+// registry/package.json's list. The two are deliberate duplicates, and this
+// guard fails on four ways they come apart: a runtime dependency declared on
+// one side only, a shared package at two ranges, a mismatched engines.node or
+// type, and a package the two lockfiles resolve differently. It also fails
+// when a lockfile stops recording the manifest beside it, which is the state
+// an edit to one of the ranges leaves behind.
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -72,7 +75,7 @@ for (const [file, ranges] of [
     for (const other of rest) {
       if (other.range !== first.range) {
         failures.push(
-          `${name} is "${first.range}" in ${file}'s "${first.section}" and "${other.range}" in its "${other.section}"; a manifest cannot name one package at two ranges.`,
+          `${name} is "${first.range}" in ${file}'s "${first.section}" and "${other.range}" in its "${other.section}"; a manifest cannot name one package at two ranges, so drop one of them.`,
         )
       }
     }
@@ -141,7 +144,7 @@ for (const name of sharedNames) {
   resolvedMatches += 1
 }
 
-// Making two ranges identical satisfies the rule above while leaving each
+// Making two ranges identical satisfies the range rule while leaving each
 // lockfile recording the range it was generated from, and npm ci refuses a tree
 // in that state. Comparing the root entry npm writes into every lockfile against
 // the manifest beside it is the cheap half of what npm ci validates.
