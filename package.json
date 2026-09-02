@@ -17,7 +17,7 @@
     "prepare": "tsc -p registry/tsconfig.json"
   },
   "repository": "github:BootNodeDev/canton-token-forge",
-  "engines": { "node": ">=18" },
+  "engines": { "node": ">=20" },
   "bin": { "canton-token-forge-registry": "registry/dist/index.js" },
   "files": ["registry/dist", "registry/openapi", "registry/.env.example"],
   "dependencies": {
