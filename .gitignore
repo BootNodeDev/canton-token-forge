@@ -16,3 +16,9 @@ docs/
 
 # Canton sandbox ports/ready file written by scripts/sandbox.sh
 .canton-ports.json
+
+# The registry's build output ships inside the npm package, so the rule that
+# keeps it out of git lives here rather than beside it: npm applies a NESTED
+# ignore file to the pack walk even for a path the root "files" allowlist
+# names, while the allowlist does outrank this file.
+registry/dist

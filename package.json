@@ -1,9 +1,9 @@
 {
-  "name": "canton-token-forge",
-  "version": "0.0.1",
+  "name": "@bootnodedev/canton-token-forge",
+  "version": "0.2.0",
   "description": "A reusable, multi-instrument CIP-0056 (CN Token Standard) compliant token for demos and sandboxes",
   "license": "MIT",
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "setup": "bash scripts/fetch-dep.sh",
     "clean": "rm -rf daml/canton-token-forge/.daml daml/canton-token-forge-test/.daml consumer-smoke/consumer/.daml consumer-smoke/consumer/vendor registry/dist",
@@ -16,6 +16,10 @@
     "test:coverage": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test --all --show-coverage --coverage-ignore-choice '^splice' --coverage-ignore-choice ':Archive$'",
     "prepare": "tsc -p registry/tsconfig.json"
   },
+  "repository": "github:BootNodeDev/canton-token-forge",
+  "engines": { "node": ">=18" },
+  "bin": { "canton-token-forge-registry": "registry/dist/index.js" },
+  "files": ["registry/dist", "registry/openapi", "registry/.env.example"],
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
