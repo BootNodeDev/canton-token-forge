@@ -167,8 +167,10 @@ for (const { manifest, manifestFile, lock, lockFile } of TREES) {
     const locked = recorded[section] ?? {}
     for (const [name, range] of Object.entries(declared)) {
       if (locked[name] !== range) {
+        const recordedRange =
+          locked[name] === undefined ? 'does not record it' : `records "${locked[name]}"`
         failures.push(
-          `${name} is "${range}" in ${manifestFile}'s "${section}" but ${lockFile} records ${JSON.stringify(locked[name])}; run npm install to bring the lockfile up to date.`,
+          `${name} is "${range}" in ${manifestFile}'s "${section}" but ${lockFile} ${recordedRange}; run npm install to bring the lockfile up to date.`,
         )
       }
     }
