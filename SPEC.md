@@ -310,7 +310,7 @@ holding for any surplus, so no value is created or destroyed.
 
 ## 6. Registry HTTP service
 
-A TypeScript service (Express, `express-openapi-validator`, pino; Node 18+) that
+A TypeScript service (Express, `express-openapi-validator`, pino; Node 20+) that
 validates incoming requests against the four CN Token Standard OpenAPI specs it
 ships. Responses are covered by the unit suite rather than by runtime schema
 validation. The service is **read-only**: it queries the JSON Ledger API for
@@ -470,7 +470,7 @@ The sandbox runs in the foreground, so the seed and the end-to-end suite go in a
 second shell. The end-to-end suite creates everything it needs, so seeding is
 only required if you also want to drive the service by hand.
 
-Requirements: `dpm` and a JDK 17+ on `PATH` for the Daml build, Node 18+ for the
+Requirements: `dpm` and a JDK 17+ on `PATH` for the Daml build, Node 20+ for the
 service and its suites, and `git` plus network access for the initial vendoring.
 
 ---

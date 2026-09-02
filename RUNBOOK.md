@@ -18,7 +18,7 @@ been re-probed since.
 
 - `dpm` and a JDK 17+ on `PATH` (see `CLAUDE.md`)
 - `deps/` vendored: `npm run setup`, or `bash scripts/fetch-dep.sh` directly
-- Node 18+ for the seed script and the registry service
+- Node 20+ for the seed script and the registry service
 
 ## 1. Start the sandbox
 

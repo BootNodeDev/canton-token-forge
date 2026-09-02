@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import 'dotenv/config'
 import { type Config, loadConfig } from './config.js'
 import { HttpLedgerClient } from './ledger.js'

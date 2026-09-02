@@ -153,7 +153,7 @@ from that file.
 - `dpm` (Digital Asset Package Manager) and a JDK 17+ on `PATH`
   (`curl https://get.digitalasset.com/install/install.sh | sh`, then
   `dpm install 3.4.11`).
-- Node 18+ for the registry service, its test suites, and the seed script.
+- Node 20+ for the registry service, its test suites, and the seed script.
 - `git` + network access (setup clones `canton-network/splice`).
 
 ## Bumping Splice
