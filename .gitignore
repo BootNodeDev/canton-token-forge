@@ -20,5 +20,7 @@ docs/
 # The registry's build output ships inside the npm package, so the rule that
 # keeps it out of git lives here rather than beside it: npm applies a NESTED
 # ignore file to the pack walk even for a path the root "files" allowlist
-# names, while the allowlist does outrank this file.
-registry/dist
+# names, while the allowlist does outrank this file. The glob is what makes an
+# anchored root rule cover what the unanchored one beside the code covered, a
+# dist directory at any depth under registry/, not only the compiler's own.
+registry/**/dist
