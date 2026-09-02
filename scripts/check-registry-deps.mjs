@@ -141,6 +141,47 @@ for (const name of sharedNames) {
   resolvedMatches += 1
 }
 
+// Making two ranges identical satisfies the rule above while leaving each
+// lockfile recording the range it was generated from, and npm ci refuses a tree
+// in that state. Comparing the root entry npm writes into every lockfile against
+// the manifest beside it is the cheap half of what npm ci validates.
+const TREES = [
+  {
+    manifest: rootManifest,
+    manifestFile: 'package.json',
+    lock: rootLock,
+    lockFile: 'package-lock.json',
+  },
+  {
+    manifest: registryManifest,
+    manifestFile: 'registry/package.json',
+    lock: registryLock,
+    lockFile: 'registry/package-lock.json',
+  },
+]
+
+for (const { manifest, manifestFile, lock, lockFile } of TREES) {
+  const recorded = lock.packages?.[''] ?? {}
+  for (const section of SECTIONS) {
+    const declared = manifest[section] ?? {}
+    const locked = recorded[section] ?? {}
+    for (const [name, range] of Object.entries(declared)) {
+      if (locked[name] !== range) {
+        failures.push(
+          `${name} is "${range}" in ${manifestFile}'s "${section}" but ${lockFile} records ${JSON.stringify(locked[name])}; run npm install to bring the lockfile up to date.`,
+        )
+      }
+    }
+    for (const name of Object.keys(locked)) {
+      if (!(name in declared)) {
+        failures.push(
+          `${lockFile} still records ${name} in "${section}" but ${manifestFile} no longer declares it; run npm install to bring the lockfile up to date.`,
+        )
+      }
+    }
+  }
+}
+
 if (failures.length > 0) {
   console.error('the root and registry/ packages disagree:')
   for (const failure of failures) {
@@ -150,5 +191,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `manifests agree: ${sharedNames.length} packages named in both carry identical ranges, ${resolvedMatches} resolve to the same version in both lockfiles, engines.node and type match`,
+  `manifests agree: ${sharedNames.length} packages named in both carry identical ranges, ${resolvedMatches} resolve to the same version in both lockfiles, engines.node and type match, and each lockfile records the manifest beside it`,
 )
