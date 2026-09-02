@@ -88,12 +88,16 @@ Use the `package.json` npm scripts - they set `LANG=C.UTF-8` and handle the
 per-package layout. (damlc regenerates data-dependency interface source and
 throws "lexical error (UTF-8 decoding error)" under a POSIX/`C` locale.)
 
-### Setup (`npm install`)
+### Setup (`npm run setup`)
 
-`postinstall` runs `npm run setup` (= `scripts/fetch-dep.sh`): vendors Splice into
-`deps/` and creates the stable-name symlinks for the token interface DARs.
-Preconditions: `dpm` + JDK 17+ on `PATH`, `git` + network. First run takes a few
-minutes. For deps only, run `bash scripts/fetch-dep.sh`.
+`npm run setup` (= `scripts/fetch-dep.sh`) vendors Splice into `deps/` and
+creates the stable-name symlinks for the token interface DARs. Preconditions:
+`dpm` + JDK 17+ on `PATH`, `git` + network. First run takes a few minutes. For
+deps only, run `bash scripts/fetch-dep.sh`.
+
+A root `npm install` vendors nothing. It installs the registry service's runtime
+dependencies and compiles `registry/src` to `registry/dist` through `prepare`, so
+installing this repository needs no `dpm`, no JDK and no clone of Splice.
 
 | Command | Does |
 | --- | --- |
@@ -266,7 +270,7 @@ The `/sdlc:issue` skill applies these labels automatically when creating issues 
 
 Run before declaring work done:
 
-- `npm install` (or `npm run setup`) once, so `deps/` are vendored
+- `npm run setup` once, so `deps/` are vendored
 - `npm run build` - both packages compile
 - `npm test` - the integration suite passes
 - `npm run test:coverage` - when you touched or added templates

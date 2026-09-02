@@ -457,7 +457,7 @@ instrument, then prints a ready-to-paste service configuration.
 ## 8. Running it
 
 ```bash
-npm install                       # vendors the Splice interface DARs into deps/
+npm run setup                     # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 80 Daml scenarios
 cd registry && npm install && npm test   # 205 unit tests, no ledger needed
 

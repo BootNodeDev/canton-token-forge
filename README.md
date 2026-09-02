@@ -15,7 +15,7 @@ and every holding, and is the same party the registry API reports as its
 
 ```bash
 # 1. Vendor the Splice interface DARs into deps/ (clones canton-network/splice)
-npm install
+npm run setup
 
 # 2. Build the production DAR and run the Daml test suite
 npm test
@@ -30,7 +30,8 @@ allocations, the faucet and burn-mint. The scripts run in-process, so no ledger
 or sandbox is needed.
 
 `registry/` is a separate npm package with its own dependencies: the root
-`npm install` vendors the Daml deps and does not populate `registry/node_modules`.
+`npm install` does not populate `registry/node_modules`, and vendoring the Daml
+deps is a separate `npm run setup`.
 Its suite runs against an in-process server with a stubbed ledger, so it needs no
 sandbox either.
 
@@ -67,7 +68,7 @@ and the service look the way they do.
   contexts a client needs to submit a transfer or an allocation. It submits
   nothing to the ledger itself.
 - `scripts/fetch-dep.sh` - vendor Splice into `deps/`, derive versions,
-  stable-symlink DARs. Run by `npm install`.
+  stable-symlink DARs. Run by `npm run setup`.
 - `scripts/sandbox.sh` - build the DAR and run a local Canton sandbox with the
   JSON Ledger API (`npm run sandbox`).
 - `scripts/seed.mjs` - seed a running sandbox with an admin, demo users, and one

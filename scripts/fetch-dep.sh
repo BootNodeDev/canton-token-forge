@@ -74,9 +74,9 @@ else
   # a release body needs the commit. Refusing here would mean the fallback
   # aborts for precisely the reason it was written - a broken git transport
   # to this host - and every contributor on such a network would find
-  # `npm install` failing where it used to work. The stamp records what is
-  # known, and scripts/release-notes.sh is what refuses to publish without
-  # the rest.
+  # `npm run setup` failing where it used to work. The stamp records what
+  # is known, and scripts/release-notes.sh is what refuses to publish
+  # without the rest.
   if [ -z "$splice_commit" ]; then
     echo "warning: could not resolve the commit for ${SPLICE_TAG}" >&2
     echo "  deps/ will still be vendored; scripts/release-notes.sh will refuse" >&2

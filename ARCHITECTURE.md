@@ -363,7 +363,7 @@ overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 
 | Command | Purpose |
 |---------|---------|
-| `npm install` / `npm run setup` | Vendor Splice into `deps/` and create the stable-name symlinks (`scripts/fetch-dep.sh`). |
+| `npm run setup` | Vendor Splice into `deps/` and create the stable-name symlinks (`scripts/fetch-dep.sh`). |
 | `npm run build` | Build both packages (production, then test). |
 | `npm run build:canton-token-forge` | Build only the production package. |
 | `npm test` | Build the production DAR, then run the `canton-token-forge-test` suite. |
