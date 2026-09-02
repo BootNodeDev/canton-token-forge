@@ -91,14 +91,24 @@ for (const name of sharedNames) {
   }
 }
 
-for (const field of ['node', 'type']) {
-  const rootValue = field === 'node' ? rootManifest.engines?.node : rootManifest.type
-  const registryValue = field === 'node' ? registryManifest.engines?.node : registryManifest.type
-  const label = field === 'node' ? 'engines.node' : 'type'
+// Absence on both sides is a disagreement with npm's defaults rather than
+// between the two files: an omitted "type" means commonjs, which the compiled
+// ESM bin cannot be loaded under, and an omitted floor lets a consumer install
+// on a runtime the closure does not support.
+const FIELDS = [
+  { label: 'engines.node', read: (manifest) => manifest.engines?.node },
+  { label: 'type', read: (manifest) => manifest.type },
+]
+
+for (const { label, read } of FIELDS) {
+  const rootValue = read(rootManifest)
+  const registryValue = read(registryManifest)
   if (rootValue !== registryValue) {
     failures.push(
       `${label} is ${JSON.stringify(rootValue)} in package.json and ${JSON.stringify(registryValue)} in registry/package.json; make the two identical.`,
     )
+  } else if (rootValue === undefined) {
+    failures.push(`${label} is missing from both package.json and registry/package.json; set it in both.`)
   }
 }
 
