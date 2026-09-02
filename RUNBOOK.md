@@ -17,7 +17,7 @@ been re-probed since.
 ## Prerequisites
 
 - `dpm` and a JDK 17+ on `PATH` (see `CLAUDE.md`)
-- `deps/` vendored: `npm install`, or `bash scripts/fetch-dep.sh` for deps only
+- `deps/` vendored: `npm run setup`, or `bash scripts/fetch-dep.sh` directly
 - Node 18+ for the seed script and the registry service
 
 ## 1. Start the sandbox
@@ -81,7 +81,8 @@ npm start
 ```
 
 `registry/` is a separate package with its own dependencies: the root
-`npm install` vendors the Daml deps and does not populate `registry/node_modules`.
+`npm install` does not populate `registry/node_modules`, and vendoring the Daml
+deps is a separate `npm run setup`.
 
 `GET /healthz` and `GET /readyz` answer, `GET /registry/metadata/v1/info` returns
 the admin party as `adminId` with the six supported APIs, and

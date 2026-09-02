@@ -6,14 +6,25 @@
   "type": "commonjs",
   "scripts": {
     "setup": "bash scripts/fetch-dep.sh",
-    "postinstall": "npm run setup",
-    "clean": "rm -rf daml/canton-token-forge/.daml daml/canton-token-forge-test/.daml consumer-smoke/consumer/.daml consumer-smoke/consumer/vendor",
+    "clean": "rm -rf daml/canton-token-forge/.daml daml/canton-token-forge-test/.daml consumer-smoke/consumer/.daml consumer-smoke/consumer/vendor registry/dist",
     "smoke": "bash scripts/consumer-smoke.sh",
     "build": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build && cd ../canton-token-forge-test && LANG=C.UTF-8 dpm build",
     "build:canton-token-forge": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build",
     "sandbox": "bash scripts/sandbox.sh",
     "seed": "node scripts/seed.mjs",
     "test": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test",
-    "test:coverage": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test --all --show-coverage --coverage-ignore-choice '^splice' --coverage-ignore-choice ':Archive$'"
+    "test:coverage": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test --all --show-coverage --coverage-ignore-choice '^splice' --coverage-ignore-choice ':Archive$'",
+    "prepare": "tsc -p registry/tsconfig.json"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-openapi-validator": "^5.6.2",
+    "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^26.1.1",
+    "typescript": "^5.5.4"
   }
 }

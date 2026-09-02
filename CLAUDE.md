@@ -7,9 +7,11 @@ Claude Code reads this file natively. Other agents (Cursor, Windsurf, etc.) read
 [`AGENTS.md`](AGENTS.md), which points here.
 
 This is a **Daml** project built with **`dpm`**, not a JavaScript project - the
-`npm` scripts just wrap `dpm` and vendor dependencies. Generic JS/`npm`
-assumptions do not apply here, and this file overrides any parent-directory or
-global config that describes generic JS/`npm` workflows.
+`npm` scripts mostly wrap `dpm` and vendor dependencies, and the one genuine
+JavaScript build among them (`prepare`, which compiles `registry/`) never
+touches the Daml side. Generic JS/`npm` assumptions do not apply here, and this
+file overrides any parent-directory or global config that describes generic
+JS/`npm` workflows.
 
 ## What this repo is
 
@@ -33,7 +35,7 @@ Two packages:
 | Language | Daml | LF target **2.1** (`build-options: --target=2.1`) |
 | SDK | 3.4.11 | pinned in all three `daml.yaml` files; CI asserts them |
 | Build tool | `dpm` (Digital Asset Package Manager) | NOT the legacy `daml` assistant (removed as of SDK 3.5) |
-| Task runner | `npm` scripts | thin wrappers over `dpm`; they set `LANG=C.UTF-8` |
+| Task runner | `npm` scripts | the Daml ones wrap `dpm` with `LANG=C.UTF-8`; `prepare` builds `registry/` |
 | Dependencies | Splice interface DARs | vendored into `deps/` by `scripts/fetch-dep.sh` (gitignored) |
 | Runtime | JDK 17+ | required on `PATH` for `dpm` |
 | Choice naming | `TemplateName_ChoiceName` | matches the CN Token Standard convention |
@@ -88,12 +90,18 @@ Use the `package.json` npm scripts - they set `LANG=C.UTF-8` and handle the
 per-package layout. (damlc regenerates data-dependency interface source and
 throws "lexical error (UTF-8 decoding error)" under a POSIX/`C` locale.)
 
-### Setup (`npm install`)
+### Setup (`npm run setup`)
 
-`postinstall` runs `npm run setup` (= `scripts/fetch-dep.sh`): vendors Splice into
-`deps/` and creates the stable-name symlinks for the token interface DARs.
-Preconditions: `dpm` + JDK 17+ on `PATH`, `git` + network. First run takes a few
-minutes. For deps only, run `bash scripts/fetch-dep.sh`.
+`npm run setup` (= `scripts/fetch-dep.sh`) vendors Splice into `deps/` and
+creates the stable-name symlinks for the token interface DARs. It needs `git`
+and network, and invokes neither `dpm` nor a JVM: the DARs are pre-built
+upstream. Run `bash scripts/fetch-dep.sh` directly and it does the same work
+without Node. First run writes over 100 MB into `deps/` and took 6 seconds on a
+cold CI runner; a slow link will take longer.
+
+A root `npm install` vendors nothing. It installs the registry service's runtime
+dependencies and compiles `registry/src` to `registry/dist` through `prepare`, so
+installing this repository needs no `dpm`, no JDK and no clone of Splice.
 
 | Command | Does |
 | --- | --- |
@@ -102,7 +110,7 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 | `npm test` | Build the `canton-token-forge` DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same, with a coverage report focused on your templates. |
 | `npm run smoke` | Build the DAR, then compile a package that data-depends on nothing but it, proving the artifact is consumable on its own. |
-| `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
+| `npm run clean` | Remove both `.daml` build dirs, the consumer smoke test's output, and `registry/dist`. |
 | `npm run setup` | Re-vendor deps + re-create the stable symlinks. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
@@ -266,7 +274,7 @@ The `/sdlc:issue` skill applies these labels automatically when creating issues 
 
 Run before declaring work done:
 
-- `npm install` (or `npm run setup`) once, so `deps/` are vendored
+- `npm run setup` once, so `deps/` are vendored
 - `npm run build` - both packages compile
 - `npm test` - the integration suite passes
 - `npm run test:coverage` - when you touched or added templates
