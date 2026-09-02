@@ -120,14 +120,13 @@ for (const name of sharedNames) {
     failures.push(
       `${name} is declared in both manifests but has no "node_modules/${name}" entry in package-lock.json; run npm install to refresh it.`,
     )
-    continue
   }
   if (!registryEntry) {
     failures.push(
       `${name} is declared in both manifests but has no "node_modules/${name}" entry in registry/package-lock.json; run npm install to refresh it.`,
     )
-    continue
   }
+  if (!rootEntry || !registryEntry) continue
   if (rootEntry.version !== registryEntry.version) {
     // A plain npm install keeps any locked resolution that still satisfies the
     // range, so it leaves this untouched; rebuilding the lockfile from scratch
