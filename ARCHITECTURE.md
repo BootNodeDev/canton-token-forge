@@ -12,7 +12,7 @@
 | Language | Daml | LF target 2.1 (`build-options: --target=2.1`) |
 | SDK | Daml SDK 3.4.11 | installed and driven via `dpm` |
 | Build tool | `dpm` (Digital Asset Package Manager) | not the legacy `daml` assistant (removed as of SDK 3.5) |
-| Task runner | `npm` scripts | wrap `dpm` and set `LANG=C.UTF-8`; `prepare` builds `registry/` |
+| Task runner | `npm` scripts | the Daml ones wrap `dpm` with `LANG=C.UTF-8`; `prepare` builds `registry/` |
 | Standard | CIP-0056 (CN Token Standard) | interface-faithful, clean-room (no economics) |
 | Dependencies | `splice-api-token-*` interface DARs | vendored from `canton-network/splice`; NOT `splice-amulet` |
 | Testing | `daml-script` (`dpm test`) | lives in the separate `canton-token-forge-test` package |

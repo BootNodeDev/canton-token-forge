@@ -35,7 +35,7 @@ Two packages:
 | Language | Daml | LF target **2.1** (`build-options: --target=2.1`) |
 | SDK | 3.4.11 | pinned in all three `daml.yaml` files; CI asserts them |
 | Build tool | `dpm` (Digital Asset Package Manager) | NOT the legacy `daml` assistant (removed as of SDK 3.5) |
-| Task runner | `npm` scripts | wrap `dpm` and set `LANG=C.UTF-8`; `prepare` builds `registry/` |
+| Task runner | `npm` scripts | the Daml ones wrap `dpm` with `LANG=C.UTF-8`; `prepare` builds `registry/` |
 | Dependencies | Splice interface DARs | vendored into `deps/` by `scripts/fetch-dep.sh` (gitignored) |
 | Runtime | JDK 17+ | required on `PATH` for `dpm` |
 | Choice naming | `TemplateName_ChoiceName` | matches the CN Token Standard convention |
@@ -94,10 +94,10 @@ throws "lexical error (UTF-8 decoding error)" under a POSIX/`C` locale.)
 
 `npm run setup` (= `scripts/fetch-dep.sh`) vendors Splice into `deps/` and
 creates the stable-name symlinks for the token interface DARs. It needs `git`
-and network and nothing else: the DARs are pre-built upstream, so the script
-invokes neither `dpm` nor a JVM. Run `bash scripts/fetch-dep.sh` directly and it
-does the same work without Node. It writes over 100 MB into `deps/`; the wait is
-mostly network (6 seconds on a cold CI runner).
+and network, and invokes neither `dpm` nor a JVM: the DARs are pre-built
+upstream. Run `bash scripts/fetch-dep.sh` directly and it does the same work
+without Node. First run writes over 100 MB into `deps/` and took 6 seconds on a
+cold CI runner; a slow link will take longer.
 
 A root `npm install` vendors nothing. It installs the registry service's runtime
 dependencies and compiles `registry/src` to `registry/dist` through `prepare`, so
