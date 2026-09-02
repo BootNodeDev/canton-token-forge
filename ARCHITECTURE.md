@@ -12,7 +12,7 @@
 | Language | Daml | LF target 2.1 (`build-options: --target=2.1`) |
 | SDK | Daml SDK 3.4.11 | installed and driven via `dpm` |
 | Build tool | `dpm` (Digital Asset Package Manager) | not the legacy `daml` assistant (removed as of SDK 3.5) |
-| Task runner | `npm` scripts | thin wrappers over `dpm`; set `LANG=C.UTF-8` |
+| Task runner | `npm` scripts | wrap `dpm` and set `LANG=C.UTF-8`; `prepare` builds `registry/` |
 | Standard | CIP-0056 (CN Token Standard) | interface-faithful, clean-room (no economics) |
 | Dependencies | `splice-api-token-*` interface DARs | vendored from `canton-network/splice`; NOT `splice-amulet` |
 | Testing | `daml-script` (`dpm test`) | lives in the separate `canton-token-forge-test` package |
@@ -370,7 +370,7 @@ overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 | `npm run test:coverage` | Same as `npm test` with a template-focused coverage report. |
 | `npm run smoke` | Compile a package that data-depends on nothing but the built DAR (`scripts/consumer-smoke.sh`); proves the release artifact is consumable on its own. |
 | `bash scripts/release-notes.sh <tag>` | Emit the release body, with the consumer snippet extracted from `consumer-smoke/consumer/daml.yaml`. Refuses if `<tag>` does not name the checked-out commit, if the working tree is dirty, or if `deps/` carries no commit stamp (`npm run setup` writes it); `ALLOW_UNTAGGED=1` previews a body before the tag exists ([`RUNBOOK.md`](RUNBOOK.md#cutting-a-release)). |
-| `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
+| `npm run clean` | Remove both `.daml` build dirs, the consumer smoke test's output, and `registry/dist`. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
 | `bash scripts/build-harness.sh` | Build the Amulet test harness (unused by default; conformance only). |
