@@ -23,13 +23,17 @@ const registryLock = readJson(resolve(repoRoot, 'registry/package-lock.json'))
 const SECTIONS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
 
 // A package can be a runtime dep on one side and a devDependency on the
-// other, so ranges are compared regardless of section; the section is kept
-// only to name where each range was found in a message.
+// other, so ranges are compared regardless of section. Every occurrence is
+// kept rather than the last one seen: a name declared in two sections of one
+// manifest would otherwise shadow itself, and the surviving entry can agree
+// across the two files while the shadowed one drifts.
 function rangesBySection(manifest) {
   const bySection = new Map()
   for (const section of SECTIONS) {
     for (const [name, range] of Object.entries(manifest[section] ?? {})) {
-      bySection.set(name, { section, range })
+      const occurrences = bySection.get(name) ?? []
+      occurrences.push({ section, range })
+      bySection.set(name, occurrences)
     }
   }
   return bySection
@@ -58,13 +62,32 @@ for (const name of Object.keys(registryManifest.dependencies ?? {})) {
 
 const sharedNames = [...rootRanges.keys()].filter((name) => registryRanges.has(name)).sort()
 
+// A manifest naming one package at two ranges is incoherent on its own, and
+// reporting that as a cross-manifest disagreement would point at the wrong file.
+for (const [file, ranges] of [
+  ['package.json', rootRanges],
+  ['registry/package.json', registryRanges],
+]) {
+  for (const [name, [first, ...rest]] of ranges) {
+    for (const other of rest) {
+      if (other.range !== first.range) {
+        failures.push(
+          `${name} is "${first.range}" in ${file}'s "${first.section}" and "${other.range}" in its "${other.section}"; a manifest cannot name one package at two ranges.`,
+        )
+      }
+    }
+  }
+}
+
 for (const name of sharedNames) {
-  const root = rootRanges.get(name)
-  const registry = registryRanges.get(name)
-  if (root.range !== registry.range) {
-    failures.push(
-      `${name} is "${root.range}" in package.json ("${root.section}") and "${registry.range}" in registry/package.json ("${registry.section}"); make the two ranges identical.`,
-    )
+  for (const root of rootRanges.get(name)) {
+    for (const registry of registryRanges.get(name)) {
+      if (root.range !== registry.range) {
+        failures.push(
+          `${name} is "${root.range}" in package.json ("${root.section}") and "${registry.range}" in registry/package.json ("${registry.section}"); make the two ranges identical.`,
+        )
+      }
+    }
   }
 }
 
