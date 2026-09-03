@@ -49,8 +49,13 @@ const registryRanges = rangesBySection(registryManifest)
 
 const failures = []
 
+// Object.hasOwn rather than `in` at every membership test below: these objects
+// come from JSON.parse, so they carry Object.prototype, and `constructor` and
+// `toString` are both real published package names. `in` answers true for them
+// whatever the manifest says, which would pass a package declared on one side
+// only, the exact drift this script exists to catch.
 for (const name of Object.keys(rootManifest.dependencies ?? {})) {
-  if (!(name in (registryManifest.dependencies ?? {}))) {
+  if (!Object.hasOwn(registryManifest.dependencies ?? {}, name)) {
     failures.push(
       `${name} is a runtime dependency of package.json but is not in registry/package.json's "dependencies"; no suite installs it. Add it to registry/package.json.`,
     )
@@ -58,7 +63,7 @@ for (const name of Object.keys(rootManifest.dependencies ?? {})) {
 }
 
 for (const name of Object.keys(registryManifest.dependencies ?? {})) {
-  if (!(name in (rootManifest.dependencies ?? {}))) {
+  if (!Object.hasOwn(rootManifest.dependencies ?? {}, name)) {
     failures.push(
       `${name} is a runtime dependency of registry/package.json but is not in the root "dependencies"; a consumer install would not resolve it. Add it to package.json.`,
     )
@@ -188,7 +193,7 @@ for (const { manifest, manifestFile, lock, lockFile, install } of TREES) {
       }
     }
     for (const name of Object.keys(locked)) {
-      if (!(name in declared)) {
+      if (!Object.hasOwn(declared, name)) {
         failures.push(
           `${lockFile} still records ${name} in "${section}" but ${manifestFile} no longer declares it; run ${install} to bring the lockfile up to date.`,
         )
