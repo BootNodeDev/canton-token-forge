@@ -110,6 +110,8 @@ installing this repository needs no `dpm`, no JDK and no clone of Splice.
 | `npm test` | Build the `canton-token-forge` DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same, with a coverage report focused on your templates. |
 | `npm run smoke` | Build the DAR, then compile a package that data-depends on nothing but it, proving the artifact is consumable on its own. |
+| `npm run check:deps` | Fail if the root and `registry/` manifests disagree on any dependency. |
+| `npm run smoke:registry` | Pack the npm package, install it into a scratch consumer, and run the bin; proves the published service is consumable on its own. |
 | `npm run clean` | Remove both `.daml` build dirs, the consumer smoke test's output, and `registry/dist`. |
 | `npm run setup` | Re-vendor deps + re-create the stable symlinks. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
@@ -119,7 +121,9 @@ installing this repository needs no `dpm`, no JDK and no clone of Splice.
 
 `registry/` is a separate npm package with its own dependency tree; the root
 `npm install` does not populate `registry/node_modules`. Run its commands from
-that directory.
+that directory. The root manifest is also what builds and ships this service
+as an installable package, and `npm run check:deps` is what keeps the two
+dependency lists in step.
 
 | Command | Does |
 | --- | --- |
@@ -281,6 +285,8 @@ Run before declaring work done:
 - `npm run smoke` - when you changed what the production DAR exposes: a
   renamed module or template, its dependencies, its interface instances, or its
   `build-options`
+- `npm run smoke:registry` - when you changed the root manifest, the
+  registry's dependencies, or either ignore file
 
 Every pull request gets three comparisons whatever it touches, because the
 `daml` check runs them ahead of its toolchain install and outside its own
@@ -298,6 +304,24 @@ first re-runs Splice's own suites, the second needs a live participant. The
 `release` workflow adds checks of its own that no pull request runs. The
 end-to-end suite is typechecked on that path even so, which is the point of
 typechecking it separately from the run.
+
+A third check, `package`, gates on `package.json`, `package-lock.json`,
+`registry/`, `scripts/check-registry-deps.mjs`,
+`scripts/registry-install-smoke.sh`, `.gitignore`, `.npmrc` and
+`.github/workflows/ci.yml` itself, so a pull request touching `registry/` runs
+both the `registry` check and this one. It has four verification steps, not
+three, and only three of them sit behind that gate: `npm run check:deps`;
+`npm ci`, which runs `prepare` and so compiles `registry/src` against the root
+dependency set rather than `registry/`'s own, catching a type package that
+arrives there transitively and is declared nowhere; and `npm run
+smoke:registry`. The fourth is ungated and runs on every trigger of the
+workflow regardless of what changed, ahead of the other three exactly as the
+`daml` check's own comparisons run ahead of its gate: a `git check-ignore`
+table confirming that `registry/dist` build output stays out of the package
+and that the rule ignoring it lives in the root `.gitignore` rather than a
+nested one, since a nested rule would still pass the smoke test and the
+manifest guard while silently no longer covering `registry/src` and
+`registry/test`.
 
 A pushed tag whose `v` is followed by a digit (`v[0-9]*`, so `vnext` and
 `vendor` trigger nothing) runs the `release` workflow instead: it refuses a

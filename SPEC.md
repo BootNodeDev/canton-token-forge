@@ -63,8 +63,11 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-976 lines of production Daml, 2508 lines of Daml tests, 1724 lines of TypeScript
-service, 4343 lines of TypeScript tests. MIT licensed. Pre-release: the package
+976 lines of production Daml, 2508 lines of Daml tests, 1739 lines of
+TypeScript service, 4349 lines of TypeScript tests, each figure a
+`find <dir> -name '*.daml'` (or `'*.ts'`) `| xargs wc -l` count over
+`daml/canton-token-forge`, `daml/canton-token-forge-test`, `registry/src` and
+`registry/test` respectively. MIT licensed. Pre-release: the Daml package
 version is `0.0.1`, and the build is published as release `v0.1.0` for
 downstream repositories to pin (the tag is deliberately decoupled from the
 package version), with no compatibility guarantee offered across releases.
@@ -578,10 +581,15 @@ Stated plainly, because they are what an evaluation turns on.
   ship a new interface version that compiles green while the smoke package
   still names the old one, and compiling that package is what catches it.
   One that touches `registry/` runs that package's lint, its typechecks and
-  the registry unit suite as the `registry` check. The end-to-end suite
-  needs a live participant, so only its types are checked there and it is
-  never run. Off that path too is `npm run test:coverage`, which re-runs
-  Splice's own suites and which nothing runs automatically. A pull request
+  the registry unit suite as the `registry` check. The same change also runs
+  a third job, `package`, gated on `registry/` among other inputs: it compiles
+  `registry/src` a second time, against the root dependency set rather than
+  `registry/`'s own, by running `npm ci` (which triggers `prepare`), then packs
+  the npm package and installs it into a scratch consumer to run the bin,
+  neither of which the `registry` check's own install and build can see. The
+  end-to-end suite needs a live participant, so only its types are checked
+  there and it is never run. Off that path too is `npm run test:coverage`,
+  which re-runs Splice's own suites and which nothing runs automatically. A pull request
   in the `daml` check's scope compiles the smoke package, generates the
   release body, which is the check that compares the published snippet
   against the artifact, and asserts that every tracked manifest still pins
@@ -590,9 +598,12 @@ Stated plainly, because they are what an evaluation turns on.
   not reach, and `release-notes.sh`'s tag guard, which the pull-request path
   waives with `ALLOW_UNTAGGED` so that a body can be generated for a ref that
   is not a tag.
-- **Pre-release.** Version `0.0.1`, with the build published as release `v0.1.0`
+- **Pre-release.** Version `0.2.0`, with the build published as release `v0.1.0`
   for downstream repositories to pin (the tag is deliberately decoupled from the
-  package version). No migration story and no compatibility guarantees.
+  package version), and the npm package itself consumed from git at `v0.2.0`.
+  The two tags exist and mean different things: `v0.1.0` names the DAR release,
+  `v0.2.0` the commit a consumer's `package.json` pins. No migration story and
+  no compatibility guarantees.
 
 ---
 
@@ -624,5 +635,7 @@ scripts/
   release-notes.sh                   Emit the release body from the smoke package
   sandbox.sh                         Local Canton sandbox with the JSON Ledger API
   seed.mjs                           Seed an admin, demo users and one instrument
+  check-registry-deps.mjs            Fail when the root and registry manifests disagree
+  registry-install-smoke.sh          Pack, install and run the npm package
 versions.env                         The single version knob: SPLICE_TAG
 ```

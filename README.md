@@ -148,6 +148,72 @@ in both directions, so a flag, target or path that changes on one side reds
 rather than ships. The release body carries the same blocks, generated straight
 from that file.
 
+## Consuming the registry service
+
+The registry service is published from this repository as an npm package,
+consumed from git at a tag rather than from the public registry:
+
+```json
+{
+  "dependencies": {
+    "@bootnodedev/canton-token-forge": "github:BootNodeDev/canton-token-forge#v0.2.0"
+  }
+}
+```
+
+Two preconditions. This repository is private, so the install needs
+credentials that can read it: a token-based HTTPS credential helper or an SSH
+key for `github.com`, whichever your environment already uses for private git
+dependencies. And the tag must name a commit whose DAR is uploaded to the
+participant the service points at, since the template ids are checked at boot
+and an id the participant cannot resolve stops it starting.
+
+Every `v[0-9]*` tag is both a DAR release and an npm package pin: see
+"Consuming a release" above for the DAR itself.
+
+`npm install` builds `registry/src` through the package's `prepare` script and
+links one bin, `canton-token-forge-registry`, unmodified. `pnpm install`
+refuses by default: pnpm will not run a git-hosted package's build scripts
+unless the consumer allowlists it, and `registry/dist` is gitignored, so
+`prepare` is the only thing that produces the bin. Add the resolved git
+specifier to `pnpm-workspace.yaml`, using whichever key your pnpm major reads:
+
+```yaml
+# pnpm 11 and later
+allowBuilds:
+  "@bootnodedev/canton-token-forge@git+https://github.com/BootNodeDev/canton-token-forge.git#<resolved-sha>": true
+
+# pnpm 10
+onlyBuiltDependencies:
+  - "@bootnodedev/canton-token-forge@git+https://github.com/BootNodeDev/canton-token-forge.git#<resolved-sha>"
+```
+
+The key is the full resolved git specifier, not the bare package name, a
+version range, or a wildcard: pnpm resolves the tag to its commit sha and
+matches on that exact string, and its own refusal error prints the line to
+paste. Since the sha is resolved from the tag, this entry changes whenever the
+pin does. With it present, `pnpm exec canton-token-forge-registry` runs the
+same as `npm`'s link.
+
+The service reads its whole configuration from the environment, plus a `.env`
+loaded from the working directory it is started in. Required, eight:
+`LEDGER_API_URL`, `LEDGER_API_TOKEN`, `ADMIN_PARTY`, and the five template ids
+(`INSTRUMENT_CONFIG_TEMPLATE_ID`, `PREAPPROVAL_TEMPLATE_ID`,
+`LOCKED_TOKEN_TEMPLATE_ID`, `TRANSFER_INSTRUCTION_TEMPLATE_ID`,
+`ALLOCATION_TEMPLATE_ID`). Optional, four: `PORT`, `LEDGER_USER_ID`,
+`SHUTDOWN_TIMEOUT_MS`, `DIRECT_TRANSFER_MARGIN_MS`. The package ships
+`registry/.env.example` with the full list and what each variable is for, and
+`npm run seed` against a local sandbox prints the block filled in with the real
+admin party and the five template ids. `ADMIN_PARTY` and all five template ids
+are checked against the participant at boot, so a value it cannot resolve
+stops the service starting rather than failing later.
+
+What the package contains: `registry/dist`, `registry/openapi` and
+`registry/.env.example`, plus `package.json`, `README.md` and `LICENSE` (24
+entries). The manifest that travels with it is this repository's own, so its
+`dpm` and `daml/` scripts cannot run from an installed copy; `prepare` is the
+only entry npm acts on.
+
 ## Requirements
 
 - `dpm` (Digital Asset Package Manager) and a JDK 17+ on `PATH`

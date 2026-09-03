@@ -311,6 +311,12 @@ reason the seed script looks the way it does.
 
 ## Cutting a release
 
+Every `v[0-9]*` tag is a DAR release, including the tag a consumer's
+`package.json` pins the npm package at (see the README's "Consuming the
+registry service"). `daml/canton-token-forge/daml.yaml` stays at `0.0.1`
+regardless of which tag is cut, so `v0.2.0`'s DAR asset is byte-identical to
+`v0.1.0`'s and carries the same sha256.
+
 `.github/workflows/release.yml` builds and publishes. It runs the full suite,
 checks the DAR is byte-reproducible, and compiles `consumer-smoke/` against the
 built artifact before anything is published. The release body, including the
