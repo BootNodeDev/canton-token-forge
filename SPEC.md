@@ -598,9 +598,10 @@ Stated plainly, because they are what an evaluation turns on.
   not reach, and `release-notes.sh`'s tag guard, which the pull-request path
   waives with `ALLOW_UNTAGGED` so that a body can be generated for a ref that
   is not a tag.
-- **Pre-release.** Version `0.2.0`, with the build published as release `v0.1.0`
-  for downstream repositories to pin (the tag is deliberately decoupled from the
-  package version), and the npm package itself consumed from git at `v0.2.0`.
+- **Pre-release.** Version `0.2.0` of the npm package, `0.0.1` of the Daml
+  package, with the Daml build published as release `v0.1.0` for downstream
+  repositories to pin (that tag is deliberately decoupled from the Daml package
+  version), and the npm package consumed from git at `v0.2.0`.
   The two tags exist and mean different things: `v0.1.0` names the DAR release,
   `v0.2.0` the commit a consumer's `package.json` pins. No migration story and
   no compatibility guarantees.
