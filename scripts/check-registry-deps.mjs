@@ -138,12 +138,12 @@ for (const name of sharedNames) {
   if (!rootEntry || !registryEntry) continue
   if (rootEntry.version !== registryEntry.version) {
     // A plain npm install keeps any locked resolution that still satisfies the
-    // range, so it leaves this untouched; rebuilding the lockfile from scratch
-    // is what moves it. Naming the version instead (npm install pkg@version)
-    // also rewrites the manifest range, and when neither tree holds the newest
-    // version the ranges allow, both lockfiles have to be rebuilt.
+    // range, so it leaves this untouched. Deleting one lockfile does not settle
+    // it either: that tree re-resolves to the newest version its range allows,
+    // which matches the other tree only by luck. Naming the version instead
+    // (npm install pkg@version) converges but rewrites the manifest range.
     failures.push(
-      `${name} resolves to ${rootEntry.version} in package-lock.json and ${registryEntry.version} in registry/package-lock.json; npm install keeps a resolution that still satisfies the range, so delete the lockfile you are correcting and reinstall.`,
+      `${name} resolves to ${rootEntry.version} in package-lock.json and ${registryEntry.version} in registry/package-lock.json; npm install keeps a resolution that still satisfies the range, so delete both lockfiles and rebuild them together: ${ROOT_INSTALL}, then ${REGISTRY_INSTALL}.`,
     )
     continue
   }
