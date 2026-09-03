@@ -586,22 +586,26 @@ Stated plainly, because they are what an evaluation turns on.
   still names the old one, and compiling that package is what catches it.
   One that touches `registry/` runs that package's lint, its typechecks and
   the registry unit suite as the `registry` check. The same change also runs
-  a third job, `package`, gated on `registry/` among other inputs: it compiles
-  `registry/src` a second time, against the root dependency set rather than
-  `registry/`'s own, by running `npm ci` (which triggers `prepare`), then packs
-  the npm package and installs it into a scratch consumer to run the bin,
-  neither of which the `registry` check's own install and build can see. The
-  end-to-end suite needs a live participant, so only its types are checked
-  there and it is never run. Off that path too is `npm run test:coverage`,
-  which re-runs Splice's own suites and which nothing runs automatically. A pull request
-  in the `daml` check's scope compiles the smoke package, generates the
-  release body, which is the check that compares the published snippet
-  against the artifact, and asserts that every tracked manifest still pins
-  the SDK and targets LF 2.1. The release workflow still carries the rebuild
-  that proves the DAR is byte-reproducible, the refusal of a tag `main` does
-  not reach, and `release-notes.sh`'s tag guard, which the pull-request path
-  waives with `ALLOW_UNTAGGED` so that a body can be generated for a ref that
-  is not a tag.
+  a third job, `package`. Three of its four steps are gated on `registry/`
+  among other inputs: they compare the root and `registry/` manifests, compile
+  `registry/src` a second time against the root dependency set rather than
+  `registry/`'s own by running `npm ci` (which triggers `prepare`), then pack
+  the npm package and install it into a scratch consumer to run the bin. The
+  `registry` check's own install and build see neither of those last two. The
+  fourth step is ungated and runs on every trigger of the workflow, a
+  docs-only pull request included: it reads the `.gitignore` rules that keep
+  build output under `registry/` out of git, and reads which file carries
+  them. The end-to-end suite needs a live participant, so only its types are
+  checked there and it is never run. Off that path too is `npm run
+  test:coverage`, which re-runs Splice's own suites and which nothing runs
+  automatically. A pull request in the `daml` check's scope compiles the smoke
+  package, generates the release body, which is the check that compares the
+  published snippet against the artifact, and asserts that every tracked
+  manifest still pins the SDK and targets LF 2.1. The release workflow still
+  carries the rebuild that proves the DAR is byte-reproducible, the refusal
+  of a tag `main` does not reach, and `release-notes.sh`'s tag guard, which
+  the pull-request path waives with `ALLOW_UNTAGGED` so that a body can be
+  generated for a ref that is not a tag.
 - **Pre-release.** Version `0.2.0` of the npm package, `0.0.1` of the Daml
   package, with the Daml build published as release `v0.1.0` for downstream
   repositories to pin (that tag is deliberately decoupled from the Daml package
