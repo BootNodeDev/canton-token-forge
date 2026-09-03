@@ -1,15 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Proves the npm package a consumer installs is complete and runnable: the
-# tarball carries the built service and the OpenAPI specs it reads at boot, the
-# root manifest declares every runtime import the bin makes, and the linked bin
-# starts a server. This is the npm counterpart of `npm run smoke`, which proves
-# the same thing about the DAR.
+# registry-install-smoke.sh - pack the repository, install the tarball into a
+# scratch consumer, and run the bin that install links.
+#
+# This is the npm counterpart of `npm run smoke`, which proves the same thing
+# about the DAR: it is the only check here that exercises what a consumer
+# actually receives. What it guards is what a green build cannot see: a file
+# `files` failed to pack, a spec that ships but does not parse, a module system
+# the package cannot be loaded under, a bin pointing at nothing.
+#
+# It does NOT establish that the root manifest declares every runtime import.
+# `express` is a peer dependency of `express-openapi-validator`, so npm installs
+# it at the consumer's top level and the service runs whether or not the root
+# names it; comparing the two manifests is `npm run check:deps`'s job.
 #
 # No participant is needed. The boot fails only for a fault it can attribute to
 # our own configuration, so an unreachable ledger warns and continues, and
 # /healthz answers without touching it.
+#
+# Usage:
+#   npm run smoke:registry
+#
+# Requires a root `npm install` first, since npm pack runs prepare and prepare
+# needs tsc, and network for the consumer install. Rewrites registry/dist as a
+# side effect, which `npm run clean` removes.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
