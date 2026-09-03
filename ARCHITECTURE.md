@@ -80,6 +80,8 @@ scripts/
   release-notes.sh                       Emit the release body for a tag, snippet extracted from consumer-smoke/consumer/daml.yaml
   sandbox.sh                             Build the DAR and run a local Canton sandbox with the JSON Ledger API
   seed.mjs                               Seed a running sandbox with an admin, demo users, and one InstrumentConfig
+  check-registry-deps.mjs                Fail when the root and registry manifests disagree on a dependency
+  registry-install-smoke.sh              Pack the npm package, install it into a scratch consumer, and run the bin
 deps/                                    Vendored Splice sources + built DARs (gitignored; never edit or commit)
 multi-package.yaml                       Wires the two daml/ packages into one workspace; consumer-smoke/ has its own
 versions.env                             Single version knob: SPLICE_TAG
@@ -369,6 +371,8 @@ overrides from `SEED_*`/`LEDGER_*` ([`RUNBOOK.md`](RUNBOOK.md)).
 | `npm test` | Build the production DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same as `npm test` with a template-focused coverage report. |
 | `npm run smoke` | Compile a package that data-depends on nothing but the built DAR (`scripts/consumer-smoke.sh`); proves the release artifact is consumable on its own. |
+| `npm run check:deps` | Fail if the root and `registry/` manifests disagree on any dependency. |
+| `npm run smoke:registry` | Pack the npm package, install it into a scratch consumer, and run the bin; proves the published service is consumable on its own. |
 | `bash scripts/release-notes.sh <tag>` | Emit the release body, with the consumer snippet extracted from `consumer-smoke/consumer/daml.yaml`. Refuses if `<tag>` does not name the checked-out commit, if the working tree is dirty, or if `deps/` carries no commit stamp (`npm run setup` writes it); `ALLOW_UNTAGGED=1` previews a body before the tag exists ([`RUNBOOK.md`](RUNBOOK.md#cutting-a-release)). |
 | `npm run clean` | Remove both `.daml` build dirs, the consumer smoke test's output, and `registry/dist`. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
