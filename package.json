@@ -8,6 +8,7 @@
     "setup": "bash scripts/fetch-dep.sh",
     "clean": "rm -rf daml/canton-token-forge/.daml daml/canton-token-forge-test/.daml consumer-smoke/consumer/.daml consumer-smoke/consumer/vendor registry/dist",
     "smoke": "bash scripts/consumer-smoke.sh",
+    "smoke:registry": "bash scripts/registry-install-smoke.sh",
     "check:deps": "node scripts/check-registry-deps.mjs",
     "build": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build && cd ../canton-token-forge-test && LANG=C.UTF-8 dpm build",
     "build:canton-token-forge": "cd daml/canton-token-forge && LANG=C.UTF-8 dpm build",
