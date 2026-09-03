@@ -46,6 +46,16 @@ trap 'exit 143' TERM
 
 fail() { echo "smoke: $*" >&2; exit 1; }
 
+# Print a captured body, ending it with a newline whether or not it has one, so
+# the smoke: line that follows starts a line of its own. A JSON error body and a
+# log a crash cut off mid-write both arrive without a trailing newline.
+dump() {
+  if [ -s "$1" ]; then
+    cat "$1" >&2
+    [ -z "$(tail -c 1 "$1")" ] || echo >&2
+  fi
+}
+
 # A port nothing is listening on. Asking the kernel for one and closing it
 # immediately races with anything else on the machine, which is why the closed
 # port is only ever connected TO and the served port is asserted by polling.
@@ -67,7 +77,7 @@ tarball_name="$(cd "$repo_root" && npm pack --pack-destination "$work" 2>"${work
 pack_status=$?
 set -e
 if [ "$pack_status" -ne 0 ]; then
-  cat "${work}/pack.err" >&2
+  dump "${work}/pack.err"
   fail "npm pack failed with exit ${pack_status}"
 fi
 tarball="${work}/${tarball_name}"
@@ -151,14 +161,14 @@ server_pid=$!
 health=""
 for _ in $(seq 1 60); do
   if ! kill -0 "$server_pid" 2>/dev/null; then
-    cat "${work}/server.log" >&2
+    dump "${work}/server.log"
     fail "the service exited before it listened"
   fi
   health="$(curl -sf "http://127.0.0.1:${serve_port}/healthz" || true)"
   [ -n "$health" ] && break
   sleep 0.5
 done
-[ -n "$health" ] || { cat "${work}/server.log" >&2; fail "no 200 from /healthz on port ${serve_port}"; }
+[ -n "$health" ] || { dump "${work}/server.log"; fail "no 200 from /healthz on port ${serve_port}"; }
 case "$health" in
   *'"status":"ok"'*) ;;
   *) fail "unexpected /healthz body: ${health}" ;;
@@ -171,14 +181,14 @@ esac
 info_status="$(curl -s -o "${work}/info.json" -w '%{http_code}' \
   "http://127.0.0.1:${serve_port}/registry/metadata/v1/info")"
 [ "$info_status" = "200" ] \
-  || { cat "${work}/info.json" >&2; fail "expected 200 from /registry/metadata/v1/info, got ${info_status}"; }
+  || { dump "${work}/info.json"; fail "expected 200 from /registry/metadata/v1/info, got ${info_status}"; }
 
 echo "smoke: terminating"
 # A service that died between serving the two requests above and this line is a
 # real failure, and an unguarded kill would report it as set -e ending the run
 # on bash's own "no such process" rather than as something this check saw.
 if ! kill -TERM "$server_pid" 2>/dev/null; then
-  cat "${work}/server.log" >&2
+  dump "${work}/server.log"
   fail "the service was already gone when the run asked it to shut down"
 fi
 set +e
