@@ -288,9 +288,9 @@ Run before declaring work done:
 - `npm run smoke:registry` - when you changed the root manifest, the
   registry's dependencies, or either ignore file
 
-Every pull request gets three comparisons whatever it touches, because the
-`daml` check runs them ahead of its toolchain install and outside its own
-scope gate: the strings that spell a template id, against `daml/`; the
+Every pull request gets three comparisons in the `daml` check whatever it
+touches, because that check runs them ahead of its toolchain install and
+outside its own scope gate: the strings that spell a template id, against `daml/`; the
 consumer snippet in `README.md`, against `consumer-smoke/consumer/daml.yaml`;
 and every tracked `daml.yaml`, against both the SDK version the workflow
 installs and LF 2.1. One that touches
