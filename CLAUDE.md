@@ -294,17 +294,16 @@ Every pull request gets three comparisons in the `daml` check whatever it
 touches, because that check runs them ahead of its toolchain install and
 outside its own scope gate: the strings that spell a template id, against
 `daml/`; the consumer snippet in `README.md`, against
-`consumer-smoke/consumer/daml.yaml`;
-and every tracked `daml.yaml`, against both the SDK version the workflow
-installs and LF 2.1. One that touches
+`consumer-smoke/consumer/daml.yaml`; and every tracked `daml.yaml`, against
+both the SDK version the workflow installs and LF 2.1. One that touches
 `daml/`, `consumer-smoke/`, `scripts/consumer-smoke.sh` or the root build
 inputs runs four of these five automatically in that same check, after those
-three steps: only `npm run test:coverage` does not. One that touches `registry/`
-runs that package's own lint, both typechecks, and unit suite as the
-`registry` check, none of the Daml root commands above, and the `package`
-check below alongside it. `npm run test:coverage` and
-the registry's `npm run test:e2e` are both off the pull-request path: the
-first re-runs Splice's own suites, the second needs a live participant. The
+three steps: only `npm run test:coverage` does not. One that touches
+`registry/` runs that package's own lint, both typechecks, and unit suite as
+the `registry` check, none of the Daml root commands above, and the `package`
+check below alongside it. `npm run test:coverage` and the registry's `npm run
+test:e2e` are both off the pull-request path: the first re-runs Splice's own
+suites, the second needs a live participant. The
 `release` workflow adds checks of its own that no pull request runs. The
 end-to-end suite is typechecked on that path even so, which is the point of
 typechecking it separately from the run.
