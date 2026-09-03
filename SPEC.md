@@ -66,8 +66,12 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 976 lines of production Daml, 2508 lines of Daml tests, 1739 lines of
 TypeScript service, 4349 lines of TypeScript tests, each figure a
 `find <dir> -name '*.daml'` (or `'*.ts'`) `| xargs wc -l` count over
-`daml/canton-token-forge`, `daml/canton-token-forge-test`, `registry/src` and
-`registry/test` respectively. MIT licensed. Pre-release: the Daml package
+`daml/canton-token-forge/daml`, `daml/canton-token-forge-test/daml`,
+`registry/src` and `registry/test` respectively. The two Daml paths name the
+source directory rather than the package root on purpose: a package root that
+has been built also holds a `.daml/` build directory, whose name the `*.daml`
+glob matches and whose regenerated data-dependency sources dwarf the figure
+above. MIT licensed. Pre-release: the Daml package
 version is `0.0.1`, and the build is published as release `v0.1.0` for
 downstream repositories to pin (the tag is deliberately decoupled from the
 package version), with no compatibility guarantee offered across releases.
