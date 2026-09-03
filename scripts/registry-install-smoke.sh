@@ -23,6 +23,11 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
+# A signal has to end the run rather than return into it, because by then
+# cleanup has removed the work directory the next line would read. Exiting here
+# lets the EXIT trap do the one cleanup, with the conventional signal status.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 fail() { echo "smoke: $*" >&2; exit 1; }
 
