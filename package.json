@@ -16,7 +16,7 @@
     "seed": "node scripts/seed.mjs",
     "test": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test",
     "test:coverage": "npm run build:canton-token-forge && cd daml/canton-token-forge-test && LANG=C.UTF-8 dpm test --all --show-coverage --coverage-ignore-choice '^splice' --coverage-ignore-choice ':Archive$'",
-    "prepare": "tsc -p registry/tsconfig.json"
+    "prepare": "rm -rf registry/dist && tsc -p registry/tsconfig.json"
   },
   "repository": "github:BootNodeDev/canton-token-forge",
   "engines": { "node": ">=20" },
