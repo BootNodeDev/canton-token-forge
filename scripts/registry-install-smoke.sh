@@ -118,7 +118,19 @@ cat > "${consumer}/package.json" <<'JSON'
 JSON
 
 echo "smoke: installing ${tarball_name}"
-( cd "$consumer" && npm install --silent --no-audit --no-fund "$tarball" )
+# --silent is left off for the same reason as the pack above, and here it is
+# npm's own error that it would suppress: a silenced install failure prints
+# nothing at all, on either stream. This is the step the network prerequisite
+# can fail, so the status is held and the captured output printed.
+set +e
+( cd "$consumer" && npm install --no-audit --no-fund "$tarball" ) \
+  >"${work}/install.log" 2>&1
+install_status=$?
+set -e
+if [ "$install_status" -ne 0 ]; then
+  dump "${work}/install.log"
+  fail "installing the tarball failed with exit ${install_status}"
+fi
 
 bin="${consumer}/node_modules/.bin/canton-token-forge-registry"
 [ -x "$bin" ] || fail "the install linked no executable bin at ${bin}"
