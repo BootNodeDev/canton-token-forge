@@ -762,10 +762,12 @@ jobs:
 
       # Ahead of the install it guards, for the reason the daml job places its
       # own sweeps first: the script only reads four tracked JSON files, so it
-      # needs no node_modules and reports in a moment. A lockfile that has
-      # drifted from the manifest beside it reds npm ci too, but with npm's
-      # generic "package.json and package-lock.json are not in sync", and every
-      # finding this names, on either side, would go unprinted.
+      # needs no node_modules and reports in a moment. npm ci is not a second
+      # reading of this. It reds only where the lockfile can no longer satisfy
+      # the range beside it, and then with npm's own "Invalid: lock file's
+      # express@4.22.2 does not satisfy express@5.2.1"; a widened range the
+      # lockfile still satisfies installs clean, and a disagreement between the
+      # two trees is invisible to it whatever the ranges say.
       - name: Check the manifests agree
         if: steps.scope.outputs.run == 'true'
         run: npm run check:deps
