@@ -641,9 +641,13 @@ jobs:
         run: |
           set -euo pipefail
           status=0
-          # git check-ignore exits 1 for a path no rule matches, which under -e
-          # would end the step at the first mismatch and hide every case after
-          # it. None of these paths need to exist: the command matches patterns.
+          # check-ignore answers 0 when a rule matches and 1 when none does,
+          # and both are results rather than failures, so the status is held
+          # rather than left to -e, which would end the step at the first
+          # mismatch and hide every case after it. Anything above 1 means it
+          # could not answer at all: taking that for "no rule matched" would
+          # print the second list as passing while git was failing outright.
+          # None of these paths need to exist; the command matches patterns.
           # --no-index because without it check-ignore consults the index and
           # calls every TRACKED path unignored whatever the patterns say. That
           # would make the registry/src/index.ts case below vacuous, since it is
@@ -652,23 +656,29 @@ jobs:
           for path in registry/dist/index.js \
                       registry/src/dist/bundle.js \
                       registry/test/dist/bundle.js; do
-            if git check-ignore -q --no-index "$path"; then
-              echo "ok: ${path} is ignored"
-            else
-              echo "${path} is not ignored: build output under registry/ is committable" >&2
-              status=1
-            fi
+            rc=0
+            git check-ignore -q --no-index "$path" || rc=$?
+            case "$rc" in
+              0) echo "ok: ${path} is ignored" ;;
+              1) echo "${path} is not ignored: build output under registry/ is committable" >&2
+                 status=1 ;;
+              *) echo "git check-ignore could not answer for ${path}: status ${rc}" >&2
+                 status=1 ;;
+            esac
           done
           for path in registry/dist-backup/index.js \
                       registry/src/index.ts \
                       dist/index.js \
                       scripts/dist/index.js; do
-            if git check-ignore -q --no-index "$path"; then
-              echo "${path} is ignored: the rule reaches past registry/'s build output" >&2
-              status=1
-            else
-              echo "ok: ${path} is not ignored"
-            fi
+            rc=0
+            git check-ignore -q --no-index "$path" || rc=$?
+            case "$rc" in
+              1) echo "ok: ${path} is not ignored" ;;
+              0) echo "${path} is ignored: the rule reaches past registry/'s build output" >&2
+                 status=1 ;;
+              *) echo "git check-ignore could not answer for ${path}: status ${rc}" >&2
+                 status=1 ;;
+            esac
           done
           exit "$status"
 
