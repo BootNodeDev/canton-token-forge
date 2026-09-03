@@ -314,8 +314,19 @@ reason the seed script looks the way it does.
 Every `v[0-9]*` tag is a DAR release, including the tag a consumer's
 `package.json` pins the npm package at (see the README's "Consuming the
 registry service"). `daml/canton-token-forge/daml.yaml` stays at `0.0.1`
-regardless of which tag is cut, so `v0.2.0`'s DAR asset is byte-identical to
-`v0.1.0`'s and carries the same sha256.
+whatever tag is cut, so every release attaches an asset under the same name,
+`canton-token-forge-0.0.1.dar`. Whether two releases' assets are the same
+bytes does not follow from that version string: it follows from `daml/`,
+`versions.env` and the SDK being unchanged between them. Nothing under those
+paths has moved since `v0.1.0`, so a tag cut from this commit would carry the
+sha256 the `v0.1.0` body records; read it off the workflow's own output rather
+than assuming it, as steps 1 and 4 below do.
+
+The root `package.json`'s `version` is the npm package's, and nothing checks
+it against the tag: `release.yml` reads only `daml/canton-token-forge/daml.yaml`.
+Bring it in step with the tag you are about to cut, in a commit merged to
+`main` before you tag, or consumers install a package whose manifest names a
+version the pin does not.
 
 `.github/workflows/release.yml` builds and publishes. It runs the full suite,
 checks the DAR is byte-reproducible, and compiles `consumer-smoke/` against the
