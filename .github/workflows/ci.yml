@@ -716,6 +716,16 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      # Ahead of the install it guards, for the reason the daml job places its
+      # own sweeps first: the script only reads four tracked JSON files, so it
+      # needs no node_modules and reports in a moment. A lockfile that has
+      # drifted from the manifest beside it reds npm ci too, but with npm's
+      # generic "package.json and package-lock.json are not in sync", and every
+      # finding this names, on either side, would go unprinted.
+      - name: Check the manifests agree
+        if: steps.scope.outputs.run == 'true'
+        run: npm run check:deps
+
       # npm ci runs `prepare`, so this compiles registry/src against the ROOT
       # dependency set, which is the set a consumer gets. The registry job
       # compiles the same source against registry/node_modules; only this one
@@ -724,10 +734,6 @@ jobs:
       - name: Install
         if: steps.scope.outputs.run == 'true'
         run: npm ci
-
-      - name: Check the manifests agree
-        if: steps.scope.outputs.run == 'true'
-        run: npm run check:deps
 
       - name: Install smoke test
         if: steps.scope.outputs.run == 'true'
