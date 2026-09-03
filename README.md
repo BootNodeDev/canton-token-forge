@@ -170,8 +170,14 @@ at boot and resolve by package name, not by package id, so which release built
 the DAR does not matter, and an id the participant cannot resolve stops the
 service starting.
 
-Every `v[0-9]*` tag is both a DAR release and an npm package pin: see
-"Consuming a release" above for the DAR itself.
+`v0.2.0` is the first tag to carry the npm package, and the tag this section
+is written against; until it is cut, pin the commit sha instead. Do not pin
+`v0.1.0`: it predates the package, so its manifest is unscoped, declares no
+`bin` and no `files`, and runs `scripts/fetch-dep.sh` as a `postinstall`,
+which installs no service and clones Splice into your `node_modules`. From
+`v0.2.0` on the tags are one namespace, every `v[0-9]*` tag being both a DAR
+release and an npm package pin. See "Consuming a release" above for the DAR
+itself.
 
 `npm install` builds `registry/src` through the package's `prepare` script and
 links one bin, `canton-token-forge-registry`, unmodified. `pnpm install`
