@@ -603,3 +603,184 @@ jobs:
           SKIP_BUILD: '1'
           ALLOW_UNTAGGED: '1'
         run: bash scripts/release-notes.sh "${GITHUB_REF_NAME}"
+
+  # This job's name is the status check context that branch protection or a
+  # ruleset would match on. Renaming it, including a capitalisation change,
+  # stops that check from reporting on every pull request, this rename's own
+  # included. The scope gate is per-step rather than one job-level `if:` so
+  # that a scoped-out pull request still reports a green check carrying the
+  # scope log that says which paths it looked at. A job-level `if:` would
+  # report `skipped` instead, which a required check accepts but which reads
+  # on the pull request as though the job never ran.
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # registry/dist is the package's payload and must not be committed, while
+      # a dist directory anywhere else under registry/ is build output of a kind
+      # nothing ships. The rule drawing that line lives in the ROOT .gitignore
+      # rather than beside the code, because npm applies a nested ignore file to
+      # the pack walk even for a path the manifest's "files" allowlist names,
+      # while the allowlist outranks the root file. That placement is exactly
+      # what hides the rule from every other check here: the root file cannot
+      # subtract from the tarball, so re-anchoring it to `registry/dist` leaves
+      # the smoke test and the manifest guard below both at exit 0 while build
+      # output under registry/src and registry/test silently stops being
+      # ignored. That is the regression 7d04a6c fixed, and this table is the
+      # only thing that holds it. Three things are asserted: a rule that stops
+      # covering the tree is as wrong as one that reaches past registry/'s own
+      # build output, and either pattern satisfies both of those from inside
+      # registry/.gitignore while emptying the package, so where the rule lives
+      # is read as well. Ungated, like the sweeps at the top of the daml job: it
+      # needs nothing but the checkout, so it reports in seconds and cannot be
+      # silenced by a later narrowing of the gate below.
+      - name: Verify the build-output ignore rule
+        run: |
+          set -euo pipefail
+          status=0
+          # check-ignore answers 0 when a rule matches and 1 when none does,
+          # and both are results rather than failures, so the status is held
+          # rather than left to -e, which would end the step at the first
+          # mismatch and hide every case after it. Anything above 1 means it
+          # could not answer at all: taking that for "no rule matched" would
+          # print the second list as passing while git was failing outright.
+          # None of these paths need to exist; the command matches patterns.
+          # --no-index because without it check-ignore consults the index and
+          # calls every TRACKED path unignored whatever the patterns say. That
+          # would make the registry/src/index.ts case below vacuous, since it is
+          # the one tracked path here: a rule that swallowed the service's own
+          # source would still read as a pass.
+          for path in registry/dist/index.js \
+                      registry/src/dist/bundle.js \
+                      registry/test/dist/bundle.js; do
+            rc=0
+            git check-ignore -q --no-index "$path" || rc=$?
+            case "$rc" in
+              0) echo "ok: ${path} is ignored" ;;
+              1) echo "${path} is not ignored: build output under registry/ is committable" >&2
+                 status=1 ;;
+              *) echo "git check-ignore could not answer for ${path}: status ${rc}" >&2
+                 status=1 ;;
+            esac
+          done
+          for path in registry/dist-backup/index.js \
+                      registry/src/index.ts \
+                      dist/index.js \
+                      scripts/dist/index.js; do
+            rc=0
+            git check-ignore -q --no-index "$path" || rc=$?
+            case "$rc" in
+              1) echo "ok: ${path} is not ignored" ;;
+              0) echo "${path} is ignored: the rule reaches past registry/'s build output" >&2
+                 status=1 ;;
+              *) echo "git check-ignore could not answer for ${path}: status ${rc}" >&2
+                 status=1 ;;
+            esac
+          done
+          # Both loops read what the rule COVERS, and the same patterns cover
+          # the same tree from inside registry/.gitignore, where npm applies
+          # them to the pack walk as well: measured at 8 tarball entries rather
+          # than 24, registry/dist gone and the bin target with it, while all
+          # seven verdicts above stay green. The smoke test below is the only
+          # other thing that sees it, and only when the gate lets it run, so the
+          # file carrying the rule is read here too. -v prints the deciding
+          # source as `<file>:<line>:<pattern>`; the first field is the whole
+          # assertion.
+          rc=0
+          match="$(git check-ignore -v --no-index registry/dist/index.js)" || rc=$?
+          case "$rc" in
+            0) ignore_file="${match%%:*}"
+               if [ "$ignore_file" = ".gitignore" ]; then
+                 echo "ok: the rule ignoring registry/dist lives in the root .gitignore"
+               else
+                 echo "registry/dist is ignored by ${ignore_file} rather than the root .gitignore: a nested ignore file subtracts it from the npm pack walk" >&2
+                 status=1
+               fi ;;
+            1) echo "no rule ignores registry/dist, so there is no placement to read" >&2
+               status=1 ;;
+            *) echo "git check-ignore could not answer for registry/dist/index.js: status ${rc}" >&2
+               status=1 ;;
+          esac
+          exit "$status"
+
+      - name: Scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Not a pull request: verifying unconditionally."
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A blip on this fetch reds the job having verified nothing, so it is
+          # retried rather than taken at its word. The step above is ungated and
+          # sits there so that a red here finds it already run and reported.
+          for attempt in 1 2 3; do
+            git fetch --no-tags --prune origin \
+              "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" && break
+            echo "git fetch attempt ${attempt} of 3 failed" >&2
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
+          changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
+          echo "Changed files:"
+          echo "$changed"
+          # The package's own inputs: the root manifest and lockfile by name,
+          # the registry ones and every packed source through the registry/
+          # prefix, and the two scripts the steps below run. LICENSE and
+          # README.md are packed too, whatever "files" says, and are left out
+          # on purpose: no check here or downstream asserts either, so gating
+          # on them would only lengthen the job. .gitignore is listed to keep
+          # this enumeration complete rather than for coverage, since the step
+          # above is ungated and reads that file on every event whether or not
+          # the gate names it, while the three steps below are blind to the
+          # root rule. .npmrc is the opposite case and this gate is the only
+          # thing holding it. It reconfigures npm for every step below rather
+          # than naming a file any of them read, which is what keeps it out of
+          # a list written by thinking about inputs: `omit=dev` on its own
+          # leaves prepare with no compiler, exit 127 before anything builds.
+          if grep -Eq '^(package\.json$|package-lock\.json$|registry/|scripts/check-registry-deps\.mjs$|scripts/registry-install-smoke\.sh$|\.gitignore$|\.npmrc$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+            echo "run=true" | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "run=false" | tee -a "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Ahead of the install it guards, for the reason the daml job places its
+      # own sweeps first: the script only reads four tracked JSON files, so it
+      # needs no node_modules and reports in a moment. npm ci is not a second
+      # reading of this. It reds only where the lockfile can no longer satisfy
+      # the range beside it, and then with npm's own "Invalid: lock file's
+      # express@4.22.2 does not satisfy express@5.2.1"; a widened range the
+      # lockfile still satisfies installs clean, and a disagreement between the
+      # two trees is invisible to it whatever the ranges say.
+      - name: Check the manifests agree
+        if: steps.scope.outputs.run == 'true'
+        run: npm run check:deps
+
+      # npm ci runs `prepare`, so this compiles registry/src against the ROOT
+      # dependency set, which is the set a consumer gets. The registry job
+      # compiles the same source against registry/node_modules; only this one
+      # would catch a type package that arrives there transitively and is
+      # declared nowhere.
+      - name: Install
+        if: steps.scope.outputs.run == 'true'
+        run: npm ci
+
+      - name: Install smoke test
+        if: steps.scope.outputs.run == 'true'
+        run: npm run smoke:registry
