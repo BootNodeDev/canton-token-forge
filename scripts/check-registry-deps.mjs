@@ -115,18 +115,24 @@ for (const { label, read } of FIELDS) {
   }
 }
 
+// registry/ is not a workspace of the root package: each tree is installed from
+// its own directory, so a root npm install leaves registry/package-lock.json
+// exactly as it found it.
+const ROOT_INSTALL = 'npm install'
+const REGISTRY_INSTALL = 'npm install in registry/'
+
 let resolvedMatches = 0
 for (const name of sharedNames) {
   const rootEntry = rootLock.packages?.[`node_modules/${name}`]
   const registryEntry = registryLock.packages?.[`node_modules/${name}`]
   if (!rootEntry) {
     failures.push(
-      `${name} is declared in both manifests but has no "node_modules/${name}" entry in package-lock.json; run npm install to refresh it.`,
+      `${name} is declared in both manifests but has no "node_modules/${name}" entry in package-lock.json; run ${ROOT_INSTALL} to refresh it.`,
     )
   }
   if (!registryEntry) {
     failures.push(
-      `${name} is declared in both manifests but has no "node_modules/${name}" entry in registry/package-lock.json; run npm install to refresh it.`,
+      `${name} is declared in both manifests but has no "node_modules/${name}" entry in registry/package-lock.json; run ${REGISTRY_INSTALL} to refresh it.`,
     )
   }
   if (!rootEntry || !registryEntry) continue
@@ -154,16 +160,18 @@ const TREES = [
     manifestFile: 'package.json',
     lock: rootLock,
     lockFile: 'package-lock.json',
+    install: ROOT_INSTALL,
   },
   {
     manifest: registryManifest,
     manifestFile: 'registry/package.json',
     lock: registryLock,
     lockFile: 'registry/package-lock.json',
+    install: REGISTRY_INSTALL,
   },
 ]
 
-for (const { manifest, manifestFile, lock, lockFile } of TREES) {
+for (const { manifest, manifestFile, lock, lockFile, install } of TREES) {
   const recorded = lock.packages?.[''] ?? {}
   for (const section of SECTIONS) {
     const declared = manifest[section] ?? {}
@@ -173,14 +181,14 @@ for (const { manifest, manifestFile, lock, lockFile } of TREES) {
         const recordedRange =
           locked[name] === undefined ? 'does not record it' : `records "${locked[name]}"`
         failures.push(
-          `${name} is "${range}" in ${manifestFile}'s "${section}" but ${lockFile} ${recordedRange}; run npm install to bring the lockfile up to date.`,
+          `${name} is "${range}" in ${manifestFile}'s "${section}" but ${lockFile} ${recordedRange}; run ${install} to bring the lockfile up to date.`,
         )
       }
     }
     for (const name of Object.keys(locked)) {
       if (!(name in declared)) {
         failures.push(
-          `${lockFile} still records ${name} in "${section}" but ${manifestFile} no longer declares it; run npm install to bring the lockfile up to date.`,
+          `${lockFile} still records ${name} in "${section}" but ${manifestFile} no longer declares it; run ${install} to bring the lockfile up to date.`,
         )
       }
     }
