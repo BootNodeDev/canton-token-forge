@@ -644,10 +644,15 @@ jobs:
           # git check-ignore exits 1 for a path no rule matches, which under -e
           # would end the step at the first mismatch and hide every case after
           # it. None of these paths need to exist: the command matches patterns.
+          # --no-index because without it check-ignore consults the index and
+          # calls every TRACKED path unignored whatever the patterns say. That
+          # would make the registry/src/index.ts case below vacuous, since it is
+          # the one tracked path here: a rule that swallowed the service's own
+          # source would still read as a pass.
           for path in registry/dist/index.js \
                       registry/src/dist/bundle.js \
                       registry/test/dist/bundle.js; do
-            if git check-ignore -q "$path"; then
+            if git check-ignore -q --no-index "$path"; then
               echo "ok: ${path} is ignored"
             else
               echo "${path} is not ignored: build output under registry/ is committable" >&2
@@ -658,7 +663,7 @@ jobs:
                       registry/src/index.ts \
                       dist/index.js \
                       scripts/dist/index.js; do
-            if git check-ignore -q "$path"; then
+            if git check-ignore -q --no-index "$path"; then
               echo "${path} is ignored: the rule reaches past registry/'s build output" >&2
               status=1
             else
