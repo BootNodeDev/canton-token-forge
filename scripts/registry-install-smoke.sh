@@ -157,21 +157,30 @@ esac
 echo "smoke: running against an unreachable participant"
 serve_port="$(free_port)"
 dead_port="$(free_port)"
-prefix='#canton-token-forge:Canton.TokenForge'
 # Same $PWD/.env concern as the no-config run above, and env -i for the same
 # reason: passing the configuration through it makes these variables the only
 # ones the service sees, so an optional one exported in the caller's shell
 # (SHUTDOWN_TIMEOUT_MS, NODE_OPTIONS) cannot change what this run tests.
+#
+# Each id is spelled in full rather than built from a shared prefix. Nothing
+# here resolves them: no participant answers, so every boot probe reports the
+# question unanswered and warns, and a run configured with ids naming no
+# package at all is just as green. What reads them is the workflow's ungated
+# "Verify the hardcoded template ids" sweep, which finds a file by grepping
+# for the module prefix followed by a dot. Built from a variable, that dot sat
+# on the interpolated side, so this file matched nothing, appeared in neither
+# of the sweep's two lists, and its exhaustiveness comparison stayed green
+# while five ids went unchecked here.
 ( cd "$consumer" && exec env -i \
 PATH="$PATH" \
 LEDGER_API_URL="http://127.0.0.1:${dead_port}" \
 LEDGER_API_TOKEN=smoke \
 ADMIN_PARTY='admin::1220smoke' \
-INSTRUMENT_CONFIG_TEMPLATE_ID="${prefix}.Registry:InstrumentConfig" \
-TRANSFER_INSTRUCTION_TEMPLATE_ID="${prefix}.Instruction:TokenTransferInstruction" \
-PREAPPROVAL_TEMPLATE_ID="${prefix}.Registry:TokenTransferPreapproval" \
-LOCKED_TOKEN_TEMPLATE_ID="${prefix}.Locked:LockedToken" \
-ALLOCATION_TEMPLATE_ID="${prefix}.Allocation:TokenAllocation" \
+INSTRUMENT_CONFIG_TEMPLATE_ID='#canton-token-forge:Canton.TokenForge.Registry:InstrumentConfig' \
+TRANSFER_INSTRUCTION_TEMPLATE_ID='#canton-token-forge:Canton.TokenForge.Instruction:TokenTransferInstruction' \
+PREAPPROVAL_TEMPLATE_ID='#canton-token-forge:Canton.TokenForge.Registry:TokenTransferPreapproval' \
+LOCKED_TOKEN_TEMPLATE_ID='#canton-token-forge:Canton.TokenForge.Locked:LockedToken' \
+ALLOCATION_TEMPLATE_ID='#canton-token-forge:Canton.TokenForge.Allocation:TokenAllocation' \
 PORT="${serve_port}" \
   "$bin" ) > "${work}/server.log" 2>&1 &
 server_pid=$!

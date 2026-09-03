@@ -181,6 +181,11 @@ jobs:
             registry/test/e2e/helpers/sandbox.ts
             registry/test/helpers/fixtures.ts
             registry/test/ledger.test.ts
+            # Its ids configure a service the check never lets reach a
+            # participant, so nothing there resolves them and a wrong one
+            # would not red that script. They are compared here for the same
+            # reason the rest are: daml/ is where they can go stale.
+            scripts/registry-install-smoke.sh
             scripts/seed.mjs
           )
           # Two more files carry the prefix and must not be checked against
