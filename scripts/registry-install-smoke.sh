@@ -70,16 +70,22 @@ echo "smoke: packing ${repo_root}"
 # the status is held rather than left to set -e, which would end the run here
 # with nothing said. --silent is deliberately not passed: it silences the
 # prepare script too, which is where the compiler names the file and the line.
-# npm keeps its own output on stderr, so stdout is the tarball name alone, and
-# the notice listing is discarded on the path that succeeds.
+# Which stream carries that depends on the npm version. npm 9 keeps everything
+# but the tarball name on stderr; npm 10 runs prepare in the foreground and
+# writes its banner, and a failing compiler's output, to stdout. So both streams
+# are captured, both are printed on failure, and the name is the LAST line of
+# stdout rather than the whole of it.
 set +e
-tarball_name="$(cd "$repo_root" && npm pack --pack-destination "$work" 2>"${work}/pack.err")"
+( cd "$repo_root" && npm pack --pack-destination "$work" ) \
+  >"${work}/pack.out" 2>"${work}/pack.err"
 pack_status=$?
 set -e
 if [ "$pack_status" -ne 0 ]; then
+  dump "${work}/pack.out"
   dump "${work}/pack.err"
   fail "npm pack failed with exit ${pack_status}"
 fi
+tarball_name="$(tail -n 1 "${work}/pack.out")"
 tarball="${work}/${tarball_name}"
 [ -f "$tarball" ] || fail "npm pack produced no tarball at ${tarball}"
 
