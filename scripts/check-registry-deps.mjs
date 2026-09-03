@@ -4,11 +4,13 @@
 // bin, so a consumer install resolves the service's imports against the root
 // dependency list, while every test suite that vetted that code ran against
 // registry/package.json's list. The two are deliberate duplicates, and this
-// guard fails on four ways they come apart: a runtime dependency declared on
-// one side only, a shared package at two ranges, a mismatched engines.node or
-// type, and a package the two lockfiles resolve differently. It also fails
-// when a lockfile stops recording the manifest beside it, which is the state
-// an edit to one of the ranges leaves behind.
+// guard fails on every way they come apart: a runtime dependency declared on
+// one side only, one manifest naming a package at two ranges, a shared package
+// at two ranges across the two, an engines.node or type that differs or is
+// absent from both, a shared package the two lockfiles resolve differently or
+// that one lockfile does not record at all, and a lockfile that no longer
+// records the manifest beside it, which is the state an edit to a range leaves
+// behind.
 
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
