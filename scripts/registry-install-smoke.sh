@@ -196,8 +196,11 @@ esac
 # /registry/metadata/v1/info is the cheapest request that passes through one of
 # them and answers from configuration alone, so it needs no ledger: it is 200
 # with the specs shipped and 500 ("spec could not be read") without them.
+# || true so a service that died between the poll above and this request is
+# reported by the status check below (curl writes 000 and exits non-zero on a
+# refused connection) rather than aborting the run silently through set -e.
 info_status="$(curl -s -o "${work}/info.json" -w '%{http_code}' \
-  "http://127.0.0.1:${serve_port}/registry/metadata/v1/info")"
+  "http://127.0.0.1:${serve_port}/registry/metadata/v1/info" || true)"
 [ "$info_status" = "200" ] \
   || { dump "${work}/info.json"; fail "expected 200 from /registry/metadata/v1/info, got ${info_status}"; }
 
