@@ -198,9 +198,12 @@ onlyBuiltDependencies:
 
 The key is the full resolved git specifier, not the bare package name, a
 version range, or a wildcard: pnpm resolves the tag to its commit sha and
-matches on that exact string. Its own refusal error prints that specifier, but
-unquoted: a YAML key cannot start with `@`, and the `#` before the sha would
-open a comment, so quote it as the block above does. Since the sha is resolved
+matches on that exact string. Its own refusal error prints that specifier
+unquoted, and pasted that way it does not parse: `@` is a reserved indicator
+in YAML, so a plain scalar cannot begin with one, and the parser answers `bad
+indentation of a mapping entry`. Quote it as the block above does. The `#` is
+harmless either way, since YAML opens a comment only at a `#` that follows
+whitespace, and this one sits inside the scalar. Since the sha is resolved
 from the tag, this entry changes whenever the pin does. With it present,
 `pnpm exec canton-token-forge-registry` runs the same as `npm`'s link.
 
