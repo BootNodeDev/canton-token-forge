@@ -214,11 +214,22 @@ loaded from the working directory it is started in. Required, eight:
 `LOCKED_TOKEN_TEMPLATE_ID`, `TRANSFER_INSTRUCTION_TEMPLATE_ID`,
 `ALLOCATION_TEMPLATE_ID`). Optional, four: `PORT`, `LEDGER_USER_ID`,
 `SHUTDOWN_TIMEOUT_MS`, `DIRECT_TRANSFER_MARGIN_MS`. The package ships
-`registry/.env.example` with the full list and what each variable is for, and
-`npm run seed` against a local sandbox prints the block filled in with the real
-admin party and the five template ids. `ADMIN_PARTY` and all five template ids
-are checked against the participant at boot, so a value it cannot resolve
-stops the service starting rather than failing later.
+`registry/.env.example` with the full list and what each variable is for.
+
+Quote all five template ids in a `.env` file. Every one of them begins with
+`#`, which dotenv reads as the start of a comment, so an unquoted
+`INSTRUMENT_CONFIG_TEMPLATE_ID=#canton-token-forge:...` parses to the empty
+string and the boot rejects it as `missing required env var
+INSTRUMENT_CONFIG_TEMPLATE_ID`, naming a variable that is in fact set. Values
+passed through the environment rather than a file need no quoting beyond
+whatever the shell wants.
+
+`npm run seed`, run from a clone of this repository against a local sandbox,
+prints the whole block filled in and quoted with the real admin party and the
+five template ids. `scripts/seed.mjs` is not part of the package, so that is a
+step you take in a checkout, not in the consumer. `ADMIN_PARTY` and all five
+template ids are checked against the participant at boot, so a value it cannot
+resolve stops the service starting rather than failing later.
 
 What the package contains: `registry/dist`, `registry/openapi` and
 `registry/.env.example`, plus `package.json`, `README.md` and `LICENSE` (24
