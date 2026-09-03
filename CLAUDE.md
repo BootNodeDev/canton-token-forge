@@ -319,11 +319,18 @@ arrives there transitively and is declared nowhere; and `npm run
 smoke:registry`. The fourth is ungated and runs on every trigger of the
 workflow regardless of what changed, ahead of the other three exactly as the
 `daml` check's own comparisons run ahead of its gate: a `git check-ignore`
-table confirming that `registry/dist` build output stays out of the package
-and that the rule ignoring it lives in the root `.gitignore` rather than a
-nested one, since a nested rule would still pass the smoke test and the
-manifest guard while silently no longer covering `registry/src` and
-`registry/test`.
+table confirming that build output under `registry/` stays out of git,
+`registry/dist` included, which must not be committed even though it is the
+package's own payload, and that the rule ignoring it lives in the root
+`.gitignore` rather than a nested one. Each half catches a mutation the other
+cannot see. Narrowing the root rule to `registry/dist` passes the smoke test,
+the manifest guard and the placement read alike, while build output under
+`registry/src` and `registry/test` silently stops being ignored, so the table
+reads what the rule covers. Moving the same pattern into
+`registry/.gitignore` leaves that coverage intact but subtracts
+`registry/dist` from the npm pack walk, emptying the package to 8 entries from
+24; only the smoke test sees that, and only when the gate lets it run, so the
+table reads where the rule lives as well.
 
 A pushed tag whose `v` is followed by a digit (`v[0-9]*`, so `vnext` and
 `vendor` trigger nothing) runs the `release` workflow instead: it refuses a
