@@ -164,9 +164,10 @@ consumed from git at a tag rather than from the public registry:
 Two preconditions. This repository is private, so the install needs
 credentials that can read it: a token-based HTTPS credential helper or an SSH
 key for `github.com`, whichever your environment already uses for private git
-dependencies. And the tag must name a commit whose DAR is uploaded to the
-participant the service points at, since the template ids are checked at boot
-and an id the participant cannot resolve stops it starting.
+dependencies. And the participant the service points at must host the
+`canton-token-forge` package the configured template ids name: they are checked
+at boot and resolve by package name, not by package id, so any release's DAR
+serves, and one the participant cannot resolve stops the service starting.
 
 Every `v[0-9]*` tag is both a DAR release and an npm package pin: see
 "Consuming a release" above for the DAR itself.
