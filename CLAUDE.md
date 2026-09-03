@@ -290,8 +290,9 @@ Run before declaring work done:
 
 Every pull request gets three comparisons in the `daml` check whatever it
 touches, because that check runs them ahead of its toolchain install and
-outside its own scope gate: the strings that spell a template id, against `daml/`; the
-consumer snippet in `README.md`, against `consumer-smoke/consumer/daml.yaml`;
+outside its own scope gate: the strings that spell a template id, against
+`daml/`; the consumer snippet in `README.md`, against
+`consumer-smoke/consumer/daml.yaml`;
 and every tracked `daml.yaml`, against both the SDK version the workflow
 installs and LF 2.1. One that touches
 `daml/`, `consumer-smoke/`, `scripts/consumer-smoke.sh` or the root build
