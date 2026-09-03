@@ -285,6 +285,8 @@ Run before declaring work done:
 - `npm run smoke` - when you changed what the production DAR exposes: a
   renamed module or template, its dependencies, its interface instances, or its
   `build-options`
+- `npm run check:deps` - when you changed a dependency in the root or the
+  `registry/` manifest; `npm run smoke:registry` never compares the two
 - `npm run smoke:registry` - when you changed the root manifest, the
   registry's dependencies, or either ignore file
 
