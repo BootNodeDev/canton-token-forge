@@ -344,7 +344,7 @@ CI just proved compile.
    with it the comparison against the checked-out commit that only a real tag
    reaches, so the body it emits names the dispatched ref. To rehearse all
    three, push a
-   hyphenated tag such as `v0.1.0-rc1` first:
+   hyphenated tag such as `v0.2.0-rc1` first:
    the workflow marks any hyphenated tag as a pre-release, so it does not
    become the release that `/releases/latest` serves. Tag a commit that is
    already on `main`, for the rehearsal as much as for the real thing: the
@@ -364,7 +364,7 @@ CI just proved compile.
    one step meant to exercise the downloaded one.
 
    ```bash
-   gh release download v0.1.0-rc1 --pattern '*.dar' --dir /tmp/rc
+   gh release download v0.2.0-rc1 --pattern '*.dar' --dir /tmp/rc
    shasum -a 256 /tmp/rc/canton-token-forge-0.0.1.dar   # must match the body
    rm -rf consumer-smoke/consumer/vendor consumer-smoke/consumer/.daml
    mkdir -p consumer-smoke/consumer/vendor
@@ -381,8 +381,8 @@ CI just proved compile.
    it permanently.
 
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 
 4. Confirm the release carries `canton-token-forge-0.0.1.dar` and that its body
@@ -414,7 +414,7 @@ Two environment variables tune this path:
   run. Preview a body locally with:
 
   ```bash
-  ALLOW_UNTAGGED=1 bash scripts/release-notes.sh v0.1.0
+  ALLOW_UNTAGGED=1 bash scripts/release-notes.sh v0.2.0
   ```
 
   This one refuses on a dirty working tree, untracked files included, because

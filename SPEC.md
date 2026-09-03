@@ -607,7 +607,9 @@ Stated plainly, because they are what an evaluation turns on.
   the pull-request path waives with `ALLOW_UNTAGGED` so that a body can be
   generated for a ref that is not a tag.
 - **Pre-release.** Version `0.2.0` of the npm package, `0.0.1` of the Daml
-  package, both deliberately decoupled from the release tags. Those tags are
+  package. The Daml version is deliberately decoupled from the release tags;
+  the npm version is brought in step with the tag by hand before it is cut,
+  since nothing checks the two against each other. Those tags are
   one namespace rather than two: every `v[0-9]*` tag publishes the DAR as a
   release asset, and from `v0.2.0` on the same tag is what a consumer's
   `package.json` pins the npm package at. `v0.1.0` is the only tag cut so far
