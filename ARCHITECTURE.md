@@ -80,6 +80,8 @@ scripts/
   release-notes.sh                       Emit the release body for a tag, snippet extracted from consumer-smoke/consumer/daml.yaml
   sandbox.sh                             Build the DAR and run a local Canton sandbox with the JSON Ledger API
   seed.mjs                               Seed a running sandbox with an admin, demo users, and one InstrumentConfig
+  check-registry-deps.mjs                Fail when the root and registry manifests disagree on a dependency
+  registry-install-smoke.sh              Pack the npm package, install it into a scratch consumer, and run the bin
 deps/                                    Vendored Splice sources + built DARs (gitignored; never edit or commit)
 multi-package.yaml                       Wires the two daml/ packages into one workspace; consumer-smoke/ has its own
 versions.env                             Single version knob: SPLICE_TAG
