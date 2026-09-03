@@ -374,7 +374,10 @@ CI just proved compile.
    ```
 
    Then `npm run clean`, and delete that release and its tag.
-2. Tag and push. This is the decision that matters: a downstream repository pins
+2. Set the root `package.json`'s `version` to the tag without its `v`, and land
+   that on `main`. Nothing enforces this, and the tag is what a consumer's
+   `package.json` resolves to.
+3. Tag and push. This is the decision that matters: a downstream repository pins
    it permanently.
 
    ```bash
@@ -382,7 +385,7 @@ CI just proved compile.
    git push origin v0.1.0
    ```
 
-3. Confirm the release carries `canton-token-forge-0.0.1.dar` and that its body
+4. Confirm the release carries `canton-token-forge-0.0.1.dar` and that its body
    shows the sha256 and package-id. The download-and-compile from step 1 is
    worth repeating here, against the real tag.
 
