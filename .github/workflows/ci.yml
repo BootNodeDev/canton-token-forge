@@ -733,17 +733,20 @@ jobs:
           changed="$(git -c core.quotePath=false diff --name-only --no-renames "origin/${BASE_REF}...HEAD")"
           echo "Changed files:"
           echo "$changed"
-          # The package's own inputs: both manifests, both lockfiles by way of
-          # package-lock.json, everything the tarball carries, and the two
-          # scripts the steps below run. .gitignore is listed because it is in
-          # neither other gate, so a pull request narrowing the build-output
-          # rule would otherwise report two green checks having looked at
-          # nothing; the step above is what reads it once this job is here.
-          # .npmrc is listed for that same reason, and neither gate holds it
-          # either. It reconfigures npm for every step below rather than
-          # naming a file any of them read, which is what keeps it out of a
-          # list written by thinking about inputs: `omit=dev` on its own leaves
-          # prepare with no compiler, which is exit 127 before anything builds.
+          # The package's own inputs: the root manifest and lockfile by name,
+          # the registry ones and every packed source through the registry/
+          # prefix, and the two scripts the steps below run. LICENSE and
+          # README.md are packed too, whatever "files" says, and are left out
+          # on purpose: no check here or downstream asserts either, so gating
+          # on them would only lengthen the job. .gitignore is listed to keep
+          # this enumeration complete rather than for coverage, since the step
+          # above is ungated and reads that file on every event whether or not
+          # the gate names it, while the three steps below are blind to the
+          # root rule. .npmrc is the opposite case and this gate is the only
+          # thing holding it. It reconfigures npm for every step below rather
+          # than naming a file any of them read, which is what keeps it out of
+          # a list written by thinking about inputs: `omit=dev` on its own
+          # leaves prepare with no compiler, exit 127 before anything builds.
           if grep -Eq '^(package\.json$|package-lock\.json$|registry/|scripts/check-registry-deps\.mjs$|scripts/registry-install-smoke\.sh$|\.gitignore$|\.npmrc$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
