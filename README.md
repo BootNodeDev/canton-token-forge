@@ -190,9 +190,10 @@ onlyBuiltDependencies:
 
 The key is the full resolved git specifier, not the bare package name, a
 version range, or a wildcard: pnpm resolves the tag to its commit sha and
-matches on that exact string, and its own refusal error prints the line to
-paste. Since the sha is resolved from the tag, this entry changes whenever the
-pin does. With it present, `pnpm exec canton-token-forge-registry` runs the
+matches on that exact string. Its own refusal error prints that specifier, but
+unquoted: a YAML key cannot start with `@`, and the `#` before the sha would
+open a comment, so quote it as the block above does. Since the sha is resolved
+from the tag, this entry changes whenever the pin does. With it present, `pnpm exec canton-token-forge-registry` runs the
 same as `npm`'s link.
 
 The service reads its whole configuration from the environment, plus a `.env`
