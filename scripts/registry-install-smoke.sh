@@ -110,12 +110,12 @@ echo "smoke: running against an unreachable participant"
 serve_port="$(free_port)"
 dead_port="$(free_port)"
 prefix='#canton-token-forge:Canton.TokenForge'
-# Same $PWD/.env concern as the no-config run above; the explicit env
-# assignments below are the only configuration this run gets regardless.
-# exec is a special builtin, so a VAR=val ahead of it is an argument to exec
-# itself rather than an environment assignment for what it execs; the
-# assignments have to precede exec, not follow it.
-( cd "$consumer" && \
+# Same $PWD/.env concern as the no-config run above, and env -i for the same
+# reason: passing the configuration through it makes these variables the only
+# ones the service sees, so an optional one exported in the caller's shell
+# (SHUTDOWN_TIMEOUT_MS, NODE_OPTIONS) cannot change what this run tests.
+( cd "$consumer" && exec env -i \
+PATH="$PATH" \
 LEDGER_API_URL="http://127.0.0.1:${dead_port}" \
 LEDGER_API_TOKEN=smoke \
 ADMIN_PARTY='admin::1220smoke' \
@@ -125,7 +125,7 @@ PREAPPROVAL_TEMPLATE_ID="${prefix}.Registry:TokenTransferPreapproval" \
 LOCKED_TOKEN_TEMPLATE_ID="${prefix}.Locked:LockedToken" \
 ALLOCATION_TEMPLATE_ID="${prefix}.Allocation:TokenAllocation" \
 PORT="${serve_port}" \
-  exec "$bin" ) > "${work}/server.log" 2>&1 &
+  "$bin" ) > "${work}/server.log" 2>&1 &
 server_pid=$!
 
 health=""
