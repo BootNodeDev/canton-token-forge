@@ -602,8 +602,8 @@ Stated plainly, because they are what an evaluation turns on.
   package, with the Daml build published as release `v0.1.0` for downstream
   repositories to pin (that tag is deliberately decoupled from the Daml package
   version), and the npm package consumed from git at `v0.2.0`.
-  The two tags exist and mean different things: `v0.1.0` names the DAR release,
-  `v0.2.0` the commit a consumer's `package.json` pins. No migration story and
+  The two tags mean different things: `v0.1.0` names the DAR release, `v0.2.0`
+  the commit a consumer's `package.json` pins. No migration story and
   no compatibility guarantees.
 
 ---
