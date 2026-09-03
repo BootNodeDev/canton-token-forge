@@ -713,7 +713,12 @@ jobs:
           # neither other gate, so a pull request narrowing the build-output
           # rule would otherwise report two green checks having looked at
           # nothing; the step above is what reads it once this job is here.
-          if grep -Eq '^(package\.json$|package-lock\.json$|registry/|scripts/check-registry-deps\.mjs$|scripts/registry-install-smoke\.sh$|\.gitignore$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          # .npmrc is listed for that same reason, and neither gate holds it
+          # either. It reconfigures npm for every step below rather than
+          # naming a file any of them read, which is what keeps it out of a
+          # list written by thinking about inputs: `omit=dev` on its own leaves
+          # prepare with no compiler, which is exit 127 before anything builds.
+          if grep -Eq '^(package\.json$|package-lock\.json$|registry/|scripts/check-registry-deps\.mjs$|scripts/registry-install-smoke\.sh$|\.gitignore$|\.npmrc$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             echo "run=true" | tee -a "$GITHUB_OUTPUT"
           else
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
