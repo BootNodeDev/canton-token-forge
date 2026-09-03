@@ -298,7 +298,8 @@ installs and LF 2.1. One that touches
 inputs runs four of these five automatically in that same check, after those
 three steps: only `npm run test:coverage` does not. One that touches `registry/`
 runs that package's own lint, both typechecks, and unit suite as the
-`registry` check, not the root commands above. `npm run test:coverage` and
+`registry` check, none of the Daml root commands above, and the `package`
+check below alongside it. `npm run test:coverage` and
 the registry's `npm run test:e2e` are both off the pull-request path: the
 first re-runs Splice's own suites, the second needs a live participant. The
 `release` workflow adds checks of its own that no pull request runs. The
