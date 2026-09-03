@@ -159,7 +159,13 @@ info_status="$(curl -s -o "${work}/info.json" -w '%{http_code}' \
   || { cat "${work}/info.json" >&2; fail "expected 200 from /registry/metadata/v1/info, got ${info_status}"; }
 
 echo "smoke: terminating"
-kill -TERM "$server_pid"
+# A service that died between serving the two requests above and this line is a
+# real failure, and an unguarded kill would report it as set -e ending the run
+# on bash's own "no such process" rather than as something this check saw.
+if ! kill -TERM "$server_pid" 2>/dev/null; then
+  cat "${work}/server.log" >&2
+  fail "the service was already gone when the run asked it to shut down"
+fi
 set +e
 wait "$server_pid"
 shutdown_status=$?
