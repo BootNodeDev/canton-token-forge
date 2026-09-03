@@ -166,8 +166,9 @@ credentials that can read it: a token-based HTTPS credential helper or an SSH
 key for `github.com`, whichever your environment already uses for private git
 dependencies. And the participant the service points at must host the
 `canton-token-forge` package the configured template ids name: they are checked
-at boot and resolve by package name, not by package id, so any release's DAR
-serves, and one the participant cannot resolve stops the service starting.
+at boot and resolve by package name, not by package id, so which release built
+the DAR does not matter, and an id the participant cannot resolve stops the
+service starting.
 
 Every `v[0-9]*` tag is both a DAR release and an npm package pin: see
 "Consuming a release" above for the DAR itself.
