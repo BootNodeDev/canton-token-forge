@@ -15,7 +15,7 @@ and every holding, and is the same party the registry API reports as its
 
 ```bash
 # 1. Vendor the Splice interface DARs into deps/ (clones canton-network/splice)
-npm install
+npm run setup
 
 # 2. Build the production DAR and run the Daml test suite
 npm test
@@ -30,7 +30,8 @@ allocations, the faucet and burn-mint. The scripts run in-process, so no ledger
 or sandbox is needed.
 
 `registry/` is a separate npm package with its own dependencies: the root
-`npm install` vendors the Daml deps and does not populate `registry/node_modules`.
+`npm install` does not populate `registry/node_modules`, and vendoring the Daml
+deps is a separate `npm run setup`.
 Its suite runs against an in-process server with a stubbed ledger, so it needs no
 sandbox either.
 
@@ -67,7 +68,7 @@ and the service look the way they do.
   contexts a client needs to submit a transfer or an allocation. It submits
   nothing to the ledger itself.
 - `scripts/fetch-dep.sh` - vendor Splice into `deps/`, derive versions,
-  stable-symlink DARs. Run by `npm install`.
+  stable-symlink DARs. Run by `npm run setup`.
 - `scripts/sandbox.sh` - build the DAR and run a local Canton sandbox with the
   JSON Ledger API (`npm run sandbox`).
 - `scripts/seed.mjs` - seed a running sandbox with an admin, demo users, and one
@@ -147,12 +148,101 @@ in both directions, so a flag, target or path that changes on one side reds
 rather than ships. The release body carries the same blocks, generated straight
 from that file.
 
+## Consuming the registry service
+
+The registry service is published from this repository as an npm package,
+consumed from git at a tag rather than from the public registry:
+
+```json
+{
+  "dependencies": {
+    "@bootnodedev/canton-token-forge": "github:BootNodeDev/canton-token-forge#v0.2.0"
+  }
+}
+```
+
+Two preconditions. This repository is private, so the install needs
+credentials that can read it: a token-based HTTPS credential helper or an SSH
+key for `github.com`, whichever your environment already uses for private git
+dependencies. And the participant the service points at must host the
+`canton-token-forge` package the configured template ids name: they are checked
+at boot and resolve by package name, not by package id, so which release built
+the DAR does not matter, and an id the participant cannot resolve stops the
+service starting.
+
+`v0.2.0` is the first tag to carry the npm package, and the tag this section
+is written against; until it is cut, pin the commit sha instead. Do not pin
+`v0.1.0`: it predates the package, so its manifest is unscoped, declares no
+`bin` and no `files`, and runs `scripts/fetch-dep.sh` as a `postinstall`,
+which installs no service and clones Splice into your `node_modules`. From
+`v0.2.0` on the tags are one namespace, every `v[0-9]*` tag being both a DAR
+release and an npm package pin. See "Consuming a release" above for the DAR
+itself.
+
+`npm install` builds `registry/src` through the package's `prepare` script and
+links one bin, `canton-token-forge-registry`, unmodified. `pnpm install`
+refuses by default: pnpm will not run a git-hosted package's build scripts
+unless the consumer allowlists it, and `registry/dist` is gitignored, so
+`prepare` is the only thing that produces the bin. Add the resolved git
+specifier to `pnpm-workspace.yaml`, using whichever key your pnpm major reads:
+
+```yaml
+# pnpm 11 and later
+allowBuilds:
+  "@bootnodedev/canton-token-forge@git+https://github.com/BootNodeDev/canton-token-forge.git#<resolved-sha>": true
+
+# pnpm 10
+onlyBuiltDependencies:
+  - "@bootnodedev/canton-token-forge@git+https://github.com/BootNodeDev/canton-token-forge.git#<resolved-sha>"
+```
+
+The key is the full resolved git specifier, not the bare package name, a
+version range, or a wildcard: pnpm resolves the tag to its commit sha and
+matches on that exact string. Its own refusal error prints that specifier
+unquoted, and pasted that way it does not parse: `@` is a reserved indicator
+in YAML, so a plain scalar cannot begin with one, and the parser answers `bad
+indentation of a mapping entry`. Quote it as the block above does. The `#` is
+harmless either way, since YAML opens a comment only at a `#` that follows
+whitespace, and this one sits inside the scalar. Since the sha is resolved
+from the tag, this entry changes whenever the pin does. With it present,
+`pnpm exec canton-token-forge-registry` runs the same as `npm`'s link.
+
+The service reads its whole configuration from the environment, plus a `.env`
+loaded from the working directory it is started in. Required, eight:
+`LEDGER_API_URL`, `LEDGER_API_TOKEN`, `ADMIN_PARTY`, and the five template ids
+(`INSTRUMENT_CONFIG_TEMPLATE_ID`, `PREAPPROVAL_TEMPLATE_ID`,
+`LOCKED_TOKEN_TEMPLATE_ID`, `TRANSFER_INSTRUCTION_TEMPLATE_ID`,
+`ALLOCATION_TEMPLATE_ID`). Optional, four: `PORT`, `LEDGER_USER_ID`,
+`SHUTDOWN_TIMEOUT_MS`, `DIRECT_TRANSFER_MARGIN_MS`. The package ships
+`registry/.env.example` with the full list and what each variable is for.
+
+Quote all five template ids in a `.env` file. Every one of them begins with
+`#`, which dotenv reads as the start of a comment, so an unquoted
+`INSTRUMENT_CONFIG_TEMPLATE_ID=#canton-token-forge:...` parses to the empty
+string and the boot rejects it as `missing required env var
+INSTRUMENT_CONFIG_TEMPLATE_ID`, naming a variable that is in fact set. Values
+passed through the environment rather than a file need no quoting beyond
+whatever the shell wants.
+
+`npm run seed`, run from a clone of this repository against a local sandbox,
+prints the whole block filled in and quoted with the real admin party and the
+five template ids. `scripts/seed.mjs` is not part of the package, so that is a
+step you take in a checkout, not in the consumer. `ADMIN_PARTY` and all five
+template ids are checked against the participant at boot, so a value it cannot
+resolve stops the service starting rather than failing later.
+
+What the package contains: `registry/dist`, `registry/openapi` and
+`registry/.env.example`, plus `package.json`, `README.md` and `LICENSE` (24
+entries). The manifest that travels with it is this repository's own, so its
+`dpm` and `daml/` scripts cannot run from an installed copy; `prepare` is the
+only entry npm acts on.
+
 ## Requirements
 
 - `dpm` (Digital Asset Package Manager) and a JDK 17+ on `PATH`
   (`curl https://get.digitalasset.com/install/install.sh | sh`, then
   `dpm install 3.4.11`).
-- Node 18+ for the registry service, its test suites, and the seed script.
+- Node 20+ for the registry service, its test suites, and the seed script.
 - `git` + network access (setup clones `canton-network/splice`).
 
 ## Bumping Splice

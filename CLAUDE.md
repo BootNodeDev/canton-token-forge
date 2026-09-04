@@ -7,9 +7,11 @@ Claude Code reads this file natively. Other agents (Cursor, Windsurf, etc.) read
 [`AGENTS.md`](AGENTS.md), which points here.
 
 This is a **Daml** project built with **`dpm`**, not a JavaScript project - the
-`npm` scripts just wrap `dpm` and vendor dependencies. Generic JS/`npm`
-assumptions do not apply here, and this file overrides any parent-directory or
-global config that describes generic JS/`npm` workflows.
+`npm` scripts mostly wrap `dpm` and vendor dependencies, and the one genuine
+JavaScript build among them (`prepare`, which compiles `registry/`) never
+touches the Daml side. Generic JS/`npm` assumptions do not apply here, and this
+file overrides any parent-directory or global config that describes generic
+JS/`npm` workflows.
 
 ## What this repo is
 
@@ -33,7 +35,7 @@ Two packages:
 | Language | Daml | LF target **2.1** (`build-options: --target=2.1`) |
 | SDK | 3.4.11 | pinned in all three `daml.yaml` files; CI asserts them |
 | Build tool | `dpm` (Digital Asset Package Manager) | NOT the legacy `daml` assistant (removed as of SDK 3.5) |
-| Task runner | `npm` scripts | thin wrappers over `dpm`; they set `LANG=C.UTF-8` |
+| Task runner | `npm` scripts | the Daml ones wrap `dpm` with `LANG=C.UTF-8`; `prepare` builds `registry/` |
 | Dependencies | Splice interface DARs | vendored into `deps/` by `scripts/fetch-dep.sh` (gitignored) |
 | Runtime | JDK 17+ | required on `PATH` for `dpm` |
 | Choice naming | `TemplateName_ChoiceName` | matches the CN Token Standard convention |
@@ -88,12 +90,18 @@ Use the `package.json` npm scripts - they set `LANG=C.UTF-8` and handle the
 per-package layout. (damlc regenerates data-dependency interface source and
 throws "lexical error (UTF-8 decoding error)" under a POSIX/`C` locale.)
 
-### Setup (`npm install`)
+### Setup (`npm run setup`)
 
-`postinstall` runs `npm run setup` (= `scripts/fetch-dep.sh`): vendors Splice into
-`deps/` and creates the stable-name symlinks for the token interface DARs.
-Preconditions: `dpm` + JDK 17+ on `PATH`, `git` + network. First run takes a few
-minutes. For deps only, run `bash scripts/fetch-dep.sh`.
+`npm run setup` (= `scripts/fetch-dep.sh`) vendors Splice into `deps/` and
+creates the stable-name symlinks for the token interface DARs. It needs `git`
+and network, and invokes neither `dpm` nor a JVM: the DARs are pre-built
+upstream. Run `bash scripts/fetch-dep.sh` directly and it does the same work
+without Node. First run writes over 100 MB into `deps/` and took 6 seconds on a
+cold CI runner; a slow link will take longer.
+
+A root `npm install` vendors nothing. It installs the registry service's runtime
+dependencies and compiles `registry/src` to `registry/dist` through `prepare`, so
+installing this repository needs no `dpm`, no JDK and no clone of Splice.
 
 | Command | Does |
 | --- | --- |
@@ -102,7 +110,9 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 | `npm test` | Build the `canton-token-forge` DAR, then run the `canton-token-forge-test` suite. |
 | `npm run test:coverage` | Same, with a coverage report focused on your templates. |
 | `npm run smoke` | Build the DAR, then compile a package that data-depends on nothing but it, proving the artifact is consumable on its own. |
-| `npm run clean` | Remove both `.daml` build dirs and the consumer smoke test's output. |
+| `npm run check:deps` | Fail if the root and `registry/` manifests disagree on any dependency. |
+| `npm run smoke:registry` | Pack the npm package, install it into a scratch consumer, and run the bin; proves the published service is consumable on its own. |
+| `npm run clean` | Remove both `.daml` build dirs, the consumer smoke test's output, and `registry/dist`. |
 | `npm run setup` | Re-vendor deps + re-create the stable symlinks. |
 | `npm run sandbox` | Build the DAR and run a local Canton sandbox with the JSON Ledger API. |
 | `npm run seed` | Seed a running sandbox with an admin, demo users, and one `InstrumentConfig`. |
@@ -111,7 +121,9 @@ minutes. For deps only, run `bash scripts/fetch-dep.sh`.
 
 `registry/` is a separate npm package with its own dependency tree; the root
 `npm install` does not populate `registry/node_modules`. Run its commands from
-that directory.
+that directory. The root manifest is also what builds and ships this service
+as an installable package, and `npm run check:deps` is what keeps the two
+dependency lists in step.
 
 | Command | Does |
 | --- | --- |
@@ -266,30 +278,60 @@ The `/sdlc:issue` skill applies these labels automatically when creating issues 
 
 Run before declaring work done:
 
-- `npm install` (or `npm run setup`) once, so `deps/` are vendored
+- `npm run setup` once, so `deps/` are vendored
 - `npm run build` - both packages compile
 - `npm test` - the integration suite passes
 - `npm run test:coverage` - when you touched or added templates
 - `npm run smoke` - when you changed what the production DAR exposes: a
   renamed module or template, its dependencies, its interface instances, or its
   `build-options`
+- `npm run check:deps` - when you changed a dependency in the root or the
+  `registry/` manifest; `npm run smoke:registry` never compares the two
+- `npm run smoke:registry` - when you changed the root manifest, the
+  registry's dependencies, or either ignore file
 
-Every pull request gets three comparisons whatever it touches, because the
-`daml` check runs them ahead of its toolchain install and outside its own
-scope gate: the strings that spell a template id, against `daml/`; the
-consumer snippet in `README.md`, against `consumer-smoke/consumer/daml.yaml`;
-and every tracked `daml.yaml`, against both the SDK version the workflow
-installs and LF 2.1. One that touches
+Every pull request gets three comparisons in the `daml` check whatever it
+touches, because that check runs them ahead of its toolchain install and
+outside its own scope gate: the strings that spell a template id, against
+`daml/`; the consumer snippet in `README.md`, against
+`consumer-smoke/consumer/daml.yaml`; and every tracked `daml.yaml`, against
+both the SDK version the workflow installs and LF 2.1. One that touches
 `daml/`, `consumer-smoke/`, `scripts/consumer-smoke.sh` or the root build
 inputs runs four of these five automatically in that same check, after those
-three steps: only `npm run test:coverage` does not. One that touches `registry/`
-runs that package's own lint, both typechecks, and unit suite as the
-`registry` check, not the root commands above. `npm run test:coverage` and
-the registry's `npm run test:e2e` are both off the pull-request path: the
-first re-runs Splice's own suites, the second needs a live participant. The
+three steps: only `npm run test:coverage` does not. One that touches
+`registry/` runs that package's own lint, both typechecks, and unit suite as
+the `registry` check, none of the Daml root commands above, and the `package`
+check below alongside it. `npm run test:coverage` and the registry's `npm run
+test:e2e` are both off the pull-request path: the first re-runs Splice's own
+suites, the second needs a live participant. The
 `release` workflow adds checks of its own that no pull request runs. The
 end-to-end suite is typechecked on that path even so, which is the point of
 typechecking it separately from the run.
+
+A third check, `package`, gates on `package.json`, `package-lock.json`,
+`registry/`, `scripts/check-registry-deps.mjs`,
+`scripts/registry-install-smoke.sh`, `.gitignore`, `.npmrc` and
+`.github/workflows/ci.yml` itself, so a pull request touching `registry/` runs
+both the `registry` check and this one. It has four verification steps, not
+three, and only three of them sit behind that gate: `npm run check:deps`;
+`npm ci`, which runs `prepare` and so compiles `registry/src` against the root
+dependency set rather than `registry/`'s own, catching a type package that
+arrives there transitively and is declared nowhere; and `npm run
+smoke:registry`. The fourth is ungated and runs on every trigger of the
+workflow regardless of what changed, ahead of the other three exactly as the
+`daml` check's own comparisons run ahead of its gate: a `git check-ignore`
+table confirming that build output under `registry/` stays out of git,
+`registry/dist` included, which must not be committed even though it is the
+package's own payload, and that the rule ignoring it lives in the root
+`.gitignore` rather than a nested one. Each half catches a mutation the other
+cannot see. Narrowing the root rule to `registry/dist` passes the smoke test,
+the manifest guard and the placement read alike, while build output under
+`registry/src` and `registry/test` silently stops being ignored, so the table
+reads what the rule covers. Moving the same pattern into
+`registry/.gitignore` leaves that coverage intact but subtracts
+`registry/dist` from the npm pack walk, emptying the package to 8 entries from
+24; only the smoke test sees that, and only when the gate lets it run, so the
+table reads where the rule lives as well.
 
 A pushed tag whose `v` is followed by a digit (`v[0-9]*`, so `vnext` and
 `vendor` trigger nothing) runs the `release` workflow instead: it refuses a

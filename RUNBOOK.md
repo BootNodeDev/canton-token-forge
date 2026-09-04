@@ -17,8 +17,8 @@ been re-probed since.
 ## Prerequisites
 
 - `dpm` and a JDK 17+ on `PATH` (see `CLAUDE.md`)
-- `deps/` vendored: `npm install`, or `bash scripts/fetch-dep.sh` for deps only
-- Node 18+ for the seed script and the registry service
+- `deps/` vendored: `npm run setup`, or `bash scripts/fetch-dep.sh` directly
+- Node 20+ for the seed script and the registry service
 
 ## 1. Start the sandbox
 
@@ -81,7 +81,8 @@ npm start
 ```
 
 `registry/` is a separate package with its own dependencies: the root
-`npm install` vendors the Daml deps and does not populate `registry/node_modules`.
+`npm install` does not populate `registry/node_modules`, and vendoring the Daml
+deps is a separate `npm run setup`.
 
 `GET /healthz` and `GET /readyz` answer, `GET /registry/metadata/v1/info` returns
 the admin party as `adminId` with the six supported APIs, and
@@ -310,6 +311,23 @@ reason the seed script looks the way it does.
 
 ## Cutting a release
 
+Every `v[0-9]*` tag is a DAR release, including the tag a consumer's
+`package.json` pins the npm package at (see the README's "Consuming the
+registry service"). `daml/canton-token-forge/daml.yaml` stays at `0.0.1`
+whatever tag is cut, so every release attaches an asset under the same name,
+`canton-token-forge-0.0.1.dar`. Whether two releases' assets are the same
+bytes does not follow from that version string: it follows from `daml/`,
+`versions.env` and the SDK being unchanged between them. Nothing under those
+paths has moved since `v0.1.0`, so a tag cut from this commit would carry the
+sha256 the `v0.1.0` body records; read it off the workflow's own output rather
+than assuming it, as steps 1 and 4 below do.
+
+The root `package.json`'s `version` is the npm package's, and nothing checks
+it against the tag: `release.yml` reads only `daml/canton-token-forge/daml.yaml`.
+Bring it in step with the tag you are about to cut, in a commit merged to
+`main` before you tag, or consumers install a package whose manifest names a
+version the pin does not.
+
 `.github/workflows/release.yml` builds and publishes. It runs the full suite,
 checks the DAR is byte-reproducible, and compiles `consumer-smoke/` against the
 built artifact before anything is published. The release body, including the
@@ -326,7 +344,7 @@ CI just proved compile.
    with it the comparison against the checked-out commit that only a real tag
    reaches, so the body it emits names the dispatched ref. To rehearse all
    three, push a
-   hyphenated tag such as `v0.1.0-rc1` first:
+   hyphenated tag such as `v0.2.0-rc1` first:
    the workflow marks any hyphenated tag as a pre-release, so it does not
    become the release that `/releases/latest` serves. Tag a commit that is
    already on `main`, for the rehearsal as much as for the real thing: the
@@ -346,7 +364,7 @@ CI just proved compile.
    one step meant to exercise the downloaded one.
 
    ```bash
-   gh release download v0.1.0-rc1 --pattern '*.dar' --dir /tmp/rc
+   gh release download v0.2.0-rc1 --pattern '*.dar' --dir /tmp/rc
    shasum -a 256 /tmp/rc/canton-token-forge-0.0.1.dar   # must match the body
    rm -rf consumer-smoke/consumer/vendor consumer-smoke/consumer/.daml
    mkdir -p consumer-smoke/consumer/vendor
@@ -356,15 +374,18 @@ CI just proved compile.
    ```
 
    Then `npm run clean`, and delete that release and its tag.
-2. Tag and push. This is the decision that matters: a downstream repository pins
+2. Set the root `package.json`'s `version` to the tag without its `v`, and land
+   that on `main`. Nothing enforces this, and the tag is what a consumer's
+   `package.json` resolves to.
+3. Tag and push. This is the decision that matters: a downstream repository pins
    it permanently.
 
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 
-3. Confirm the release carries `canton-token-forge-0.0.1.dar` and that its body
+4. Confirm the release carries `canton-token-forge-0.0.1.dar` and that its body
    shows the sha256 and package-id. The download-and-compile from step 1 is
    worth repeating here, against the real tag.
 
@@ -393,7 +414,7 @@ Two environment variables tune this path:
   run. Preview a body locally with:
 
   ```bash
-  ALLOW_UNTAGGED=1 bash scripts/release-notes.sh v0.1.0
+  ALLOW_UNTAGGED=1 bash scripts/release-notes.sh v0.2.0
   ```
 
   This one refuses on a dirty working tree, untracked files included, because

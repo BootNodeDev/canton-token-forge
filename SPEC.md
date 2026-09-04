@@ -63,8 +63,15 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-976 lines of production Daml, 2508 lines of Daml tests, 1724 lines of TypeScript
-service, 4343 lines of TypeScript tests. MIT licensed. Pre-release: the package
+976 lines of production Daml, 2508 lines of Daml tests, 1739 lines of
+TypeScript service, 4349 lines of TypeScript tests, each figure a
+`find <dir> -name '*.daml'` (or `'*.ts'`) `| xargs wc -l` count over
+`daml/canton-token-forge/daml`, `daml/canton-token-forge-test/daml`,
+`registry/src` and `registry/test` respectively. The two Daml paths name the
+source directory rather than the package root on purpose: a package root that
+has been built also holds a `.daml/` build directory, whose name the `*.daml`
+glob matches and whose regenerated data-dependency sources dwarf the figure
+above. MIT licensed. Pre-release: the Daml package
 version is `0.0.1`, and the build is published as release `v0.1.0` for
 downstream repositories to pin (the tag is deliberately decoupled from the
 package version), with no compatibility guarantee offered across releases.
@@ -310,7 +317,7 @@ holding for any surplus, so no value is created or destroyed.
 
 ## 6. Registry HTTP service
 
-A TypeScript service (Express, `express-openapi-validator`, pino; Node 18+) that
+A TypeScript service (Express, `express-openapi-validator`, pino; Node 20+) that
 validates incoming requests against the four CN Token Standard OpenAPI specs it
 ships. Responses are covered by the unit suite rather than by runtime schema
 validation. The service is **read-only**: it queries the JSON Ledger API for
@@ -457,7 +464,7 @@ instrument, then prints a ready-to-paste service configuration.
 ## 8. Running it
 
 ```bash
-npm install                       # vendors the Splice interface DARs into deps/
+npm run setup                     # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 80 Daml scenarios
 cd registry && npm install && npm test   # 205 unit tests, no ledger needed
 
@@ -470,7 +477,7 @@ The sandbox runs in the foreground, so the seed and the end-to-end suite go in a
 second shell. The end-to-end suite creates everything it needs, so seeding is
 only required if you also want to drive the service by hand.
 
-Requirements: `dpm` and a JDK 17+ on `PATH` for the Daml build, Node 18+ for the
+Requirements: `dpm` and a JDK 17+ on `PATH` for the Daml build, Node 20+ for the
 service and its suites, and `git` plus network access for the initial vendoring.
 
 ---
@@ -578,21 +585,36 @@ Stated plainly, because they are what an evaluation turns on.
   ship a new interface version that compiles green while the smoke package
   still names the old one, and compiling that package is what catches it.
   One that touches `registry/` runs that package's lint, its typechecks and
-  the registry unit suite as the `registry` check. The end-to-end suite
-  needs a live participant, so only its types are checked there and it is
-  never run. Off that path too is `npm run test:coverage`, which re-runs
-  Splice's own suites and which nothing runs automatically. A pull request
-  in the `daml` check's scope compiles the smoke package, generates the
-  release body, which is the check that compares the published snippet
-  against the artifact, and asserts that every tracked manifest still pins
-  the SDK and targets LF 2.1. The release workflow still carries the rebuild
-  that proves the DAR is byte-reproducible, the refusal of a tag `main` does
-  not reach, and `release-notes.sh`'s tag guard, which the pull-request path
-  waives with `ALLOW_UNTAGGED` so that a body can be generated for a ref that
-  is not a tag.
-- **Pre-release.** Version `0.0.1`, with the build published as release `v0.1.0`
-  for downstream repositories to pin (the tag is deliberately decoupled from the
-  package version). No migration story and no compatibility guarantees.
+  the registry unit suite as the `registry` check. The same change also runs
+  a third job, `package`. Three of its four steps are gated on `registry/`
+  among other inputs: they compare the root and `registry/` manifests, compile
+  `registry/src` a second time against the root dependency set rather than
+  `registry/`'s own by running `npm ci` (which triggers `prepare`), then pack
+  the npm package and install it into a scratch consumer to run the bin. The
+  `registry` check's own install and build see neither of those last two. The
+  fourth step is ungated and runs on every trigger of the workflow, a
+  docs-only pull request included: it reads the `.gitignore` rules that keep
+  build output under `registry/` out of git, and reads which file carries
+  them. The end-to-end suite needs a live participant, so only its types are
+  checked there and it is never run. Off that path too is `npm run
+  test:coverage`, which re-runs Splice's own suites and which nothing runs
+  automatically. A pull request in the `daml` check's scope compiles the smoke
+  package, generates the release body, which is the check that compares the
+  published snippet against the artifact, and asserts that every tracked
+  manifest still pins the SDK and targets LF 2.1. The release workflow still
+  carries the rebuild that proves the DAR is byte-reproducible, the refusal
+  of a tag `main` does not reach, and `release-notes.sh`'s tag guard, which
+  the pull-request path waives with `ALLOW_UNTAGGED` so that a body can be
+  generated for a ref that is not a tag.
+- **Pre-release.** Version `0.2.0` of the npm package, `0.0.1` of the Daml
+  package. The Daml version is deliberately decoupled from the release tags;
+  the npm version is brought in step with the tag by hand before it is cut,
+  since nothing checks the two against each other. Those tags are
+  one namespace rather than two: every `v[0-9]*` tag publishes the DAR as a
+  release asset, and from `v0.2.0` on the same tag is what a consumer's
+  `package.json` pins the npm package at. `v0.1.0` is the only tag cut so far
+  and predates the npm package, so it serves the DAR alone. No migration story
+  and no compatibility guarantees.
 
 ---
 
@@ -624,5 +646,7 @@ scripts/
   release-notes.sh                   Emit the release body from the smoke package
   sandbox.sh                         Local Canton sandbox with the JSON Ledger API
   seed.mjs                           Seed an admin, demo users and one instrument
+  check-registry-deps.mjs            Fail when the root and registry manifests disagree
+  registry-install-smoke.sh          Pack, install and run the npm package
 versions.env                         The single version knob: SPLICE_TAG
 ```
