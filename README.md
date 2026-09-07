@@ -223,9 +223,13 @@ pattern such as `https://*.app.example.com` is compared literally, matches no
 origin a browser sends, and is refused at boot rather than accepted as a list
 that allows nothing. A browser reads a cross-origin response only if the
 service names the requesting origin back, so an origin missing from this list
-fails in the page with an opaque network error while the service delivers and
-answers the request as it would any other, leaving nothing behind that tells
-the two apart; the list the service accepted is on its startup line instead.
+fails in the page with an opaque network error. What reaches the service
+differs by route: the three `GET` routes are simple requests, delivered and
+answered in full with only the browser withholding the body from the page,
+while every `POST` route carries a JSON body and is therefore preflighted, and
+a refused preflight ends the call before the `POST` is ever sent. Neither
+leaves anything behind that names the origin, because the service logs no
+requests at all; the list it accepted is on its startup line instead.
 Each entry is written as a browser computes an origin, `http(s)://host` with a
 port only when it is not the scheme's default and with no path, query or
 trailing slash; the service refuses to start on anything else, since the
