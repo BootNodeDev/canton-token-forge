@@ -319,10 +319,10 @@ holding for any surplus, so no value is created or destroyed.
 
 A TypeScript service (Express, `express-openapi-validator`, `cors`, pino;
 Node 20+) that validates incoming requests against the four CN Token Standard
-OpenAPI specs it ships. Responses are covered by the unit suite rather than by runtime schema
-validation. The service is **read-only**: it queries the JSON Ledger API for
-active contracts and submits nothing. The client holds the keys and sends the
-exercise itself.
+OpenAPI specs it ships. Responses are covered by the unit suite rather than
+by runtime schema validation. The service is **read-only**: it queries the
+JSON Ledger API for active contracts and submits nothing. The client holds
+the keys and sends the exercise itself.
 
 | Method | Path |
 |---|---|
