@@ -102,16 +102,24 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     if (entries.length === 0) {
       throw new Error(`invalid CORS_ORIGINS: names no origin, got "${raw}"`)
     }
+    const notAnOrigin = (entry: string) =>
+      new Error(
+        `invalid CORS_ORIGINS entry "${entry}": expected an origin, scheme://host[:port], or *`,
+      )
     for (const entry of entries) {
       if (entry === '*') continue
       let normalized: string
       try {
         normalized = new URL(entry).origin
       } catch {
-        throw new Error(
-          `invalid CORS_ORIGINS entry "${entry}": expected an origin, scheme://host[:port], or *`,
-        )
+        throw notAnOrigin(entry)
       }
+      // URL accepts anything carrying a colon, so an entry that omits the
+      // scheme parses as a non-special URL whose origin is the string "null".
+      // Naming that back as the value to write would be a remedy the operator
+      // cannot take: "null" carries no colon and is refused as not a URL, so
+      // following the message costs a second failed boot.
+      if (normalized === 'null') throw notAnOrigin(entry)
       if (normalized !== entry) {
         throw new Error(
           `invalid CORS_ORIGINS entry "${entry}": a browser would send "${normalized}", so write that instead`,
