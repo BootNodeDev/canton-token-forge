@@ -228,8 +228,10 @@ differs by route: the three `GET` routes are simple requests, delivered and
 answered in full with only the browser withholding the body from the page,
 while every `POST` route carries a JSON body and is therefore preflighted, and
 a refused preflight ends the call before the `POST` is ever sent. Neither
-leaves anything behind that names the origin, because the service logs no
-requests at all; the list it accepted is on its startup line instead.
+leaves anything behind that names the origin: the only line a request ever
+writes is the one the error handler logs on a 5xx, and it carries the method
+and the path but no origin. The list it accepted is on its
+startup line instead.
 Each entry is written as a browser computes an origin, `http(s)://host` with a
 port only when it is not the scheme's default and with no path, query or
 trailing slash; the service refuses to start on anything else, since the

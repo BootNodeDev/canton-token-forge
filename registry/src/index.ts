@@ -32,9 +32,10 @@ const server = app.listen(config.port, () => {
   // service side. A refused simple request is delivered and answered in full,
   // with only the browser withholding the body afterwards, while a refused
   // preflight ends its POST before it is sent, so what arrives differs but
-  // neither leaves a trace: nothing here is logged per request. Recording what
-  // was accepted at boot is what lets an operator tell a rejected origin from
-  // an unreachable service.
+  // neither leaves a trace that names the origin: the only line a request ever
+  // writes is the error handler's, on a 5xx, and it carries the method and the
+  // path and no origin at all. Recording what was accepted at boot is what lets
+  // an operator tell a rejected origin from an unreachable service.
   logger.info(
     { port: config.port, corsOrigins: config.corsOrigins },
     'canton-token-forge registry listening',
