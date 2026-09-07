@@ -240,6 +240,28 @@ describe('loadConfig CORS origins parsing', () => {
     )
   })
 
+  // URL accepts anything carrying a colon, so an entry that omits the scheme
+  // parses as a non-special URL whose origin is the literal string "null".
+  // These have to land on the message above rather than the one that names a
+  // replacement, because "null" is not a value the operator can write: it is
+  // itself refused as not a URL, so naming it costs a second failed boot.
+  it.each([
+    'localhost:3012',
+    'app.example:8080',
+    'file:///x',
+    'chrome-extension://abc',
+  ])('throws on %j, which has no origin to name back', (value) => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
+      /expected an origin, scheme:\/\/host\[:port\], or \*/,
+    )
+  })
+
+  it('never tells the operator to write "null"', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'localhost:3012' })).not.toThrow(
+      /a browser would send "null"/,
+    )
+  })
+
   // A default port is part of what URL normalizes away, so naming it is the
   // same class of unmatchable entry as a trailing slash.
   it('throws on an entry that spells out the scheme default port', () => {
