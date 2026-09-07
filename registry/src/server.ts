@@ -79,7 +79,8 @@ export function createServer(deps: ServerDeps): Express {
   // of the body parser and the validators below: otherwise their own 400s
   // reach the page as an opaque network error instead of the message they
   // carry. It also answers the preflight itself, which is why no route below
-  // ever sees an OPTIONS request.
+  // ever sees an OPTIONS request: every one of them is terminated here, so a
+  // path that routes nowhere answers 204 to an OPTIONS where it 404s to a GET.
   // The four vendored specs declare only GET and POST operations and express
   // serves HEAD for every GET, so the methods and the one header a handler can
   // reach are both named rather than left at the cors defaults, which advertise
