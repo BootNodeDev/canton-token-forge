@@ -204,4 +204,53 @@ describe('loadConfig CORS origins parsing', () => {
   it('keeps "*" verbatim: the server, not the config, interprets it', () => {
     expect(loadConfig({ ...baseEnv, CORS_ORIGINS: '*' }).corsOrigins).toEqual(['*'])
   })
+
+  // A value that is non-empty but names nothing does not reach the default,
+  // and the empty list it used to produce matched every origin against
+  // nothing: the service started clean and no browser could read a response.
+  it.each([
+    ',',
+    ' ',
+    ' , , ',
+    ',,,',
+  ])('throws when CORS_ORIGINS is %j, which names no origin', (value) => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
+      /invalid CORS_ORIGINS: names no origin/,
+    )
+  })
+
+  // The two shapes an operator actually writes by hand. A browser sends
+  // neither, and cors compares origins by exact string, so both would match
+  // nothing at all.
+  it('throws on an entry with a trailing slash, naming what a browser would send', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://localhost:3012/' })).toThrow(
+      /a browser would send "http:\/\/localhost:3012"/,
+    )
+  })
+
+  it('throws on an entry whose host is not lower case', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://LOCALHOST:3012' })).toThrow(
+      /a browser would send "http:\/\/localhost:3012"/,
+    )
+  })
+
+  it('throws on an entry that is not a URL at all', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: '*.example.com' })).toThrow(
+      /expected an origin, scheme:\/\/host\[:port\], or \*/,
+    )
+  })
+
+  // A default port is part of what URL normalizes away, so naming it is the
+  // same class of unmatchable entry as a trailing slash.
+  it('throws on an entry that spells out the scheme default port', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://app.example:80' })).toThrow(
+      /a browser would send "http:\/\/app.example"/,
+    )
+  })
+
+  it('rejects a bad entry even when a good one precedes it', () => {
+    expect(() =>
+      loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://localhost:3012, http://app.example/' }),
+    ).toThrow(/invalid CORS_ORIGINS entry "http:\/\/app.example\/"/)
+  })
 })

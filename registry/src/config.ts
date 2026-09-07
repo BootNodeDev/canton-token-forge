@@ -88,12 +88,37 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     }
     return n
   }
+  // A browser sends the origin it computed, so an entry the browser can never
+  // send matches nothing and blocks the dApp with the same opaque failure this
+  // list exists to prevent, from a service that started clean. The two ways to
+  // write one are a trailing slash (what the address bar gives you) and a host
+  // that is not already lower case, and URL normalizes both, so comparing an
+  // entry against its own origin rejects exactly the values that cannot match.
   const parseOrigins = (raw: string | undefined): string[] => {
-    const value = raw || DEFAULT_CORS_ORIGINS
-    return value
+    const entries = (raw || DEFAULT_CORS_ORIGINS)
       .split(',')
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0)
+    if (entries.length === 0) {
+      throw new Error(`invalid CORS_ORIGINS: names no origin, got "${raw}"`)
+    }
+    for (const entry of entries) {
+      if (entry === '*') continue
+      let normalized: string
+      try {
+        normalized = new URL(entry).origin
+      } catch {
+        throw new Error(
+          `invalid CORS_ORIGINS entry "${entry}": expected an origin, scheme://host[:port], or *`,
+        )
+      }
+      if (normalized !== entry) {
+        throw new Error(
+          `invalid CORS_ORIGINS entry "${entry}": a browser would send "${normalized}", so write that instead`,
+        )
+      }
+    }
+    return entries
   }
   return {
     ledgerApiUrl: require_('LEDGER_API_URL'),
