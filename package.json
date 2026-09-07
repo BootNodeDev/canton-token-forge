@@ -1,6 +1,6 @@
 {
   "name": "@bootnodedev/canton-token-forge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A reusable, multi-instrument CIP-0056 (CN Token Standard) compliant token for demos and sandboxes, plus its read-only registry HTTP service",
   "license": "MIT",
   "type": "module",
