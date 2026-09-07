@@ -88,6 +88,11 @@ export function createServer(deps: ServerDeps): Express {
   // Every factory route is a POST and so preflights on every call; a browser
   // caches a preflight carrying no max-age for seconds, which would make each
   // call two round trips.
+  // Credentials are deliberately not allowed, and a "*" entry is safe only
+  // while that holds: it selects the reflected-origin mode, and reflecting an
+  // origin while allowing credentials makes any page a credentialed reader of
+  // this service. The reference service this configuration was modelled on
+  // does allow them, so a test pins the omission.
   app.use(
     cors({
       origin: deps.config.corsOrigins.includes('*') ? true : deps.config.corsOrigins,

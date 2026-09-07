@@ -142,6 +142,28 @@ describe('cors', () => {
     expect(get.status).toBe(404)
   })
 
+  // The one option whose value is its absence, on both origin modes. The
+  // reference service this configuration was modelled on allows credentials
+  // with the same reflected-origin line, and allowing them here would make any
+  // page a credentialed reader of this service under a "*" entry, so the
+  // omission is pinned rather than left to whoever edits those options next.
+  it.each([
+    [config.corsOrigins],
+    [['*']],
+  ])('allows no credentials with corsOrigins %j', async (corsOrigins) => {
+    const app = createServer({ ledger: ledgerFrom({}), config: { ...config, corsOrigins } })
+    const get = await request(app).get('/healthz').set('Origin', ALLOWED_ORIGIN)
+    expect(get.status).toBe(200)
+    expect(get.headers['access-control-allow-origin']).toBe(ALLOWED_ORIGIN)
+    expect(get.headers['access-control-allow-credentials']).toBeUndefined()
+    const preflight = await request(app)
+      .options('/registry/transfer-instruction/v1/transfer-factory')
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('Access-Control-Request-Method', 'POST')
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers['access-control-allow-credentials']).toBeUndefined()
+  })
+
   it('reflects whatever origin asks when corsOrigins is ["*"]', async () => {
     const app = createServer({ ledger: ledgerFrom({}), config: { ...config, corsOrigins: ['*'] } })
     const res = await request(app).get('/healthz').set('Origin', 'http://anything.example')
