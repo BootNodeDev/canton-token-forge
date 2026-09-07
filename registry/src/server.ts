@@ -1,4 +1,5 @@
 import path from 'node:path'
+import cors from 'cors'
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'
 import * as OpenApiValidator from 'express-openapi-validator'
 import type { Config } from './config.js'
@@ -73,6 +74,33 @@ export function createServer(deps: ServerDeps): Express {
   const app = express()
   const logger = deps.logger ?? createLogger()
   app.use(canonicalizeRequestTarget)
+  // A browser only reads a cross-origin response if that response names its
+  // origin back, and a rejection is a response too, so this has to run ahead
+  // of the body parser and the validators below: otherwise their own 400s
+  // reach the page as an opaque network error instead of the message they
+  // carry. It also answers the preflight itself, which is why no route below
+  // ever sees an OPTIONS request: every one of them is terminated here, so a
+  // path that routes nowhere answers 204 to an OPTIONS where it 404s to a GET.
+  // The four vendored specs declare only GET and POST operations and express
+  // serves HEAD for every GET, so the methods and the one header a handler can
+  // reach are both named rather than left at the cors defaults, which advertise
+  // methods no route answers and echo back whatever headers a caller asks for.
+  // Every factory route is a POST and so preflights on every call; a browser
+  // caches a preflight carrying no max-age for seconds, which would make each
+  // call two round trips.
+  // Credentials are deliberately not allowed, and a "*" entry is safe only
+  // while that holds: it selects the reflected-origin mode, and reflecting an
+  // origin while allowing credentials makes any page a credentialed reader of
+  // this service. The reference service this configuration was modelled on
+  // does allow them, so a test pins the omission.
+  app.use(
+    cors({
+      origin: deps.config.corsOrigins.includes('*') ? true : deps.config.corsOrigins,
+      methods: ['GET', 'HEAD', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type'],
+      maxAge: 600,
+    }),
+  )
   app.use(express.json())
 
   // One validator per vendored standard spec, requests only, each mounted on

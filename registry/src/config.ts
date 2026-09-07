@@ -14,6 +14,10 @@ export interface Config {
   port: number
   shutdownTimeoutMs: number
   directTransferMarginMs: number
+  // A browser will not hand a cross-origin response to the page unless the
+  // service names the requesting origin back in the response, so the origins
+  // a dApp may call from have to be configured rather than inferred.
+  corsOrigins: string[]
 }
 
 const DEFAULT_PORT = 8080
@@ -35,6 +39,10 @@ const DEFAULT_DIRECT_TRANSFER_MARGIN_MS = 30_000
 // every transfer, so a value that large is more likely a units mistake than an
 // intent; rejecting it at boot beats silently disabling the direct path.
 const MAX_DIRECT_TRANSFER_MARGIN_MS = 3_600_000
+
+// The dApp dev server the CORS report was filed from, so the reported case
+// works with no configuration. Any real deployment sets CORS_ORIGINS itself.
+const DEFAULT_CORS_ORIGINS = 'http://localhost:3012'
 
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const require_ = (k: string): string => {
@@ -80,6 +88,60 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     }
     return n
   }
+  // A browser sends the origin it computed, so an entry the browser can never
+  // send matches nothing and blocks the dApp with the same opaque failure this
+  // list exists to prevent, from a service that started clean. URL normalizes
+  // the near misses an operator writes by hand, a trailing slash, a host that
+  // is not already lower case, a spelled-out default port, a path, so
+  // comparing an entry against its own origin catches all of those. Two kinds
+  // survive that comparison unchanged and are refused ahead of it instead: a
+  // pattern, which parses as a host that happens to carry a "*", and a scheme
+  // a browser never sends an Origin for.
+  const parseOrigins = (raw: string | undefined): string[] => {
+    const entries = (raw || DEFAULT_CORS_ORIGINS)
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0)
+    if (entries.length === 0) {
+      throw new Error(`invalid CORS_ORIGINS: names no origin, got "${raw}"`)
+    }
+    const notAnOrigin = (entry: string) =>
+      new Error(
+        `invalid CORS_ORIGINS entry "${entry}": expected an origin, http(s)://host[:port], or *`,
+      )
+    for (const entry of entries) {
+      if (entry === '*') continue
+      // The list is matched by exact string, so a pattern matches nothing at
+      // all, and "*" meaning any origin is what invites one. URL parses
+      // "https://*.example.com" happily and reports itself as its own origin,
+      // so this is the only place it can be caught.
+      if (entry.includes('*')) {
+        throw new Error(
+          `invalid CORS_ORIGINS entry "${entry}": no pattern is matched, list each origin, or "*" alone for any`,
+        )
+      }
+      let url: URL
+      try {
+        url = new URL(entry)
+      } catch {
+        throw notAnOrigin(entry)
+      }
+      // Only these two schemes reach the service as an Origin, and confining
+      // the entry to them is also what keeps the message honest: URL accepts
+      // anything carrying a colon, so a scheme-less entry parses as a
+      // non-special URL whose origin is the literal string "null", and naming
+      // that back as the value to write would be a remedy the operator cannot
+      // take, since "null" is itself refused as not a URL.
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw notAnOrigin(entry)
+      const normalized = url.origin
+      if (normalized !== entry) {
+        throw new Error(
+          `invalid CORS_ORIGINS entry "${entry}": a browser would send "${normalized}", so write that instead`,
+        )
+      }
+    }
+    return entries
+  }
   return {
     ledgerApiUrl: require_('LEDGER_API_URL'),
     ledgerApiToken: require_('LEDGER_API_TOKEN'),
@@ -93,5 +155,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     port: parsePort(env.PORT),
     shutdownTimeoutMs: parseTimeoutMs(env.SHUTDOWN_TIMEOUT_MS),
     directTransferMarginMs: parseMarginMs(env.DIRECT_TRANSFER_MARGIN_MS),
+    corsOrigins: parseOrigins(env.CORS_ORIGINS),
   }
 }

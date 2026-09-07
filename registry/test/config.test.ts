@@ -171,3 +171,142 @@ describe('loadConfig direct transfer margin parsing', () => {
     )
   })
 })
+
+describe('loadConfig CORS origins parsing', () => {
+  it('defaults to the dApp dev server when CORS_ORIGINS is unset', () => {
+    expect(loadConfig({ ...baseEnv }).corsOrigins).toEqual(['http://localhost:3012'])
+  })
+
+  it('defaults to the dApp dev server when CORS_ORIGINS is an empty string', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: '' }).corsOrigins).toEqual([
+      'http://localhost:3012',
+    ])
+  })
+
+  it('parses a single origin', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://a' }).corsOrigins).toEqual(['http://a'])
+  })
+
+  it('splits and trims a comma-separated list', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://a, http://b' }).corsOrigins).toEqual([
+      'http://a',
+      'http://b',
+    ])
+  })
+
+  it('drops empty entries left by stray or trailing commas', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://a,,http://b,' }).corsOrigins).toEqual([
+      'http://a',
+      'http://b',
+    ])
+  })
+
+  it('keeps "*" verbatim: the server, not the config, interprets it', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: '*' }).corsOrigins).toEqual(['*'])
+  })
+
+  // A value that is non-empty but names nothing does not reach the default,
+  // and the empty list it used to produce matched every origin against
+  // nothing: the service started clean and no browser could read a response.
+  it.each([
+    ',',
+    ' ',
+    ' , , ',
+    ',,,',
+  ])('throws when CORS_ORIGINS is %j, which names no origin', (value) => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
+      /invalid CORS_ORIGINS: names no origin/,
+    )
+  })
+
+  // The two shapes an operator actually writes by hand. A browser sends
+  // neither, and cors compares origins by exact string, so both would match
+  // nothing at all.
+  it('throws on an entry with a trailing slash, naming what a browser would send', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://localhost:3012/' })).toThrow(
+      /a browser would send "http:\/\/localhost:3012"/,
+    )
+  })
+
+  it('throws on an entry whose host is not lower case', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://LOCALHOST:3012' })).toThrow(
+      /a browser would send "http:\/\/localhost:3012"/,
+    )
+  })
+
+  it('throws on an entry that is not a URL at all', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'not a url' })).toThrow(
+      /expected an origin, http\(s\):\/\/host\[:port\], or \*/,
+    )
+  })
+
+  // The entry the "*" spelling invites, and the one URL cannot catch: a
+  // pattern parses, and its own origin is itself, so it reaches cors and is
+  // compared to a real origin as a literal string, matching nothing. That is
+  // the empty-allowlist boot this validation exists to refuse.
+  it.each([
+    'https://*.app.example.com',
+    'http://*.example.com',
+    'https://*',
+  ])('throws on the pattern %j, which cors would match literally', (value) => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
+      /no pattern is matched, list each origin, or "\*" alone for any/,
+    )
+  })
+
+  it('still accepts "*" alone, which is not a pattern but the any-origin spelling', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: 'https://a.example, *' }).corsOrigins).toEqual([
+      'https://a.example',
+      '*',
+    ])
+  })
+
+  // A special scheme other than http(s) round-trips through URL.origin, so
+  // these pass the near-miss comparison and would be accepted on its word
+  // alone. No browser sends an Origin in any of them.
+  it.each([
+    'ws://a.example',
+    'wss://a.example',
+    'ftp://a.example',
+  ])('throws on %j, a scheme no browser sends an Origin for', (value) => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
+      /expected an origin, http\(s\):\/\/host\[:port\], or \*/,
+    )
+  })
+
+  // URL accepts anything carrying a colon, so an entry that omits the scheme
+  // parses as a non-special URL whose origin is the literal string "null".
+  // These have to land on the message above rather than the one that names a
+  // replacement, because "null" is not a value the operator can write: it is
+  // itself refused as not a URL, so naming it costs a second failed boot.
+  it.each([
+    'localhost:3012',
+    'app.example:8080',
+    'file:///x',
+    'chrome-extension://abc',
+  ])('throws on %j, which has no origin to name back', (value) => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
+      /expected an origin, http\(s\):\/\/host\[:port\], or \*/,
+    )
+  })
+
+  it('never tells the operator to write "null"', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'localhost:3012' })).not.toThrow(
+      /a browser would send "null"/,
+    )
+  })
+
+  // A default port is part of what URL normalizes away, so naming it is the
+  // same class of unmatchable entry as a trailing slash.
+  it('throws on an entry that spells out the scheme default port', () => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://app.example:80' })).toThrow(
+      /a browser would send "http:\/\/app.example"/,
+    )
+  })
+
+  it('rejects a bad entry even when a good one precedes it', () => {
+    expect(() =>
+      loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://localhost:3012, http://app.example/' }),
+    ).toThrow(/invalid CORS_ORIGINS entry "http:\/\/app.example\/"/)
+  })
+})

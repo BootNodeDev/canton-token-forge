@@ -28,7 +28,17 @@ if (!(await checkAdminParty(ledger, config, logger))) process.exit(1)
 
 const app = createServer({ ledger, config, logger })
 const server = app.listen(config.port, () => {
-  logger.info({ port: config.port }, 'canton-token-forge registry listening')
+  // The origin list is the one setting whose effect is invisible from the
+  // service side. A refused simple request is delivered and answered in full,
+  // with only the browser withholding the body afterwards, while a refused
+  // preflight ends its POST before it is sent, so what arrives differs but
+  // neither leaves a trace: nothing here is logged per request. Recording what
+  // was accepted at boot is what lets an operator tell a rejected origin from
+  // an unreachable service.
+  logger.info(
+    { port: config.port, corsOrigins: config.corsOrigins },
+    'canton-token-forge registry listening',
+  )
 })
 
 let shuttingDown = false

@@ -276,6 +276,19 @@ reason the seed script looks the way it does.
   They are concrete template ids, never interface ids: the choice-context
   handlers read payload fields that exist on the template create arguments and
   not on the standard interface views.
+- `CORS_ORIGINS` entries are compared against the `Origin` a browser sends, as
+  exact strings, so the service refuses to start on any entry no browser could
+  ever send: a near miss of a real origin, such as a trailing slash, a host
+  that is not lower case, a spelled-out default port or a path; a scheme other
+  than `http` or `https`; or a pattern such as `https://*.app.example.com`,
+  which is matched literally and so matches nothing. A near miss is refused
+  naming what a browser would have sent, so the message is the value to write.
+  Unset and empty both mean the default, `http://localhost:3012`, and an entry
+  of `*` anywhere in the list means any origin, so there is no value that
+  allows none. A refused origin leaves nothing here to find: a simple request
+  is served in full and only the browser withholds the body, a preflighted one
+  never arrives at all, and the service logs no requests either way. The list
+  it accepted is on the startup line instead.
 - `LEDGER_USER_ID` has no effect on the running service, which submits nothing.
   The seed prints it as a record of the user it submitted under, not as an input
   the service reads back. Setting it in `registry/.env` changes nothing at all:

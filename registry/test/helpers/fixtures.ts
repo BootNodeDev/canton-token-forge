@@ -27,6 +27,9 @@ export const config: Config = {
   port: 0,
   shutdownTimeoutMs: 8_000,
   directTransferMarginMs: 30_000,
+  // Deliberately not the production default: a binding that ignores this
+  // field and hardcodes DEFAULT_CORS_ORIGINS would otherwise pass by luck.
+  corsOrigins: ['http://allowed.example'],
 }
 
 export const instrumentId: InstrumentIdValue = { admin: 'admin::1', id: 'CC' }

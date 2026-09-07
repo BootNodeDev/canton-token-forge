@@ -53,7 +53,7 @@ All three suites were re-run against the tree this document ships with, exit 0:
 | Suite | Result | Needs |
 |---|---|---|
 | Daml Script | **80 scenarios**, 12 modules | nothing, runs in-process |
-| Registry unit | **205 tests**, 10 files | nothing, in-process server with a stub ledger |
+| Registry unit | **245 tests**, 11 files | nothing, in-process server with a stub ledger |
 | End-to-end | **18 tests**, 4 files | a live participant, verified against Canton 3.5.12 |
 
 The end-to-end suite drives both transfer paths against a real participant: it
@@ -63,8 +63,8 @@ resulting exercise itself over the JSON Ledger API, forwarding the service's
 
 ### Size and status
 
-976 lines of production Daml, 2508 lines of Daml tests, 1739 lines of
-TypeScript service, 4349 lines of TypeScript tests, each figure a
+976 lines of production Daml, 2508 lines of Daml tests, 1840 lines of
+TypeScript service, 4665 lines of TypeScript tests, each figure a
 `find <dir> -name '*.daml'` (or `'*.ts'`) `| xargs wc -l` count over
 `daml/canton-token-forge/daml`, `daml/canton-token-forge-test/daml`,
 `registry/src` and `registry/test` respectively. The two Daml paths name the
@@ -317,12 +317,12 @@ holding for any surplus, so no value is created or destroyed.
 
 ## 6. Registry HTTP service
 
-A TypeScript service (Express, `express-openapi-validator`, pino; Node 20+) that
-validates incoming requests against the four CN Token Standard OpenAPI specs it
-ships. Responses are covered by the unit suite rather than by runtime schema
-validation. The service is **read-only**: it queries the JSON Ledger API for
-active contracts and submits nothing. The client holds the keys and sends the
-exercise itself.
+A TypeScript service (Express, `express-openapi-validator`, `cors`, pino;
+Node 20+) that validates incoming requests against the four CN Token Standard
+OpenAPI specs it ships. Responses are covered by the unit suite rather than
+by runtime schema validation. The service is **read-only**: it queries the
+JSON Ledger API for active contracts and submits nothing. The client holds
+the keys and sends the exercise itself.
 
 | Method | Path |
 |---|---|
@@ -362,9 +362,10 @@ about rather than fatal, so a ledger outage does not turn into a crashloop.
 
 Configuration is entirely by environment: eight required variables (ledger URL
 and token, admin party, and five concrete template ids in package-name form) and
-four optional ones. The service refuses to start if any required variable is
+five optional ones. The service refuses to start if any required variable is
 missing, if a template id is not in package-name form or names nothing the
-participant hosts, or if the admin party fails the boot check above, rather than
+participant hosts, if an allowed browser origin is not written in the form a
+browser sends, or if the admin party fails the boot check above, rather than
 serving empty results from a filter that matches nothing.
 
 ### Choice contexts and disclosure
@@ -448,7 +449,7 @@ exist.
 | Level | What it covers |
 |---|---|
 | Daml Script, 80 scenarios | Every choice and both factory paths, including negative cases: wrong `expectedAdmin`, a batch transfer routed through another instrument of the same admin, non-positive amounts, duplicate and locked inputs, cross-instrument spending, an escrow that does not back the transfer it settles, both sides of every deadline instant, missing authority, the `decimals` bound, and the batch transfer's own refusals: outputs whose total exceeds the inputs and a lock output already past its expiry |
-| Registry unit, 205 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
+| Registry unit, 245 tests | Every route against an in-process server with a stub ledger: response shapes, error schemas, 404 and 409 behaviour, context and disclosure contents, the state an escrow lookup has to be in before a context may report a reclaim, config validation, that a configured browser origin is answered and an unconfigured one is not, on rejections as well as on successes, that an entry no browser could ever send is refused at boot, a pattern and a scheme a browser sends no Origin in included, rather than accepted as a list that allows nothing, that no response allows credentials under either origin mode, that a simple request from an unconfigured origin is served in full regardless and refused only in the browser, a preflighted one being stopped in the browser before it is sent, that a path the service does not route answers a preflight all the same, and that each request is validated against the one spec that describes it, whichever form its request target arrives in and even when it carries a fragment, which is no form at all |
 | End-to-end, 18 tests | Both transfer paths and the faucet against a live participant, submitting real exercises built from the service's own answers, including a misconfigured escrow template id that must not produce a reclaim report |
 
 The end-to-end suite allocates its own parties and instrument per run, so it
@@ -466,7 +467,7 @@ instrument, then prints a ready-to-paste service configuration.
 ```bash
 npm run setup                     # vendors the Splice interface DARs into deps/
 npm test                          # builds the production DAR, runs 80 Daml scenarios
-cd registry && npm install && npm test   # 205 unit tests, no ledger needed
+cd registry && npm install && npm test   # 245 unit tests, no ledger needed
 
 npm run sandbox                   # a local Canton sandbox with the JSON Ledger API
 npm run seed                      # an admin, demo users, one instrument

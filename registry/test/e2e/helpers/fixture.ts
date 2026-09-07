@@ -56,6 +56,7 @@ export async function setupInstrument(): Promise<LiveFixture> {
     port: 0,
     shutdownTimeoutMs: 8_000,
     directTransferMarginMs: 30_000,
+    corsOrigins: ['http://localhost:3012'],
   }
   const ledger = new HttpLedgerClient(config)
 

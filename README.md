@@ -212,9 +212,28 @@ loaded from the working directory it is started in. Required, eight:
 `LEDGER_API_URL`, `LEDGER_API_TOKEN`, `ADMIN_PARTY`, and the five template ids
 (`INSTRUMENT_CONFIG_TEMPLATE_ID`, `PREAPPROVAL_TEMPLATE_ID`,
 `LOCKED_TOKEN_TEMPLATE_ID`, `TRANSFER_INSTRUCTION_TEMPLATE_ID`,
-`ALLOCATION_TEMPLATE_ID`). Optional, four: `PORT`, `LEDGER_USER_ID`,
-`SHUTDOWN_TIMEOUT_MS`, `DIRECT_TRANSFER_MARGIN_MS`. The package ships
-`registry/.env.example` with the full list and what each variable is for.
+`ALLOCATION_TEMPLATE_ID`). Optional, five: `PORT`, `LEDGER_USER_ID`,
+`SHUTDOWN_TIMEOUT_MS`, `DIRECT_TRANSFER_MARGIN_MS`, `CORS_ORIGINS`. The package
+ships `registry/.env.example` with the full list and what each variable is for.
+
+`CORS_ORIGINS` is the comma-separated list of origins a browser dApp may call
+the service from, defaulting to `http://localhost:3012`; an entry of `*`
+anywhere in it means any origin, and it is the only wildcard there is: a
+pattern such as `https://*.app.example.com` is compared literally, matches no
+origin a browser sends, and is refused at boot rather than accepted as a list
+that allows nothing. A browser reads a cross-origin response only if the
+service names the requesting origin back, so an origin missing from this list
+fails in the page with an opaque network error. What reaches the service
+differs by route: the three `GET` routes are simple requests, delivered and
+answered in full with only the browser withholding the body from the page,
+while every `POST` route carries a JSON body and is therefore preflighted, and
+a refused preflight ends the call before the `POST` is ever sent. Neither
+leaves anything behind that names the origin, because the service logs no
+requests at all; the list it accepted is on its startup line instead.
+Each entry is written as a browser computes an origin, `http(s)://host` with a
+port only when it is not the scheme's default and with no path, query or
+trailing slash; the service refuses to start on anything else, since the
+comparison is an exact string match and a near miss matches nothing.
 
 Quote all five template ids in a `.env` file. Every one of them begins with
 `#`, which dotenv reads as the start of a comment, so an unquoted
