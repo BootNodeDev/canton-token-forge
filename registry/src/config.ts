@@ -41,7 +41,12 @@ const DEFAULT_DIRECT_TRANSFER_MARGIN_MS = 30_000
 const MAX_DIRECT_TRANSFER_MARGIN_MS = 3_600_000
 
 // The dApp dev server the CORS report was filed from, so the reported case
-// works with no configuration. Any real deployment sets CORS_ORIGINS itself.
+// works with no configuration. Any real deployment sets CORS_ORIGINS itself,
+// and a deployment that leaves the default in place hands a dev origin nothing
+// it could not already have: the service authenticates no client, so this list
+// decides which pages a browser will hand a response to, never who may ask for
+// one. A permissive default is therefore a usability choice here rather than an
+// access-control one, which is also why no value of this variable allows none.
 const DEFAULT_CORS_ORIGINS = 'http://localhost:3012'
 
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
