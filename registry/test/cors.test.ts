@@ -1,7 +1,7 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { createServer } from '../src/server'
-import { cfgEntry, config, ledgerFrom } from './helpers/fixtures'
+import { cfgEntry, config, ledgerFrom, recordingLogger } from './helpers/fixtures'
 
 const ALLOWED_ORIGIN = config.corsOrigins[0]
 const DISALLOWED_ORIGIN = 'http://not-allowed.example'
@@ -162,6 +162,34 @@ describe('cors', () => {
       .set('Access-Control-Request-Method', 'POST')
     expect(preflight.status).toBe(204)
     expect(preflight.headers['access-control-allow-credentials']).toBeUndefined()
+  })
+
+  // The service side of a refused origin is documented as leaving nothing that
+  // names it, and the only line any request writes is this one, on a 5xx. What
+  // has to hold is therefore not that nothing is logged but that what is logged
+  // identifies the request without identifying where it came from, which is the
+  // difference between an operator who can find the request and one who could
+  // tell an allowed caller from a refused one.
+  it('logs a 5xx by method and path, naming no origin', async () => {
+    const { logger, entries, errors } = recordingLogger()
+    const base = ledgerFrom({})
+    const ledger = {
+      ...base,
+      activeContracts: () => Promise.reject(new Error('ledger down')),
+    }
+    const res = await request(createServer({ ledger, config, logger }))
+      .get('/registry/metadata/v1/instruments')
+      .set('Origin', DISALLOWED_ORIGIN)
+    expect(res.status).toBe(500)
+    expect(res.headers['access-control-allow-origin']).toBeUndefined()
+    expect(errors).toEqual(['request failed'])
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      status: 500,
+      method: 'GET',
+      path: '/registry/metadata/v1/instruments',
+    })
+    expect(JSON.stringify(entries[0])).not.toContain(DISALLOWED_ORIGIN)
   })
 
   it('reflects whatever origin asks when corsOrigins is ["*"]', async () => {
