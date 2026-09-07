@@ -80,10 +80,19 @@ export function createServer(deps: ServerDeps): Express {
   // reach the page as an opaque network error instead of the message they
   // carry. It also answers the preflight itself, which is why no route below
   // ever sees an OPTIONS request.
+  // The four vendored specs declare only GET and POST operations and express
+  // serves HEAD for every GET, so the methods and the one header a handler can
+  // reach are both named rather than left at the cors defaults, which advertise
+  // methods no route answers and echo back whatever headers a caller asks for.
+  // Every factory route is a POST and so preflights on every call; a browser
+  // caches a preflight carrying no max-age for seconds, which would make each
+  // call two round trips.
   app.use(
     cors({
       origin: deps.config.corsOrigins.includes('*') ? true : deps.config.corsOrigins,
       methods: ['GET', 'HEAD', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type'],
+      maxAge: 600,
     }),
   )
   app.use(express.json())

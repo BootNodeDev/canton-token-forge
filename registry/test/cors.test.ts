@@ -44,6 +44,31 @@ describe('cors', () => {
     expect(res.headers.allow).toBeUndefined()
   })
 
+  // Every factory route is a POST, so every factory call preflights, and a
+  // browser caches a preflight carrying no max-age for a few seconds at most.
+  // Without this the dApp pays two round trips for each call it makes.
+  it('lets a browser cache the preflight', async () => {
+    const app = createServer({ ledger: ledgerFrom({}), config })
+    const res = await request(app)
+      .options('/registry/transfer-instruction/v1/transfer-factory')
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('Access-Control-Request-Method', 'POST')
+    expect(res.headers['access-control-max-age']).toBe('600')
+  })
+
+  // Left at the cors default, this echoes whatever the request asks for, which
+  // advertises headers no handler reads. Nothing in src/ reads a request header
+  // at all; the body parser and the validators need only the content type.
+  it('advertises only the request header the service reads', async () => {
+    const app = createServer({ ledger: ledgerFrom({}), config })
+    const res = await request(app)
+      .options('/registry/transfer-instruction/v1/transfer-factory')
+      .set('Origin', ALLOWED_ORIGIN)
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type, authorization')
+    expect(res.headers['access-control-allow-headers']).toBe('Content-Type')
+  })
+
   it('answers a preflight from a disallowed origin with 204 and no Access-Control-Allow-Origin', async () => {
     const app = createServer({ ledger: ledgerFrom({}), config })
     const res = await request(app)
