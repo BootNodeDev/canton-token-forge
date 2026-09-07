@@ -14,6 +14,10 @@ export interface Config {
   port: number
   shutdownTimeoutMs: number
   directTransferMarginMs: number
+  // A browser will not hand a cross-origin response to the page unless the
+  // service names the requesting origin back in the response, so the origins
+  // a dApp may call from have to be configured rather than inferred.
+  corsOrigins: string[]
 }
 
 const DEFAULT_PORT = 8080
@@ -35,6 +39,10 @@ const DEFAULT_DIRECT_TRANSFER_MARGIN_MS = 30_000
 // every transfer, so a value that large is more likely a units mistake than an
 // intent; rejecting it at boot beats silently disabling the direct path.
 const MAX_DIRECT_TRANSFER_MARGIN_MS = 3_600_000
+
+// The dApp dev server the CORS report was filed from, so the reported case
+// works with no configuration. Any real deployment sets CORS_ORIGINS itself.
+const DEFAULT_CORS_ORIGINS = 'http://localhost:3012'
 
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const require_ = (k: string): string => {
@@ -80,6 +88,13 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     }
     return n
   }
+  const parseOrigins = (raw: string | undefined): string[] => {
+    const value = raw || DEFAULT_CORS_ORIGINS
+    return value
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0)
+  }
   return {
     ledgerApiUrl: require_('LEDGER_API_URL'),
     ledgerApiToken: require_('LEDGER_API_TOKEN'),
@@ -93,5 +108,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     port: parsePort(env.PORT),
     shutdownTimeoutMs: parseTimeoutMs(env.SHUTDOWN_TIMEOUT_MS),
     directTransferMarginMs: parseMarginMs(env.DIRECT_TRANSFER_MARGIN_MS),
+    corsOrigins: parseOrigins(env.CORS_ORIGINS),
   }
 }

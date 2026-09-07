@@ -1,4 +1,5 @@
 import path from 'node:path'
+import cors from 'cors'
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'
 import * as OpenApiValidator from 'express-openapi-validator'
 import type { Config } from './config.js'
@@ -73,6 +74,18 @@ export function createServer(deps: ServerDeps): Express {
   const app = express()
   const logger = deps.logger ?? createLogger()
   app.use(canonicalizeRequestTarget)
+  // A browser only reads a cross-origin response if that response names its
+  // origin back, and a rejection is a response too, so this has to run ahead
+  // of the body parser and the validators below: otherwise their own 400s
+  // reach the page as an opaque network error instead of the message they
+  // carry. It also answers the preflight itself, which is why no route below
+  // ever sees an OPTIONS request.
+  app.use(
+    cors({
+      origin: deps.config.corsOrigins.includes('*') ? true : deps.config.corsOrigins,
+      methods: ['GET', 'HEAD', 'POST', 'OPTIONS'],
+    }),
+  )
   app.use(express.json())
 
   // One validator per vendored standard spec, requests only, each mounted on

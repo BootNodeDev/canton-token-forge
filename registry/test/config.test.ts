@@ -171,3 +171,37 @@ describe('loadConfig direct transfer margin parsing', () => {
     )
   })
 })
+
+describe('loadConfig CORS origins parsing', () => {
+  it('defaults to the dApp dev server when CORS_ORIGINS is unset', () => {
+    expect(loadConfig({ ...baseEnv }).corsOrigins).toEqual(['http://localhost:3012'])
+  })
+
+  it('defaults to the dApp dev server when CORS_ORIGINS is an empty string', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: '' }).corsOrigins).toEqual([
+      'http://localhost:3012',
+    ])
+  })
+
+  it('parses a single origin', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://a' }).corsOrigins).toEqual(['http://a'])
+  })
+
+  it('splits and trims a comma-separated list', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://a, http://b' }).corsOrigins).toEqual([
+      'http://a',
+      'http://b',
+    ])
+  })
+
+  it('drops empty entries left by stray or trailing commas', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: 'http://a,,http://b,' }).corsOrigins).toEqual([
+      'http://a',
+      'http://b',
+    ])
+  })
+
+  it('keeps "*" verbatim: the server, not the config, interprets it', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: '*' }).corsOrigins).toEqual(['*'])
+  })
+})

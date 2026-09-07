@@ -23,12 +23,14 @@
   "bin": { "canton-token-forge-registry": "registry/dist/index.js" },
   "files": ["registry/dist", "registry/openapi", "registry/.env.example"],
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-openapi-validator": "^5.6.2",
     "pino": "^10.3.1"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^26.1.1",
     "typescript": "^5.5.4"
