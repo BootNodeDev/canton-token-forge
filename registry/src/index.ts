@@ -28,7 +28,14 @@ if (!(await checkAdminParty(ledger, config, logger))) process.exit(1)
 
 const app = createServer({ ledger, config, logger })
 const server = app.listen(config.port, () => {
-  logger.info({ port: config.port }, 'canton-token-forge registry listening')
+  // The origin list is the one setting whose effect is invisible from the
+  // service side: a browser that is refused reports an opaque network error to
+  // the page and sends nothing here to log. Recording what was accepted at boot
+  // is what lets an operator tell a rejected origin from an unreachable service.
+  logger.info(
+    { port: config.port, corsOrigins: config.corsOrigins },
+    'canton-token-forge registry listening',
+  )
 })
 
 let shuttingDown = false
