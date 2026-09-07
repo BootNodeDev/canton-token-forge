@@ -287,8 +287,9 @@ reason the seed script looks the way it does.
   of `*` anywhere in the list means any origin, so there is no value that
   allows none. A refused origin leaves nothing here to find: a simple request
   is served in full and only the browser withholds the body, a preflighted one
-  never arrives at all, and the service logs no requests either way. The list
-  it accepted is on the startup line instead.
+  never arrives at all, and no log line names the origin either way, since the
+  only line a request ever writes is the error handler's on a 5xx, carrying the
+  method and the path. The list it accepted is on the startup line instead.
 - `LEDGER_USER_ID` has no effect on the running service, which submits nothing.
   The seed prints it as a record of the user it submitted under, not as an input
   the service reads back. Setting it in `registry/.env` changes nothing at all:
