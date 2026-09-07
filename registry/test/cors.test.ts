@@ -1,7 +1,7 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { createServer } from '../src/server'
-import { config, ledgerFrom } from './helpers/fixtures'
+import { cfgEntry, config, ledgerFrom } from './helpers/fixtures'
 
 const ALLOWED_ORIGIN = config.corsOrigins[0]
 const DISALLOWED_ORIGIN = 'http://not-allowed.example'
@@ -23,6 +23,30 @@ describe('cors', () => {
     const app = createServer({ ledger: ledgerFrom({}), config })
     const res = await request(app).get('/healthz').set('Origin', DISALLOWED_ORIGIN)
     expect(res.status).toBe(200)
+    expect(res.headers['access-control-allow-origin']).toBeUndefined()
+  })
+
+  // A simple request is not preflighted, so nothing stops it: it is delivered,
+  // routed, and served off the ledger like any other, and only the browser
+  // withholds the body from the page. Counting the ledger read is what shows
+  // the work was done, which /healthz above cannot: an operator cannot tell a
+  // refused origin from an allowed one by watching the service.
+  it('serves a disallowed origin in full, refusing it only in the browser', async () => {
+    const base = ledgerFrom({ [config.instrumentConfigTemplateId]: [cfgEntry()] })
+    let reads = 0
+    const ledger = {
+      ...base,
+      activeContracts: (templateId: string, party: string) => {
+        reads += 1
+        return base.activeContracts(templateId, party)
+      },
+    }
+    const res = await request(createServer({ ledger, config }))
+      .get('/registry/metadata/v1/instruments')
+      .set('Origin', DISALLOWED_ORIGIN)
+    expect(res.status).toBe(200)
+    expect(res.body.instruments).toHaveLength(1)
+    expect(reads).toBe(1)
     expect(res.headers['access-control-allow-origin']).toBeUndefined()
   })
 
@@ -103,6 +127,19 @@ describe('cors', () => {
       .send('{"choiceArguments":')
     expect(res.status).toBe(400)
     expect(res.headers['access-control-allow-origin']).toBe(ALLOWED_ORIGIN)
+  })
+
+  // cors terminates every OPTIONS, not only preflights and not only on paths
+  // that route, so a path the service does not serve answers 204 here where
+  // express used to 404. The GET is what still reports the path as missing,
+  // and pinning both is what keeps the difference deliberate.
+  it('answers OPTIONS on an unrouted path with 204, whose GET still 404s', async () => {
+    const app = createServer({ ledger: ledgerFrom({}), config })
+    const preflight = await request(app).options('/no/such/path')
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers['access-control-allow-methods']).toBe('GET,HEAD,POST,OPTIONS')
+    const get = await request(app).get('/no/such/path')
+    expect(get.status).toBe(404)
   })
 
   it('reflects whatever origin asks when corsOrigins is ["*"]', async () => {
