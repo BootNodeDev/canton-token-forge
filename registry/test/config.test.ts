@@ -235,8 +235,42 @@ describe('loadConfig CORS origins parsing', () => {
   })
 
   it('throws on an entry that is not a URL at all', () => {
-    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: '*.example.com' })).toThrow(
-      /expected an origin, scheme:\/\/host\[:port\], or \*/,
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: 'not a url' })).toThrow(
+      /expected an origin, http\(s\):\/\/host\[:port\], or \*/,
+    )
+  })
+
+  // The entry the "*" spelling invites, and the one URL cannot catch: a
+  // pattern parses, and its own origin is itself, so it reaches cors and is
+  // compared to a real origin as a literal string, matching nothing. That is
+  // the empty-allowlist boot this validation exists to refuse.
+  it.each([
+    'https://*.app.example.com',
+    'http://*.example.com',
+    'https://*',
+  ])('throws on the pattern %j, which cors would match literally', (value) => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
+      /no pattern is matched, list each origin, or "\*" alone for any/,
+    )
+  })
+
+  it('still accepts "*" alone, which is not a pattern but the any-origin spelling', () => {
+    expect(loadConfig({ ...baseEnv, CORS_ORIGINS: 'https://a.example, *' }).corsOrigins).toEqual([
+      'https://a.example',
+      '*',
+    ])
+  })
+
+  // A special scheme other than http(s) round-trips through URL.origin, so
+  // these pass the near-miss comparison and would be accepted on its word
+  // alone. No browser sends an Origin in any of them.
+  it.each([
+    'ws://a.example',
+    'wss://a.example',
+    'ftp://a.example',
+  ])('throws on %j, a scheme no browser sends an Origin for', (value) => {
+    expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
+      /expected an origin, http\(s\):\/\/host\[:port\], or \*/,
     )
   })
 
@@ -252,7 +286,7 @@ describe('loadConfig CORS origins parsing', () => {
     'chrome-extension://abc',
   ])('throws on %j, which has no origin to name back', (value) => {
     expect(() => loadConfig({ ...baseEnv, CORS_ORIGINS: value })).toThrow(
-      /expected an origin, scheme:\/\/host\[:port\], or \*/,
+      /expected an origin, http\(s\):\/\/host\[:port\], or \*/,
     )
   })
 

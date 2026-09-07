@@ -90,10 +90,13 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   }
   // A browser sends the origin it computed, so an entry the browser can never
   // send matches nothing and blocks the dApp with the same opaque failure this
-  // list exists to prevent, from a service that started clean. The two ways to
-  // write one are a trailing slash (what the address bar gives you) and a host
-  // that is not already lower case, and URL normalizes both, so comparing an
-  // entry against its own origin rejects exactly the values that cannot match.
+  // list exists to prevent, from a service that started clean. URL normalizes
+  // the near misses an operator writes by hand, a trailing slash, a host that
+  // is not already lower case, a spelled-out default port, a path, so
+  // comparing an entry against its own origin catches all of those. Two kinds
+  // survive that comparison unchanged and are refused ahead of it instead: a
+  // pattern, which parses as a host that happens to carry a "*", and a scheme
+  // a browser never sends an Origin for.
   const parseOrigins = (raw: string | undefined): string[] => {
     const entries = (raw || DEFAULT_CORS_ORIGINS)
       .split(',')
@@ -104,22 +107,33 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     }
     const notAnOrigin = (entry: string) =>
       new Error(
-        `invalid CORS_ORIGINS entry "${entry}": expected an origin, scheme://host[:port], or *`,
+        `invalid CORS_ORIGINS entry "${entry}": expected an origin, http(s)://host[:port], or *`,
       )
     for (const entry of entries) {
       if (entry === '*') continue
-      let normalized: string
+      // The list is matched by exact string, so a pattern matches nothing at
+      // all, and "*" meaning any origin is what invites one. URL parses
+      // "https://*.example.com" happily and reports itself as its own origin,
+      // so this is the only place it can be caught.
+      if (entry.includes('*')) {
+        throw new Error(
+          `invalid CORS_ORIGINS entry "${entry}": no pattern is matched, list each origin, or "*" alone for any`,
+        )
+      }
+      let url: URL
       try {
-        normalized = new URL(entry).origin
+        url = new URL(entry)
       } catch {
         throw notAnOrigin(entry)
       }
-      // URL accepts anything carrying a colon, so an entry that omits the
-      // scheme parses as a non-special URL whose origin is the string "null".
-      // Naming that back as the value to write would be a remedy the operator
-      // cannot take: "null" carries no colon and is refused as not a URL, so
-      // following the message costs a second failed boot.
-      if (normalized === 'null') throw notAnOrigin(entry)
+      // Only these two schemes reach the service as an Origin, and confining
+      // the entry to them is also what keeps the message honest: URL accepts
+      // anything carrying a colon, so a scheme-less entry parses as a
+      // non-special URL whose origin is the literal string "null", and naming
+      // that back as the value to write would be a remedy the operator cannot
+      // take, since "null" is itself refused as not a URL.
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw notAnOrigin(entry)
+      const normalized = url.origin
       if (normalized !== entry) {
         throw new Error(
           `invalid CORS_ORIGINS entry "${entry}": a browser would send "${normalized}", so write that instead`,

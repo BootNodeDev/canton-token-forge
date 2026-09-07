@@ -218,13 +218,16 @@ ships `registry/.env.example` with the full list and what each variable is for.
 
 `CORS_ORIGINS` is the comma-separated list of origins a browser dApp may call
 the service from, defaulting to `http://localhost:3012`; an entry of `*`
-anywhere in it means any origin. A browser reads a cross-origin response only
-if the service names the requesting origin back, so an origin missing from this
-list fails in the page with an opaque network error while the service delivers
-and answers the request as it would any other, leaving nothing behind that
-tells the two apart; the list the service accepted is on its startup line
-instead. Each entry is written as a browser computes an origin, `scheme://host`
-with a port only when it is not the scheme's default and with no path, query or
+anywhere in it means any origin, and it is the only wildcard there is: a
+pattern such as `https://*.app.example.com` is compared literally, matches no
+origin a browser sends, and is refused at boot rather than accepted as a list
+that allows nothing. A browser reads a cross-origin response only if the
+service names the requesting origin back, so an origin missing from this list
+fails in the page with an opaque network error while the service delivers and
+answers the request as it would any other, leaving nothing behind that tells
+the two apart; the list the service accepted is on its startup line instead.
+Each entry is written as a browser computes an origin, `http(s)://host` with a
+port only when it is not the scheme's default and with no path, query or
 trailing slash; the service refuses to start on anything else, since the
 comparison is an exact string match and a near miss matches nothing.
 
