@@ -34,7 +34,11 @@ describe('cors', () => {
       .set('Access-Control-Request-Method', 'POST')
     expect(res.status).toBe(204)
     expect(res.headers['access-control-allow-origin']).toBe(ALLOWED_ORIGIN)
-    expect(res.headers['access-control-allow-methods']).toMatch(/POST/)
+    // The exact list, not a substring: the four vendored specs declare only GET
+    // and POST operations and express serves HEAD for every GET, so advertising
+    // PUT, PATCH or DELETE would name methods no route answers. Asserting only
+    // that POST is present cannot see that.
+    expect(res.headers['access-control-allow-methods']).toBe('GET,HEAD,POST,OPTIONS')
     // express's default OPTIONS handler is what sets Allow; its absence is
     // what proves cors answered the preflight itself, ahead of routing.
     expect(res.headers.allow).toBeUndefined()
