@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # The scope step diffs against the merge base, so it needs history,
           # not just the tip. .git is 14 MB, so this is cheap.
@@ -73,7 +73,7 @@ jobs:
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: steps.scope.outputs.run == 'true'
         with:
           node-version: '22'
@@ -136,7 +136,7 @@ jobs:
       LANG: C.UTF-8
       DPM_SDK_VERSION: '3.4.11'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -468,7 +468,7 @@ jobs:
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         if: steps.scope.outputs.run == 'true'
         with:
           distribution: temurin
@@ -529,7 +529,7 @@ jobs:
       - name: Restore vendored deps
         id: deps
         if: steps.scope.outputs.run == 'true'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: deps
           key: deps-${{ runner.os }}-${{ steps.splice.outputs.sha }}-${{ hashFiles('versions.env', 'scripts/fetch-dep.sh') }}
@@ -560,7 +560,7 @@ jobs:
       # is spelled out here because it is the half doing that work.
       - name: Save vendored deps
         if: success() && steps.scope.outputs.run == 'true' && steps.deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: deps
           key: ${{ steps.deps.outputs.cache-primary-key }}
@@ -622,7 +622,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -758,7 +758,7 @@ jobs:
             echo "run=false" | tee -a "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         if: steps.scope.outputs.run == 'true'
         with:
           node-version: '22'
