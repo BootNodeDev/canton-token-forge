@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 BootNode. All rights reserved.
+# SPDX-License-Identifier: BUSL-1.1
+
 #
 # release-notes.sh - emit the GitHub release body for a canton-token-forge DAR.
 #

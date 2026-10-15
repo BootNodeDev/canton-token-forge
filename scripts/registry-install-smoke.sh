@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 BootNode. All rights reserved.
+# SPDX-License-Identifier: BUSL-1.1
+
 set -euo pipefail
 
 # registry-install-smoke.sh - pack the repository, install the tarball into a

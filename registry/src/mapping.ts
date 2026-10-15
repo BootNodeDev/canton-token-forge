@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import type { ContractEntry } from './ledger.js'
 import type { InstrumentConfigPayload, InstrumentIdValue } from './payloads.js'
 

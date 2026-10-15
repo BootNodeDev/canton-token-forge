@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 
 // Express 4 does not forward a rejected promise from an async handler to

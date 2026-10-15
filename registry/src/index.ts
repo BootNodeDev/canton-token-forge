@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import 'dotenv/config'
 import { type Config, loadConfig } from './config.js'
 import { HttpLedgerClient } from './ledger.js'

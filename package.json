@@ -2,7 +2,7 @@
   "name": "@bootnodedev/canton-token-forge",
   "version": "0.3.0",
   "description": "A reusable, multi-instrument CIP-0056 (CN Token Standard) compliant token for demos and sandboxes, plus its read-only registry HTTP service",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "type": "module",
   "scripts": {
     "setup": "bash scripts/fetch-dep.sh",

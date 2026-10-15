@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import express, { type Express } from 'express'

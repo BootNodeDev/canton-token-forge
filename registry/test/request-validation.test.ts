@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import type { Server } from 'node:http'
 import net from 'node:net'
 import request from 'supertest'

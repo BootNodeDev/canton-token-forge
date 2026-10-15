@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import path from 'node:path'
 import cors from 'cors'
 import express, { type Express, type NextFunction, type Request, type Response } from 'express'

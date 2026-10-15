@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 //
 // seed.mjs - seed a running Canton sandbox with the contracts the registry
 // service needs: an instrument admin, two demo users, and one InstrumentConfig

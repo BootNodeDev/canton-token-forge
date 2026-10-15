@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (c) 2026 BootNode. All rights reserved.
+# SPDX-License-Identifier: BUSL-1.1
+
 # Build the upstream splice-amulet-test bootstrap DAR that the splice-app-test
 # integration suite data-depends on. Run AFTER scripts/fetch-dep.sh.
 #

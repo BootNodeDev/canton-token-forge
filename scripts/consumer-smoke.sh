@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 BootNode. All rights reserved.
+# SPDX-License-Identifier: BUSL-1.1
+
 #
 # consumer-smoke.sh - build a package whose ONLY data-dependency is the built
 # canton-token-forge DAR.

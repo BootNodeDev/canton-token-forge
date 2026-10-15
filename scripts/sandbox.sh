@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 BootNode. All rights reserved.
+# SPDX-License-Identifier: BUSL-1.1
+
 #
 # sandbox.sh - build the production DAR and run a local Canton sandbox with the
 # JSON Ledger API enabled, so the registry service and the seed script have a
