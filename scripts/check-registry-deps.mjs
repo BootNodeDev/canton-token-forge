@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 //
 // check-registry-deps.mjs - the root package.json ships registry/dist as its
 // bin, so a consumer install resolves the service's imports against the root

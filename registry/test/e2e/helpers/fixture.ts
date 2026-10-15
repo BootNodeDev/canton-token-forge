@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import type { Express } from 'express'
 import request from 'supertest'
 import type { Config } from '../../../src/config'

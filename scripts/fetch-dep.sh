@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (c) 2026 BootNode. All rights reserved.
+# SPDX-License-Identifier: BUSL-1.1
+
 # Vendor the upstream canton-network/splice sources this project builds against,
 # then derive each DAR's version from the vendored source tree and expose it via
 # a stable-name symlink so daml.yaml never has to name a version.

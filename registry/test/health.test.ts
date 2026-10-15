@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { createServer } from '../src/server'

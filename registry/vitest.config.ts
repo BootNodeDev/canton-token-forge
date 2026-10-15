@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import { configDefaults, defineConfig } from 'vitest/config'
 
 // The end-to-end suite needs a participant, so it is excluded here and asked

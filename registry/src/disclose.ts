@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import type { ContractEntry } from './ledger.js'
 
 // A disclosure is a ContractEntry minus its decoded payload: the ledger

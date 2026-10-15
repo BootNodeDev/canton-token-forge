@@ -1,3 +1,6 @@
+-- Copyright (c) 2026 BootNode. All rights reserved.
+-- SPDX-License-Identifier: BUSL-1.1
+
 -- Every import below resolves through canton-token-forge-0.0.1.dar alone. The
 -- Splice interface packages are bundled inside that DAR but hidden by default;
 -- the --package lines in daml.yaml are what make them visible.

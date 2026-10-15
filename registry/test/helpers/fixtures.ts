@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 // Shared test fixtures for the registry suites. The config is a full Config so
 // suites cannot drift from the real shape; the entry builders and ledger stubs
 // live here rather than in any one suite because changing either affects every

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import { pino } from 'pino'
 
 // The structural interface the service depends on, so tests can pass a

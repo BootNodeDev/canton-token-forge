@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 import { describe, expect, it } from 'vitest'
 import { HttpLedgerClient, LedgerRequestError } from '../src/ledger'
 import { recordingLogger } from './helpers/fixtures'

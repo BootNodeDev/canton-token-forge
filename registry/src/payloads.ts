@@ -1,3 +1,6 @@
+// Copyright (c) 2026 BootNode. All rights reserved.
+// SPDX-License-Identifier: BUSL-1.1
+
 // JSON shapes of the on-ledger contract payloads this service reads, as the
 // Canton JSON Ledger API renders create arguments. Only the fields the
 // service actually reads are declared; extra runtime fields are allowed by
