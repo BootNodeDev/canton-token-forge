@@ -77,9 +77,11 @@ describe('HttpLedgerClient.activeContracts', () => {
     expect(url).toBe('http://ledger/v2/state/active-contracts')
     expect(init.method).toBe('POST')
     const body = JSON.parse(init.body as string)
+    expect(body).not.toHaveProperty('filter')
+    expect(body).not.toHaveProperty('verbose')
     expect(
-      body.filter.filtersByParty['admin::1'].cumulative[0].identifierFilter.TemplateFilter.value
-        .templateId,
+      body.eventFormat.filtersByParty['admin::1'].cumulative[0].identifierFilter.TemplateFilter
+        .value.templateId,
     ).toBe('pkg:Canton.TokenForge.Registry:InstrumentConfig')
   })
 
@@ -191,7 +193,7 @@ describe('HttpLedgerClient.probeTemplate', () => {
     expect(body.activeAtOffset).toBe(0)
     // And no disclosure blob, which is the bulk of a row and is what a
     // counterparty needs rather than a check that reads nothing back.
-    const filter = body.filter.filtersByParty['admin::1'].cumulative[0].identifierFilter
+    const filter = body.eventFormat.filtersByParty['admin::1'].cumulative[0].identifierFilter
     expect(filter.TemplateFilter.value).toEqual({
       templateId: 'pkg:M:LockedToken',
       includeCreatedEventBlob: false,
