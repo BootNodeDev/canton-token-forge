@@ -167,7 +167,7 @@ async function ledgerEnd() {
 
 async function activeContracts(templateId, party) {
   const rows = await call('/v2/state/active-contracts', {
-    filter: {
+    eventFormat: {
       filtersByParty: {
         [party]: {
           cumulative: [
@@ -177,8 +177,8 @@ async function activeContracts(templateId, party) {
           ],
         },
       },
+      verbose: false,
     },
-    verbose: false,
     activeAtOffset: await ledgerEnd(),
   })
   return rows.flatMap((row) => {

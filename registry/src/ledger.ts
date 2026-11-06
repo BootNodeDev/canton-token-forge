@@ -219,8 +219,10 @@ export class HttpLedgerClient implements LedgerClient {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({
-        filter: templateFilter(templateId, party, includeCreatedEventBlob),
-        verbose: false,
+        eventFormat: {
+          ...templateFilter(templateId, party, includeCreatedEventBlob),
+          verbose: false,
+        },
         activeAtOffset,
       }),
     })
